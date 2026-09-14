@@ -3,6 +3,7 @@ import {drawOriginalOptionsBackground} from './options-screen-raster.ts';
 import {originalOptionsFlow} from './options-menu-flow.ts';
 import {originalOptionAction,type OriginalOptionSettings} from './options-actions.ts';
 import {enhancedTexturesEnabled,setEnhancedTexturesEnabled} from './enhanced-textures.ts';
+import {desktopInputDevice,setDesktopInputDevice,type DesktopInputDevice} from './desktop-wheel-input.ts';
 
 type DesktopSoundDevice='off'|'pc-speaker'|'tandy'|'adlib'|'sound-blaster'|'mt32';
 type TauriGlobal={core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}};
@@ -15,6 +16,7 @@ const soundDevices:ReadonlyArray<{id:DesktopSoundDevice;label:string}>=[
  {id:'sound-blaster',label:'SOUND BLASTER'},
  {id:'mt32',label:'ROLAND MT-32'},
 ];
+const inputDevices:ReadonlyArray<DesktopInputDevice>=['keyboard','joystick','mouse','wheel'];
 const bytes=(text:string)=>Array.from(text,character=>character.charCodeAt(0)).concat(0);
 const soundDialog=bytes('PLAYSTUNTS DX SOUND]'+soundDevices.map(device=>`[${device.label}]`).join(''));
 const missingMt32Dialog=bytes('ROLAND MT-32 ROMS NOT FOUND]PUT THE CONTROL AND PCM ROMS]IN THE MT32 FOLDER][OK]');
@@ -73,6 +75,13 @@ function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,te
  return result;
 }
 
+function inputDeviceWithWheel(original:ReadonlyArray<number>){
+ const result=Array.from(original,value=>value&255),end=result.indexOf(0),insertAt=end<0?result.length:end;
+ result.splice(insertAt,0,...choice('WHEEL'));
+ if(end<0)result.push(0);
+ return result;
+}
+
 export interface NativeOptionsHost extends NativeDialogHost {
  settings:OriginalOptionSettings;
  audio(operation:'pause-audio'|'resume-audio'|'toggle-music'|'toggle-sound'):Promise<number>;
@@ -126,7 +135,21 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
     else result=selected;
    }
   }
-  else if(request.type==='input-device')result=await dialogs.dialog('emid',2,request.selected,1);
+  else if(request.type==='input-device'){
+   if(!desktopSoundDevice())result=await dialogs.dialog('emid',2,request.selected,1);
+   else{
+    host.resources.edxi=inputDeviceWithWheel(host.resources.emid);
+    const selected=await dialogs.dialog('edxi',2,desktopInputDevice()==='wheel'?3:request.selected,1);
+    if(selected===3){
+     setDesktopInputDevice('wheel');
+     // The original simulation's analog steering path is the joystick path.
+     // Wheel input supplies that path directly; it does not synthesize keys.
+     host.settings.mouse=false;
+     host.settings.joystick=true;
+    }else if(selected>=0&&selected<=2)setDesktopInputDevice(inputDevices[selected]);
+    result=selected;
+   }
+  }
   else if(request.type==='select-replay'){
    selection=await dialogs.file(host.replayPath,'.rpl',String.fromCharCode(...host.resources.erep).split('\0')[0],path=>{host.replayPath=path;});
    if(selection){host.replayPath=selection.path;result=1;}
