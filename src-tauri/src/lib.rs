@@ -1,4 +1,5 @@
 use std::{fs, path::PathBuf};
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 #[tauri::command]
 fn toggle_fullscreen(window: tauri::Window) -> Result<bool, String> {
@@ -6,6 +7,37 @@ fn toggle_fullscreen(window: tauri::Window) -> Result<bool, String> {
     let next = !fullscreen;
     window.set_fullscreen(next).map_err(|error| error.to_string())?;
     Ok(next)
+}
+
+#[tauri::command]
+fn toggle_mt32_panel(app: tauri::AppHandle) -> Result<bool, String> {
+    if let Some(panel) = app.get_webview_window("mt32-panel") {
+        let visible = panel.is_visible().map_err(|error| error.to_string())?;
+        if visible {
+            panel.hide().map_err(|error| error.to_string())?;
+            if let Some(main) = app.get_webview_window("main") {
+                main.set_focus().map_err(|error| error.to_string())?;
+            }
+            return Ok(false);
+        }
+        panel.show().map_err(|error| error.to_string())?;
+        panel.set_focus().map_err(|error| error.to_string())?;
+        return Ok(true);
+    }
+
+    let panel = WebviewWindowBuilder::new(
+        &app,
+        "mt32-panel",
+        WebviewUrl::App("index.html?window=mt32".into()),
+    )
+    .title("Roland MT-32 - PlayStunts DX")
+    .inner_size(1180.0, 470.0)
+    .resizable(true)
+    .center()
+    .build()
+    .map_err(|error| error.to_string())?;
+    panel.set_focus().map_err(|error| error.to_string())?;
+    Ok(true)
 }
 
 fn mt32_roots() -> Vec<PathBuf> {
@@ -66,6 +98,7 @@ pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             toggle_fullscreen,
+            toggle_mt32_panel,
             check_mt32_roms,
             read_mt32_rom
         ])
