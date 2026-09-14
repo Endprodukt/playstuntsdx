@@ -2,6 +2,15 @@ import {createNativeDialogRuntime,type NativeDialogHost} from './native-dialog-r
 import {drawOriginalOptionsBackground} from './options-screen-raster.ts';
 import {originalOptionsFlow} from './options-menu-flow.ts';
 import {originalOptionAction,type OriginalOptionSettings} from './options-actions.ts';
+
+const dxGraphicsResource='PLAYSTUNTS DX GRAPHICS][ORIGINAL GRAPHICS][ENHANCED GRAPHICS]';
+const dxGraphicsDialog=Array.from(dxGraphicsResource,character=>character.charCodeAt(0)).concat(0);
+
+function desktopEnhancedGraphicsButton(){
+ if(typeof document==='undefined')return null;
+ return document.querySelector<HTMLButtonElement>('.desktop-game-shell .game-toolbar button[aria-pressed]');
+}
+
 export interface NativeOptionsHost extends NativeDialogHost {
  settings:OriginalOptionSettings;
  audio(operation:'pause-audio'|'resume-audio'|'toggle-music'|'toggle-sound'):Promise<number>;
@@ -43,6 +52,23 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
     else reply=await host.audio(value.type);
     effect=action.next(reply);
    }}finally{retained?.close();}
+
+   // PlayStunts DX test extension: keep the supplied Graphics option intact,
+   // then offer the enhanced renderer using the same original dialog system.
+   // The hidden desktop toolbar button remains the single owner of React's
+   // enhanced-graphics state, so this bridge cannot drift out of sync with it.
+   if(name==='graphics'){
+    const toggle=desktopEnhancedGraphicsButton();
+    if(toggle){
+     host.resources.edxg=dxGraphicsDialog;
+     const enabled=toggle.getAttribute('aria-pressed')==='true';
+     const selected=await dialogs.dialog('edxg',2,enabled?1:0,1);
+     if(selected===0||selected===1){
+      const requested=selected===1;
+      if(requested!==enabled)toggle.click();
+     }
+    }
+   }
   }
   step=flow.next(result);
  }
