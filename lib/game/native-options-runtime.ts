@@ -77,7 +77,7 @@ function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,te
 
 function inputDeviceWithWheel(original:ReadonlyArray<number>){
  const result=Array.from(original,value=>value&255),end=result.indexOf(0),insertAt=end<0?result.length:end;
- result.splice(insertAt,0,...choice('WHEEL'));
+ result.splice(insertAt,0,...choice('Wheel'));
  if(end<0)result.push(0);
  return result;
 }
