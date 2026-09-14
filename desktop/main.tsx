@@ -98,7 +98,9 @@ function DesktopApp() {
           .finally(() => { togglingFullscreen = false; });
         return;
       }
-      if (event.key === 'F12' && selectedSound === 'mt32') {
+      // F12 is a WebView2 browser accelerator in development builds. Reserve F10
+      // for the MT-32 front panel so the shortcut behaves the same in dev/release.
+      if (event.key === 'F10' && selectedSound === 'mt32') {
         event.preventDefault();
         event.stopImmediatePropagation();
         if (togglingMt32) return;
