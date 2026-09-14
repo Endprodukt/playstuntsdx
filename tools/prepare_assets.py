@@ -190,8 +190,8 @@ def main():
                 data = file.read_bytes()
                 manifest[file.name] = {'file': file.name, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
         (resources/'manifest.json').write_text(json.dumps({'files': manifest}, indent=2)+'\n')
-        from check_assets import required_problems
-        problems = required_problems(public)
+        from check_assets import optional_reference_paths, required_problems
+        problems = required_problems(public, optional_reference_paths(missing))
         if problems:
             raise ValueError('Incomplete runtime: '+str(problems))
         inventory = [{'path': str(f.relative_to(public)), 'sha256': hashlib.sha256(f.read_bytes()).hexdigest()} for f in sorted(public.rglob('*')) if f.is_file()]
@@ -207,6 +207,8 @@ def main():
         (public/'preparation-report.json').write_text(json.dumps(report, indent=2)+'\n')
         shutil.move(str(public), str(output))
     print(f'Prepared {report["generatedFiles"]} files at {output}')
+    if missing:
+        print(f'Skipped {len(missing)} optional reference inputs not present in the supplied installation.')
     if tolerated_mismatches:
         print('Accepted non-reference input files:')
         for mismatch in tolerated_mismatches:
