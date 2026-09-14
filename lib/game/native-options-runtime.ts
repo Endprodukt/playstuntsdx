@@ -2,6 +2,7 @@ import {createNativeDialogRuntime,type NativeDialogHost} from './native-dialog-r
 import {drawOriginalOptionsBackground} from './options-screen-raster.ts';
 import {originalOptionsFlow} from './options-menu-flow.ts';
 import {originalOptionAction,type OriginalOptionSettings} from './options-actions.ts';
+import {enhancedTexturesEnabled,setEnhancedTexturesEnabled} from './enhanced-textures.ts';
 
 type DesktopSoundDevice='off'|'pc-speaker'|'tandy'|'adlib'|'sound-blaster'|'mt32';
 type TauriGlobal={core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}};
@@ -47,7 +48,7 @@ function selectDesktopSound(device:DesktopSoundDevice){
 }
 
 function choice(text:string){return [91,...Array.from(text,character=>character.charCodeAt(0)),93];}
-function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,sound:DesktopSoundDevice){
+function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,textures:boolean,sound:DesktopSoundDevice){
  // Preserve the supplied options resource and inject DX choices around the
  // original entries. Original choice 3 is Load Replay; choice 5 is Exit to DOS.
  const result:number[]=[];let originalChoice=0;
@@ -55,7 +56,10 @@ function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,so
   const value=raw&255;
   if(value===91){
    if(originalChoice===3)result.push(...choice(`SOUND DEVICE: ${desktopSoundLabel(sound)}`));
-   if(originalChoice===5)result.push(...choice(`ENHANCED GRAPHICS: ${enhanced?'ON':'OFF'}`));
+   if(originalChoice===5){
+    result.push(...choice(`ENHANCED GRAPHICS: ${enhanced?'ON':'OFF'}`));
+    result.push(...choice(`ENHANCED TEXTURES: ${textures?'ON':'OFF'}`));
+   }
    originalChoice++;
   }
   result.push(value);
@@ -88,8 +92,8 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
    const toggle=desktopEnhancedGraphicsButton(),sound=desktopSoundDevice();
    if(!toggle||!sound)result=await dialogs.dialog('emop',2,0,4);
    else{
-    const enhanced=toggle.getAttribute('aria-pressed')==='true';
-    host.resources.edxo=optionsWithDxChoices(host.resources.emop,enhanced,sound);
+    const enhanced=toggle.getAttribute('aria-pressed')==='true',textures=enhancedTexturesEnabled();
+    host.resources.edxo=optionsWithDxChoices(host.resources.emop,enhanced,textures,sound);
     const selected=await dialogs.dialog('edxo',2,0,4);
     if(selected===3){
      host.resources.edxs=soundDialog;
@@ -108,8 +112,11 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
     else if(selected===6){
      toggle.click();
      result=-2;
-    }else if(selected===7)result=5; // shifted original Exit to DOS
-    else if(selected===8)result=6; // shifted original Return
+    }else if(selected===7){
+     setEnhancedTexturesEnabled(!textures);
+     result=-2;
+    }else if(selected===8)result=5; // shifted original Exit to DOS
+    else if(selected===9)result=6; // shifted original Return
     else result=selected;
    }
   }
