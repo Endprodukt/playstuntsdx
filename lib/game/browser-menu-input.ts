@@ -43,7 +43,7 @@ export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joysti
  element.addEventListener('keydown',keyboard);element.addEventListener('keyup',keyup);element.addEventListener('blur',clear);element.addEventListener('pointerdown',down);element.addEventListener('pointermove',pointer);element.addEventListener('pointerup',pointer);element.addEventListener('pointercancel',leave);element.addEventListener('lostpointercapture',leave);element.addEventListener('pointerleave',leave);element.addEventListener('contextmenu',contextMenu);window.addEventListener('blur',clear);
  const gamepad=()=>{
   const wheelSelected=desktopInputDevice()==='wheel';
-  if(!active||disposed||(options.joystickEnabled&&!options.joystickEnabled()))return {mask:0,direction:0,axis:0};
+  if(!active||disposed||(!wheelSelected&&options.joystickEnabled&&!options.joystickEnabled()))return {mask:0,direction:0,axis:0};
   if(wheelSelected){
    const wheel=getDesktopWheelInput();
    if(!wheel.configured||!wheel.connected)return {mask:0,direction:0,axis:0};
