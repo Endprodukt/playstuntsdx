@@ -34,6 +34,7 @@ async fn toggle_mt32_panel(app: tauri::AppHandle) -> Result<bool, String> {
     .inner_size(1180.0, 470.0)
     .resizable(true)
     .center()
+    .devtools(false)
     .initialization_script("window.__PLAYSTUNTS_DX_WINDOW__ = 'mt32';")
     .build()
     .map_err(|error| error.to_string())?;
