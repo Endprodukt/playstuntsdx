@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-desktop/
 .next/
 .vinext/
 .wrangler/
@@ -16,3 +17,4 @@ public/
 __pycache__/
 *.pyc
 .venv/
+src-tauri/target/
