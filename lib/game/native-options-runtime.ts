@@ -3,12 +3,23 @@ import {drawOriginalOptionsBackground} from './options-screen-raster.ts';
 import {originalOptionsFlow} from './options-menu-flow.ts';
 import {originalOptionAction,type OriginalOptionSettings} from './options-actions.ts';
 
-const dxGraphicsResource='PLAYSTUNTS DX GRAPHICS][ORIGINAL GRAPHICS][ENHANCED GRAPHICS]';
-const dxGraphicsDialog=Array.from(dxGraphicsResource,character=>character.charCodeAt(0)).concat(0);
-
 function desktopEnhancedGraphicsButton(){
  if(typeof document==='undefined')return null;
  return document.querySelector<HTMLButtonElement>('.desktop-game-shell .game-toolbar button[aria-pressed]');
+}
+
+function optionsWithEnhancedGraphics(original:ReadonlyArray<number>,enabled:boolean){
+ // Preserve the supplied options resource byte-for-byte and insert one DX choice
+ // immediately before the original Exit to DOS choice (choice index 5).
+ const insert:number[]=[91,...Array.from(`ENHANCED GRAPHICS: ${enabled?'ON':'OFF'}`,character=>character.charCodeAt(0)),93];
+ let choices=0,at=-1;
+ for(let index=0;index<original.length;index++){
+  if((original[index]&255)!==91)continue;
+  if(choices===5){at=index;break;}
+  choices++;
+ }
+ if(at<0)return Array.from(original);
+ return [...Array.from(original.slice(0,at)),...insert,...Array.from(original.slice(at))];
 }
 
 export interface NativeOptionsHost extends NativeDialogHost {
@@ -32,7 +43,22 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
  let step=flow.next(),selection:{path:string;name:string}|undefined;
  while(!step.done){
   const request=step.value;let result=0;
-  if(request.type==='options')result=await dialogs.dialog('emop',2,0,4);
+  if(request.type==='options'){
+   const toggle=desktopEnhancedGraphicsButton();
+   if(!toggle)result=await dialogs.dialog('emop',2,0,4);
+   else{
+    const enabled=toggle.getAttribute('aria-pressed')==='true';
+    host.resources.edxo=optionsWithEnhancedGraphics(host.resources.emop,enabled);
+    const selected=await dialogs.dialog('edxo',2,0,4);
+    if(selected===5){
+     // The DX item toggles immediately and then reopens the options menu.
+     toggle.click();
+     result=-2;
+    }else if(selected===6)result=5; // shifted original Exit to DOS
+    else if(selected===7)result=6; // shifted original Return
+    else result=selected;
+   }
+  }
   else if(request.type==='input-device')result=await dialogs.dialog('emid',2,request.selected,1);
   else if(request.type==='select-replay'){
    selection=await dialogs.file(host.replayPath,'.rpl',String.fromCharCode(...host.resources.erep).split('\0')[0],path=>{host.replayPath=path;});
@@ -52,23 +78,6 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
     else reply=await host.audio(value.type);
     effect=action.next(reply);
    }}finally{retained?.close();}
-
-   // PlayStunts DX test extension: keep the supplied Graphics option intact,
-   // then offer the enhanced renderer using the same original dialog system.
-   // The hidden desktop toolbar button remains the single owner of React's
-   // enhanced-graphics state, so this bridge cannot drift out of sync with it.
-   if(name==='graphics'){
-    const toggle=desktopEnhancedGraphicsButton();
-    if(toggle){
-     host.resources.edxg=dxGraphicsDialog;
-     const enabled=toggle.getAttribute('aria-pressed')==='true';
-     const selected=await dialogs.dialog('edxg',2,enabled?1:0,1);
-     if(selected===0||selected===1){
-      const requested=selected===1;
-      if(requested!==enabled)toggle.click();
-     }
-    }
-   }
   }
   step=flow.next(result);
  }
