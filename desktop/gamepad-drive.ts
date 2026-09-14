@@ -1,6 +1,5 @@
 type DriveKey = 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight';
 
-const driveKeys: DriveKey[] = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
 const steeringDeadzone = 0.18;
 const pedalThreshold = 0.25;
 
