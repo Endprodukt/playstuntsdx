@@ -192,5 +192,5 @@ function DesktopApp() {
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Desktop root element is missing');
-const isMt32Window = new URLSearchParams(window.location.search).get('window') === 'mt32';
-createRoot(root).render(isMt32Window ? <Mt32Window /> : <DesktopApp />);
+const desktopWindow=(window as typeof window&{__PLAYSTUNTS_DX_WINDOW__?:string}).__PLAYSTUNTS_DX_WINDOW__;
+createRoot(root).render(desktopWindow==='mt32' ? <Mt32Window /> : <DesktopApp />);
