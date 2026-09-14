@@ -14,10 +14,10 @@
       {
         "label": "main",
         "title": "PlayStunts DX",
-        "width": 1280,
-        "height": 800,
-        "minWidth": 960,
-        "minHeight": 600,
+        "width": 960,
+        "height": 720,
+        "minWidth": 640,
+        "minHeight": 480,
         "resizable": true,
         "fullscreen": false,
         "center": true
