@@ -3,23 +3,64 @@ import {drawOriginalOptionsBackground} from './options-screen-raster.ts';
 import {originalOptionsFlow} from './options-menu-flow.ts';
 import {originalOptionAction,type OriginalOptionSettings} from './options-actions.ts';
 
+type DesktopSoundDevice='off'|'pc-speaker'|'tandy'|'adlib'|'sound-blaster'|'mt32';
+type TauriGlobal={core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}};
+const soundKey='playstunts-dx-sound-device';
+const soundDevices:ReadonlyArray<{id:DesktopSoundDevice;label:string}>=[
+ {id:'off',label:'SOUND OFF'},
+ {id:'pc-speaker',label:'PC SPEAKER'},
+ {id:'tandy',label:'TANDY / PCJR'},
+ {id:'adlib',label:'ADLIB'},
+ {id:'sound-blaster',label:'SOUND BLASTER'},
+ {id:'mt32',label:'ROLAND MT-32'},
+];
+const bytes=(text:string)=>Array.from(text,character=>character.charCodeAt(0)).concat(0);
+const soundDialog=bytes('PLAYSTUNTS DX SOUND]'+soundDevices.map(device=>`[${device.label}]`).join(''));
+const missingMt32Dialog=bytes('ROLAND MT-32 ROMS NOT FOUND]PUT THE CONTROL AND PCM ROMS]IN THE MT32 FOLDER][OK]');
+
 function desktopEnhancedGraphicsButton(){
  if(typeof document==='undefined')return null;
  return document.querySelector<HTMLButtonElement>('.desktop-game-shell .game-toolbar button[aria-pressed]');
 }
 
-function optionsWithEnhancedGraphics(original:ReadonlyArray<number>,enabled:boolean){
- // Preserve the supplied options resource byte-for-byte and insert one DX choice
- // immediately before the original Exit to DOS choice (choice index 5).
- const insert:number[]=[91,...Array.from(`ENHANCED GRAPHICS: ${enabled?'ON':'OFF'}`,character=>character.charCodeAt(0)),93];
- let choices=0,at=-1;
- for(let index=0;index<original.length;index++){
-  if((original[index]&255)!==91)continue;
-  if(choices===5){at=index;break;}
-  choices++;
+function desktopSoundDevice():DesktopSoundDevice|null{
+ if(typeof window==='undefined'||typeof document==='undefined'||!document.querySelector('.desktop-game-shell'))return null;
+ const saved=window.localStorage.getItem(soundKey);
+ return soundDevices.some(device=>device.id===saved)?saved as DesktopSoundDevice:'sound-blaster';
+}
+
+function desktopSoundLabel(device:DesktopSoundDevice){
+ return soundDevices.find(candidate=>candidate.id===device)?.label??'SOUND BLASTER';
+}
+
+async function desktopMt32Ready(){
+ const tauri=(window as typeof window&{__TAURI__?:TauriGlobal}).__TAURI__;
+ if(!tauri?.core)return true;
+ try{await tauri.core.invoke<void>('check_mt32_roms');return true;}catch{return false;}
+}
+
+function selectDesktopSound(device:DesktopSoundDevice){
+ window.localStorage.setItem(soundKey,device);
+ // The current menu/music objects own one audio backend for their full lifetime.
+ // Restart the desktop session after a card change instead of mixing two backends.
+ window.setTimeout(()=>window.location.reload(),0);
+}
+
+function choice(text:string){return [91,...Array.from(text,character=>character.charCodeAt(0)),93];}
+function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,sound:DesktopSoundDevice){
+ // Preserve the supplied options resource and inject DX choices around the
+ // original entries. Original choice 3 is Load Replay; choice 5 is Exit to DOS.
+ const result:number[]=[];let originalChoice=0;
+ for(const raw of original){
+  const value=raw&255;
+  if(value===91){
+   if(originalChoice===3)result.push(...choice(`SOUND DEVICE: ${desktopSoundLabel(sound)}`));
+   if(originalChoice===5)result.push(...choice(`ENHANCED GRAPHICS: ${enhanced?'ON':'OFF'}`));
+   originalChoice++;
+  }
+  result.push(value);
  }
- if(at<0)return Array.from(original);
- return [...Array.from(original.slice(0,at)),...insert,...Array.from(original.slice(at))];
+ return result;
 }
 
 export interface NativeOptionsHost extends NativeDialogHost {
@@ -44,18 +85,31 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
  while(!step.done){
   const request=step.value;let result=0;
   if(request.type==='options'){
-   const toggle=desktopEnhancedGraphicsButton();
-   if(!toggle)result=await dialogs.dialog('emop',2,0,4);
+   const toggle=desktopEnhancedGraphicsButton(),sound=desktopSoundDevice();
+   if(!toggle||!sound)result=await dialogs.dialog('emop',2,0,4);
    else{
-    const enabled=toggle.getAttribute('aria-pressed')==='true';
-    host.resources.edxo=optionsWithEnhancedGraphics(host.resources.emop,enabled);
+    const enhanced=toggle.getAttribute('aria-pressed')==='true';
+    host.resources.edxo=optionsWithDxChoices(host.resources.emop,enhanced,sound);
     const selected=await dialogs.dialog('edxo',2,0,4);
-    if(selected===5){
-     // The DX item toggles immediately and then reopens the options menu.
+    if(selected===3){
+     host.resources.edxs=soundDialog;
+     const current=soundDevices.findIndex(device=>device.id===sound);
+     const soundSelection=await dialogs.dialog('edxs',2,current<0?4:current,1);
+     if(soundSelection>=0&&soundSelection<soundDevices.length){
+      const requested=soundDevices[soundSelection].id;
+      if(requested==='mt32'&&!await desktopMt32Ready()){
+       host.resources.edxr=missingMt32Dialog;
+       await dialogs.dialog('edxr',2,0,1);
+      }else if(requested!==sound)selectDesktopSound(requested);
+     }
+     result=-2;
+    }else if(selected===4)result=3; // shifted original Load Replay
+    else if(selected===5)result=4; // shifted original Graphics
+    else if(selected===6){
      toggle.click();
      result=-2;
-    }else if(selected===6)result=5; // shifted original Exit to DOS
-    else if(selected===7)result=6; // shifted original Return
+    }else if(selected===7)result=5; // shifted original Exit to DOS
+    else if(selected===8)result=6; // shifted original Return
     else result=selected;
    }
   }
