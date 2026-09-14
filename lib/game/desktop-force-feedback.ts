@@ -133,7 +133,9 @@ export function updateDesktopForceFeedback(input: DesktopWheelInputState) {
   }
 
   const active = enabled() && input.configured && input.connected;
-  latestForce = active ? sampleForceFeedback(input.steering) * strength() : 0;
+  // DirectInput's wheel-axis polarity is opposite to the normalized physics
+  // convention used by sampleForceFeedback(), so invert once at this boundary.
+  latestForce = active ? -sampleForceFeedback(input.steering) * strength() : 0;
   void sendForce(latestForce);
 }
 
