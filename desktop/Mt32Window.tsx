@@ -42,7 +42,7 @@ export default function Mt32Window(){
 
  useEffect(()=>{
   const onKeyDown=(event:KeyboardEvent)=>{
-   if(event.key!=='F12'||event.repeat)return;
+   if(event.key!=='F10'||event.repeat)return;
    event.preventDefault();event.stopImmediatePropagation();
    const tauri=(window as typeof window&{__TAURI__?:TauriGlobal}).__TAURI__;
    void tauri?.core?.invoke<boolean>('toggle_mt32_panel');
@@ -69,6 +69,6 @@ export default function Mt32Window(){
    <div className="mt32-sound-control"><span>SWAP L/R</span><button className="mt32-sound-button" disabled={!snapshot.powered} aria-label="Swap left and right" aria-pressed={controls.swap} onClick={()=>change('swap',Number(!controls.swap))}><i/>{controls.swap?'ON':'OFF'}</button></div>
    <label className="mt32-sound-control mt32-sound-slider"><span>MASTER TUNE</span><div><input aria-label="Master tuning" type="range" min="0" max="127" step="1" value={controls.tune} disabled={!snapshot.powered} onChange={event=>tune(Number(event.target.value))}/><output>{(mt32PanelTuneTenths[controls.tune]/10).toFixed(1)}<small> Hz</small></output></div></label>
   </div></div>
-  <p className="mt32-window-status" role="status">{!snapshot.host?'Waiting for PlayStunts DX…':snapshot.starting?'Powering on Roland MT-32…':snapshot.powered?'Connected to the MT-32 used by the game · F12 closes this window':'MT-32 is powered off · F12 closes this window'}</p>
+  <p className="mt32-window-status" role="status">{!snapshot.host?'Waiting for PlayStunts DX…':snapshot.starting?'Powering on Roland MT-32…':snapshot.powered?'Connected to the MT-32 used by the game · F10 closes this window':'MT-32 is powered off · F10 closes this window'}</p>
  </main>;
 }
