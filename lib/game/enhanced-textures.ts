@@ -1,17 +1,22 @@
 export const ENHANCED_TEXTURES_KEY='playstunts-dx-enhanced-textures';
 export const ENHANCED_TEXTURES_EVENT='playstunts-dx-enhanced-textures-changed';
 
+function isDesktopDx(){
+ return typeof window!=='undefined'&&typeof document!=='undefined'&&!!document.querySelector('.desktop-game-shell');
+}
+
 /** Enhanced textures are opt-out in PlayStunts DX. Missing overrides always
  * fall back to the original extracted asset, so an empty hires folder is safe.
+ * The public browser build keeps its existing original-asset behavior.
  */
 export function enhancedTexturesEnabled(){
- if(typeof window==='undefined')return true;
+ if(!isDesktopDx())return false;
  const saved=window.localStorage.getItem(ENHANCED_TEXTURES_KEY);
  return saved!=='off'&&saved!=='0'&&saved!=='false';
 }
 
 export function setEnhancedTexturesEnabled(enabled:boolean){
- if(typeof window==='undefined')return;
+ if(!isDesktopDx())return;
  window.localStorage.setItem(ENHANCED_TEXTURES_KEY,enabled?'on':'off');
  window.dispatchEvent(new Event(ENHANCED_TEXTURES_EVENT));
 }
