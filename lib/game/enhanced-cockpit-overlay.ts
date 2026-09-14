@@ -13,7 +13,9 @@ type PanelData={
  marker:{points:number[][];mask:AnchoredLayer;art:AnchoredLayer};
 };
 type LoadedImage={image:HTMLImageElement;enhanced:boolean};
-type CarAssets={layout:CockpitLayout;panel:PanelData;images:Map<string,LoadedImage>};
+type MaskedSprite={canvas:HTMLCanvasElement;enhanced:boolean};
+type DynamicSurface={canvas:HTMLCanvasElement;context:CanvasRenderingContext2D;image:ImageData};
+type CarAssets={layout:CockpitLayout;panel:PanelData;images:Map<string,LoadedImage>;masked:Map<string,MaskedSprite>;dynamic?:DynamicSurface};
 type DrawState={car:string;pixels:Uint8Array;steering:number;knobX:number;knobY:number};
 
 const indexPromise=fetch('/game/cockpit/index.json').then(async response=>{
@@ -37,7 +39,7 @@ async function preferredImage(original:string):Promise<LoadedImage>{
  catch{return {image:await image(original),enhanced:false};}
 }
 
-function maskedSprite(art:LoadedImage,mask:LoadedImage){
+function composeMaskedSprite(art:LoadedImage,mask:LoadedImage):MaskedSprite{
  const canvas=document.createElement('canvas');
  canvas.width=art.image.naturalWidth;canvas.height=art.image.naturalHeight;
  const context=canvas.getContext('2d')!;
@@ -79,7 +81,7 @@ export function createEnhancedCockpitOverlay(){
      catch{return undefined;}
     }));
     const images=new Map<string,LoadedImage>();for(const entry of entries)if(entry)images.set(entry[0],entry[1]);
-    return {layout,panel,images};
+    return {layout,panel,images,masked:new Map<string,MaskedSprite>()};
    }catch{return undefined;}
   })();
   cache.set(car,pending);return pending;
@@ -102,6 +104,11 @@ export function createEnhancedCockpitOverlay(){
     context.drawImage(source,x*sx,y*sy,w*sx,h*sy);
    };
    const drawFile=(file:string,x:number,y:number,w:number,h:number)=>{const entry=images.get(file);if(entry)draw(entry.image,entry.enhanced,x,y,w,h);};
+   const masked=(artFile:string,maskFile:string)=>{
+    const key=`${artFile}|${maskFile}`,cached=assets.masked.get(key);if(cached)return cached;
+    const art=images.get(artFile),mask=images.get(maskFile);if(!art||!mask)return undefined;
+    const sprite=composeMaskedSprite(art,mask);assets.masked.set(key,sprite);return sprite;
+   };
 
    const roof=layout.frames.roof;if(roof)drawFile(roof.file,roof.x,roof.y,roof.width,roof.height);
    drawFile('dashboard.png',0,layout.dashboardTop,320,200-layout.dashboardTop);
@@ -117,33 +124,36 @@ export function createEnhancedCockpitOverlay(){
      const suffix=wheel.frame===0?'1':'3',mask=panel.layers[`inm${suffix}`],art=panel.layers[`ins${suffix}`];
      if(mask&&art)expected=composeCockpitPanel(expected,base.width,base.height,mask,art);
     }
-    const dynamic=document.createElement('canvas');dynamic.width=base.width;dynamic.height=base.height;
-    const dynamicContext=dynamic.getContext('2d')!,dynamicImage=dynamicContext.createImageData(base.width,base.height);
+    if(!assets.dynamic||assets.dynamic.canvas.width!==base.width||assets.dynamic.canvas.height!==base.height){
+     const canvas=document.createElement('canvas');canvas.width=base.width;canvas.height=base.height;
+     const dynamicContext=canvas.getContext('2d')!;assets.dynamic={canvas,context:dynamicContext,image:dynamicContext.createImageData(base.width,base.height)};
+    }
+    const dynamic=assets.dynamic;dynamic.image.data.fill(0);
     for(let y=0;y<base.height;y++)for(let x=0;x<base.width;x++){
      const logicalX=base.x+x,logicalY=base.y+y;if(logicalX<0||logicalX>=320||logicalY<0||logicalY>=200)continue;
      const current=state.pixels[logicalY*320+logicalX],at=y*base.width+x;
      if(current===expected[at])continue;
-     const color=current*3,out=at*4;dynamicImage.data[out]=panel.palette[color];dynamicImage.data[out+1]=panel.palette[color+1];dynamicImage.data[out+2]=panel.palette[color+2];dynamicImage.data[out+3]=255;
+     const color=current*3,out=at*4;dynamic.image.data[out]=panel.palette[color];dynamic.image.data[out+1]=panel.palette[color+1];dynamic.image.data[out+2]=panel.palette[color+2];dynamic.image.data[out+3]=255;
     }
-    dynamicContext.putImageData(dynamicImage,0,0);draw(dynamic,false,base.x,base.y,base.width,base.height);
+    dynamic.context.putImageData(dynamic.image,0,0);draw(dynamic.canvas,false,base.x,base.y,base.width,base.height);
 
     if(wheel.frame!==1){
-     const suffix=wheel.frame===0?'1':'3',layer=panel.layers[`ins${suffix}`],art=images.get(`ins${suffix}.png`),mask=images.get(`inm${suffix}.png`);
-     if(layer&&art&&mask){const sprite=maskedSprite(art,mask);draw(sprite.canvas,sprite.enhanced,base.x+layer.x,base.y+layer.y,layer.width,layer.height);}
+     const suffix=wheel.frame===0?'1':'3',layer=panel.layers[`ins${suffix}`],sprite=masked(`ins${suffix}.png`,`inm${suffix}.png`);
+     if(layer&&sprite)draw(sprite.canvas,sprite.enhanced,base.x+layer.x,base.y+layer.y,layer.width,layer.height);
     }
    }
 
    const gear=panel.gear;
    if(gear?.base){
     drawFile('gbox.png',gear.base.x,gear.base.y,gear.base.width,gear.base.height);
-    const art=images.get('gnob.png'),mask=images.get('gnab.png');
-    if(art&&mask){const sprite=maskedSprite(art,mask);draw(sprite.canvas,sprite.enhanced,gear.base.x+state.knobX-gear.art.anchorX,gear.base.y+state.knobY-gear.art.anchorY,gear.art.width,gear.art.height);}
+    const sprite=masked('gnob.png','gnab.png');
+    if(sprite)draw(sprite.canvas,sprite.enhanced,gear.base.x+state.knobX-gear.art.anchorX,gear.base.y+state.knobY-gear.art.anchorY,gear.art.width,gear.art.height);
    }
 
    const marker=panel.marker;
    if(marker?.points?.length){
-    const art=images.get('dot.png'),mask=images.get('dota.png');
-    if(art&&mask){const position=cockpitMarker(marker.points,wheel.scaled),sprite=maskedSprite(art,mask);draw(sprite.canvas,sprite.enhanced,position.x-marker.art.anchorX,position.y-marker.art.anchorY,marker.art.width,marker.art.height);}
+    const sprite=masked('dot.png','dota.png');
+    if(sprite){const position=cockpitMarker(marker.points,wheel.scaled);draw(sprite.canvas,sprite.enhanced,position.x-marker.art.anchorX,position.y-marker.art.anchorY,marker.art.width,marker.art.height);}
    }
    return true;
   },
