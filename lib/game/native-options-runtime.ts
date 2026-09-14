@@ -18,6 +18,7 @@ const soundDevices:ReadonlyArray<{id:DesktopSoundDevice;label:string}>=[
 const bytes=(text:string)=>Array.from(text,character=>character.charCodeAt(0)).concat(0);
 const soundDialog=bytes('PLAYSTUNTS DX SOUND]'+soundDevices.map(device=>`[${device.label}]`).join(''));
 const missingMt32Dialog=bytes('ROLAND MT-32 ROMS NOT FOUND]PUT THE CONTROL AND PCM ROMS]IN THE MT32 FOLDER][OK]');
+const exitGameDialog=bytes('EXIT GAME?][NO][YES]');
 
 function desktopEnhancedGraphicsButton(){
  if(typeof document==='undefined')return null;
@@ -49,16 +50,21 @@ function selectDesktopSound(device:DesktopSoundDevice){
 
 function choice(text:string){return [91,...Array.from(text,character=>character.charCodeAt(0)),93];}
 function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,textures:boolean,sound:DesktopSoundDevice){
- // Preserve the supplied options resource and inject DX choices around the
- // original entries. Original choice 3 is Load Replay; choice 5 is Exit to DOS.
+ // Preserve the supplied options resource, add DX choices, and only rename the
+ // desktop-specific exit entry. Original choice 3 is Load Replay; choice 5 is Exit to DOS.
  const result:number[]=[];let originalChoice=0;
- for(const raw of original){
-  const value=raw&255;
+ for(let i=0;i<original.length;i++){
+  const value=original[i]&255;
   if(value===91){
    if(originalChoice===3)result.push(...choice(`SOUND DEVICE: ${desktopSoundLabel(sound)}`));
    if(originalChoice===5){
     result.push(...choice(`ENHANCED GRAPHICS: ${enhanced?'ON':'OFF'}`));
     result.push(...choice(`ENHANCED TEXTURES: ${textures?'ON':'OFF'}`));
+    result.push(...choice('EXIT GAME'));
+    while(i+1<original.length&&(original[i+1]&255)!==93)i++;
+    if(i+1<original.length)i++;
+    originalChoice++;
+    continue;
    }
    originalChoice++;
   }
@@ -115,7 +121,7 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
     }else if(selected===7){
      setEnhancedTexturesEnabled(!textures);
      result=-2;
-    }else if(selected===8)result=5; // shifted original Exit to DOS
+    }else if(selected===8)result=5; // shifted desktop Exit Game
     else if(selected===9)result=6; // shifted original Return
     else result=selected;
    }
@@ -130,6 +136,7 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
   }else{
    const name=request.type==='configure-input'?request.device:request.type;
    if(name==='joystick'){await host.calibrateJoystick();step=flow.next(0);continue;}
+   if(name==='exit-dos'&&desktopSoundDevice())host.resources.edos=exitGameDialog;
    const action=originalOptionAction(name,host.settings);let effect=action.next(),saved:Uint8Array|undefined,retained:ReturnType<NativeOptionsPresentation['capture']>|undefined;
    try{while(!effect.done){let reply=0;const value=effect.value;
     if(value.type==='save'){if(display){retained?.close();retained=display.capture();}else saved=host.pixels.slice();}
