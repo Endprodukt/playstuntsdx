@@ -27,7 +27,16 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
     watch: {
-      ignored: ['**/src-tauri/**'],
+      // Visual Studio keeps its search/index database locked while the IDE is
+      // running. Vite must never try to watch those files on Windows.
+      ignored: [
+        '**/.vs/**',
+        '**/.git/**',
+        '**/.venv/**',
+        '**/node_modules/**',
+        '**/src-tauri/**',
+        '**/dist-desktop/**',
+      ],
     },
   },
   build: {
