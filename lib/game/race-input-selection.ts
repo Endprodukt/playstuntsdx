@@ -1,7 +1,19 @@
+import {desktopInputDevice,getDesktopWheelInput} from './desktop-wheel-input.ts';
+
 export interface NativeRaceInputHost {
  memory():Uint8Array;pauseAudio():void;crash(cause:1,car:0):void;
  mouse():{x:number;y:number;buttons:number};joystickSteering():number;
  controls():number;keyDown(scan:number):number;
+}
+/** Preserve the original 31-point joystick steering curve for a desktop wheel,
+ * but interpolate between its samples instead of reducing the calibrated wheel
+ * to the original 63 discrete joystick positions first. */
+export function originalWheelSteeringTarget(memory:Uint8Array,d:number,value:number){
+ const normalized=Math.max(-1,Math.min(1,value)),magnitude=Math.abs(normalized)*31;
+ const low=Math.floor(magnitude),high=Math.min(31,low+1),fraction=magnitude-low;
+ const at=(index:number)=>index===0?0:memory[d+0x306c+index];
+ const shaped=Math.round(at(low)+(at(high)-at(low))*fraction);
+ return normalized<0?-shaped:shaped;
 }
 /** Original14414..14599. Null ends this capture call; a returned word goes
  * to the existing14599 recording tail. Forced capture records a zero byte. */
@@ -26,8 +38,13 @@ export function selectOriginalRaceInput(host:NativeRaceInputHost,d:number,forced
    target=Math.abs(target)<16?0:target>0?target-16:target+16;
    m[d+0x5424]=target;input=sample.buttons&1?2:sample.buttons&2?1:0;
   }else{
-   target=host.joystickSteering()<<24>>24;m=host.memory();
-   if(target>0)target=m[d+0x306c+target];else if(target<0)target=-m[d+0x306c-target];
+   const wheel=desktopInputDevice()==='wheel'?getDesktopWheelInput():undefined;
+   m=host.memory();
+   if(wheel?.configured&&wheel.connected)target=originalWheelSteeringTarget(m,d,wheel.steering);
+   else{
+    target=host.joystickSteering()<<24>>24;
+    if(target>0)target=m[d+0x306c+target];else if(target<0)target=-m[d+0x306c-target];
+   }
    m[d+0x5424]=target;input=host.controls()&0x33;
   }
   m=host.memory();target=m[d+0x5424];
