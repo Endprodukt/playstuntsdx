@@ -1,0 +1,82 @@
+export type ForceFeedbackTelemetry = {
+  speed: number;
+  roadSpeed: number;
+  steeringAngle: number;
+  wheelAngle: number;
+  frontWheelAngle: number;
+  slip: number;
+  spin: number;
+  sliding: boolean;
+  surfaces: number[];
+  allContact: number;
+};
+
+let telemetry: (ForceFeedbackTelemetry & { updatedAt: number }) | undefined;
+let smoothedForce = 0;
+
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+/**
+ * Captures the player's actual Stunts tyre/grip state before the original grip
+ * routine clears its temporary slip value. No synthetic road state is inferred.
+ */
+export function updateForceFeedbackTelemetry(next: ForceFeedbackTelemetry) {
+  telemetry = {
+    ...next,
+    surfaces: [...next.surfaces],
+    updatedAt: Date.now(),
+  };
+}
+
+export function clearForceFeedbackTelemetry() {
+  telemetry = undefined;
+  smoothedForce = 0;
+}
+
+/**
+ * Returns normalized DirectInput force in the range -1..1.
+ *
+ * The base force is self-aligning torque opposing the driver's steering input.
+ * During a slide the signed grip slip and spin pull the wheel toward the
+ * counter-steer direction. Grass vibration is driven only by wheels whose real
+ * contact surface is Stunts surface 4; airborne wheels unload the steering.
+ */
+export function sampleForceFeedback(physicalSteering: number) {
+  const state = telemetry;
+  if (!state || Date.now() - state.updatedAt > 250) {
+    smoothedForce *= 0.55;
+    if (Math.abs(smoothedForce) < 0.002) smoothedForce = 0;
+    return smoothedForce;
+  }
+
+  const mph = Math.abs(state.speed) >>> 8;
+  const speed = clamp((mph - 1) / 54, 0, 1);
+  const contactCount = state.surfaces.filter(surface => surface !== 0).length;
+  const contact = clamp(contactCount / 4, 0, 1);
+  const grassCount = state.surfaces.filter(surface => surface === 4).length;
+  const grass = contactCount ? grassCount / contactCount : 0;
+
+  // SteeringAngle's original range is -240..240. Physical steering is used for
+  // the restoring component so the force follows the actual wheel position even
+  // when the game is still unwinding its internal steering state.
+  const centering = -clamp(physicalSteering, -1, 1) * (0.055 + 0.245 * speed) * contact;
+
+  // stepGrip computes signed slip immediately before this telemetry is captured.
+  // Keep it dominant only while the original game itself considers the car to be
+  // sliding, then add the original signed spin accumulator for larger rotations.
+  const slip = state.sliding ? clamp(state.slip / 180, -1, 1) : 0;
+  const spin = clamp(state.spin / 96, -1, 1);
+  const aligning = -(slip * 0.34 + spin * 0.20) * speed * contact;
+
+  // Grass stays deliberately coarse like the original surface. Frequency rises
+  // with speed and disappears completely on road or while airborne.
+  const frequency = 15 + speed * 18;
+  const phase = (Date.now() / 1000) * Math.PI * 2 * frequency;
+  const grassRumble = Math.sin(phase) * grass * speed * 0.13 * contact;
+
+  // Conservative ceiling for the first hardware pass: ±48% of nominal
+  // DirectInput force. Strength is applied separately by the desktop setting.
+  const target = clamp(centering + aligning + grassRumble, -0.48, 0.48);
+  smoothedForce = smoothedForce * 0.58 + target * 0.42;
+  return smoothedForce;
+}
