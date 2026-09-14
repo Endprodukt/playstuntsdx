@@ -25,8 +25,24 @@ type WheelBindings = {
   brake?: InputBinding;
 };
 
+type InputDevice = {
+  id: string;
+  index: number;
+  name: string;
+  source: 'WebView2' | 'Windows';
+  axes: number[];
+  buttons: number[];
+};
+
 type DeviceSnapshot = {
   id: string;
+  axes: number[];
+  buttons: number[];
+};
+
+type NativeJoystick = {
+  id: string;
+  name: string;
   axes: number[];
   buttons: number[];
 };
@@ -43,17 +59,36 @@ type SetupUi = {
   close: HTMLButtonElement;
 };
 
+type TauriGlobal = {
+  core?: {
+    invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>;
+  };
+};
+
 const storageKey = 'playstunts-dx-wheel-bindings-v1';
 const steeringThreshold = 0.18;
 const pedalThreshold = 0.18;
 const axisCaptureThreshold = 0.42;
 const buttonCaptureThreshold = 0.55;
 
-function gamepads() {
+let nativeDevices: InputDevice[] = [];
+
+function browserDevices(): InputDevice[] {
   if (typeof navigator.getGamepads !== 'function') return [];
-  return Array.from(navigator.getGamepads()).filter(
-    (gamepad): gamepad is Gamepad => !!gamepad?.connected,
-  );
+  return Array.from(navigator.getGamepads())
+    .filter((gamepad): gamepad is Gamepad => !!gamepad?.connected)
+    .map(gamepad => ({
+      id: gamepad.id,
+      index: gamepad.index,
+      name: gamepad.id,
+      source: 'WebView2' as const,
+      axes: [...gamepad.axes],
+      buttons: gamepad.buttons.map(button => button.value),
+    }));
+}
+
+function devices() {
+  return [...browserDevices(), ...nativeDevices];
 }
 
 function loadBindings(): WheelBindings {
@@ -71,15 +106,16 @@ function saveBindings(bindings: WheelBindings) {
 
 function resolveDevice(binding: InputBinding | undefined) {
   if (!binding) return undefined;
-  const pads = gamepads();
-  return pads.find(pad => pad.index === binding.deviceIndex && pad.id === binding.deviceId)
-    ?? pads.find(pad => pad.id === binding.deviceId);
+  const all = devices();
+  return all.find(device => device.index === binding.deviceIndex && device.id === binding.deviceId)
+    ?? all.find(device => device.id === binding.deviceId);
 }
 
 function bindingName(binding: InputBinding | undefined) {
   if (!binding) return 'not assigned';
-  const device = binding.deviceId || `Device ${binding.deviceIndex}`;
-  return `${device} — ${binding.kind === 'axis' ? `Axis ${binding.index}` : `Button ${binding.index}`}`;
+  const device = resolveDevice(binding);
+  const deviceName = device?.name || binding.deviceId || `Device ${binding.deviceIndex}`;
+  return `${deviceName} — ${binding.kind === 'axis' ? `Axis ${binding.index}` : `Button ${binding.index}`}`;
 }
 
 function dispatchDriveKey(target: HTMLElement, key: DriveKey, down: boolean) {
@@ -111,7 +147,7 @@ function createSetupUi(onStart: () => void, onClear: () => void, onToggle: () =>
   title.style.cssText = 'font-size:18px;font-weight:700;margin-bottom:8px;';
 
   const note = document.createElement('div');
-  note.textContent = 'Temporary test setup. All connected controller devices are watched at the same time. Leave wheel and pedals at rest before starting.';
+  note.textContent = 'Temporary test setup. WebView2 and native Windows controller devices are watched at the same time. Leave wheel and pedals at rest before starting.';
   note.style.cssText = 'color:#bbb;margin-bottom:12px;';
 
   const status = document.createElement('div');
@@ -124,8 +160,8 @@ function createSetupUi(onStart: () => void, onClear: () => void, onToggle: () =>
   deviceTitle.textContent = 'Live devices / inputs';
   deviceTitle.style.cssText = 'font-weight:700;margin:10px 0 6px;';
 
-  const devices = document.createElement('div');
-  devices.style.cssText = 'white-space:pre-wrap;font:12px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;background:#080808;border-radius:6px;padding:10px;overflow:auto;';
+  const devicesElement = document.createElement('div');
+  devicesElement.style.cssText = 'white-space:pre-wrap;font:12px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;background:#080808;border-radius:6px;padding:10px;overflow:auto;';
 
   const controls = document.createElement('div');
   controls.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;';
@@ -149,26 +185,47 @@ function createSetupUi(onStart: () => void, onClear: () => void, onToggle: () =>
   close.addEventListener('click', onToggle);
 
   controls.append(start, clear, close);
-  panel.append(title, note, status, bindings, deviceTitle, devices, controls);
+  panel.append(title, note, status, bindings, deviceTitle, devicesElement, controls);
   root.append(toggle, panel);
   document.body.append(root);
 
-  return { root, toggle, panel, status, bindings, devices, start, clear, close };
+  return { root, toggle, panel, status, bindings, devices: devicesElement, start, clear, close };
 }
 
 export function installDesktopDriveControls() {
-  if (typeof navigator === 'undefined' || typeof navigator.getGamepads !== 'function') {
-    return () => {};
-  }
-
   let frame = 0;
   let lastUiUpdate = 0;
   let setupOpen = false;
   let stage: SetupStage = 'idle';
   let bindings = loadBindings();
-  let baseline = new Map<number, DeviceSnapshot>();
+  let baseline = new Map<string, DeviceSnapshot>();
   let lastTarget: HTMLElement | null = null;
+  let pollingNative = false;
   const activeKeys = new Set<DriveKey>();
+  const tauri = (window as typeof window & { __TAURI__?: TauriGlobal }).__TAURI__;
+
+  async function pollNativeDevices() {
+    if (pollingNative || !tauri?.core) return;
+    pollingNative = true;
+    try {
+      const result = await tauri.core.invoke<NativeJoystick[]>('native_joysticks');
+      nativeDevices = result.map((device, index) => ({
+        id: device.id,
+        index,
+        name: device.name,
+        source: 'Windows',
+        axes: device.axes,
+        buttons: device.buttons,
+      }));
+    } catch (reason) {
+      console.warn('[Controls] Native joystick scan failed:', reason);
+    } finally {
+      pollingNative = false;
+    }
+  }
+
+  void pollNativeDevices();
+  const nativeTimer = window.setInterval(() => void pollNativeDevices(), 33);
 
   function releaseAll() {
     if (lastTarget) {
@@ -186,18 +243,18 @@ export function installDesktopDriveControls() {
 
   function captureBaseline() {
     baseline = new Map(
-      gamepads().map(pad => [
-        pad.index,
+      devices().map(device => [
+        device.id,
         {
-          id: pad.id,
-          axes: [...pad.axes],
-          buttons: pad.buttons.map(button => button.value),
+          id: device.id,
+          axes: [...device.axes],
+          buttons: [...device.buttons],
         },
       ]),
     );
   }
 
-  function sameInput(a: InputBinding | undefined, device: Gamepad, kind: 'axis' | 'button', index: number) {
+  function sameInput(a: InputBinding | undefined, device: InputDevice, kind: 'axis' | 'button', index: number) {
     return !!a
       && a.deviceId === device.id
       && a.kind === kind
@@ -205,17 +262,17 @@ export function installDesktopDriveControls() {
   }
 
   function findAxisMovement(exclude: InputBinding[] = []) {
-    let best: { pad: Gamepad; axis: number; rest: number; value: number; delta: number } | undefined;
-    for (const pad of gamepads()) {
-      const before = baseline.get(pad.index);
-      if (!before || before.id !== pad.id) continue;
-      for (let axis = 0; axis < pad.axes.length; axis += 1) {
-        if (exclude.some(binding => sameInput(binding, pad, 'axis', axis))) continue;
+    let best: { device: InputDevice; axis: number; rest: number; value: number; delta: number } | undefined;
+    for (const device of devices()) {
+      const before = baseline.get(device.id);
+      if (!before) continue;
+      for (let axis = 0; axis < device.axes.length; axis += 1) {
+        if (exclude.some(binding => sameInput(binding, device, 'axis', axis))) continue;
         const rest = before.axes[axis] ?? 0;
-        const value = pad.axes[axis] ?? 0;
+        const value = device.axes[axis] ?? 0;
         const delta = Math.abs(value - rest);
         if (delta >= axisCaptureThreshold && (!best || delta > best.delta)) {
-          best = { pad, axis, rest, value, delta };
+          best = { device, axis, rest, value, delta };
         }
       }
     }
@@ -224,25 +281,25 @@ export function installDesktopDriveControls() {
 
   function findPedalMovement(exclude: InputBinding[] = []) {
     const axis = findAxisMovement(exclude);
-    let buttonBest: { pad: Gamepad; button: number; delta: number } | undefined;
-    for (const pad of gamepads()) {
-      const before = baseline.get(pad.index);
-      if (!before || before.id !== pad.id) continue;
-      for (let button = 0; button < pad.buttons.length; button += 1) {
-        if (exclude.some(binding => sameInput(binding, pad, 'button', button))) continue;
-        const value = pad.buttons[button]?.value ?? 0;
+    let buttonBest: { device: InputDevice; button: number; delta: number } | undefined;
+    for (const device of devices()) {
+      const before = baseline.get(device.id);
+      if (!before) continue;
+      for (let button = 0; button < device.buttons.length; button += 1) {
+        if (exclude.some(binding => sameInput(binding, device, 'button', button))) continue;
+        const value = device.buttons[button] ?? 0;
         const delta = value - (before.buttons[button] ?? 0);
-        if ((pad.buttons[button]?.pressed || delta >= buttonCaptureThreshold)
+        if ((value > buttonCaptureThreshold || delta >= buttonCaptureThreshold)
           && (!buttonBest || delta > buttonBest.delta)) {
-          buttonBest = { pad, button, delta };
+          buttonBest = { device, button, delta };
         }
       }
     }
 
     if (axis && (!buttonBest || axis.delta >= buttonBest.delta)) {
       return {
-        deviceId: axis.pad.id,
-        deviceIndex: axis.pad.index,
+        deviceId: axis.device.id,
+        deviceIndex: axis.device.index,
         kind: 'axis' as const,
         index: axis.axis,
         rest: axis.rest,
@@ -252,8 +309,8 @@ export function installDesktopDriveControls() {
     }
     if (buttonBest) {
       return {
-        deviceId: buttonBest.pad.id,
-        deviceIndex: buttonBest.pad.index,
+        deviceId: buttonBest.device.id,
+        deviceIndex: buttonBest.device.index,
         kind: 'button' as const,
         index: buttonBest.button,
       };
@@ -269,7 +326,7 @@ export function installDesktopDriveControls() {
     if (stage === 'done') return 'Calibration saved. Close this window and test the car.';
     return Object.keys(bindings).length
       ? 'Bindings loaded. Click Start calibration to replace them.'
-      : 'Click Start calibration. If no devices appear below, press a button once on the controller.';
+      : 'Click Start calibration. Move or press each controller once if needed.';
   }
 
   function bindingsText() {
@@ -286,21 +343,21 @@ export function installDesktopDriveControls() {
     ui.bindings.textContent = bindingsText();
     if (!setupOpen) return;
 
-    const pads = gamepads();
-    if (!pads.length) {
-      ui.devices.textContent = 'No controller devices visible to WebView2 yet.\nPress a button on each device once, then move an axis.';
+    const all = devices();
+    if (!all.length) {
+      ui.devices.textContent = 'No controller devices visible yet.';
       return;
     }
 
-    ui.devices.textContent = pads.map(pad => {
-      const axes = pad.axes.length
-        ? pad.axes.map((value, index) => `A${index}=${value.toFixed(3)}`).join('  ')
+    ui.devices.textContent = all.map(device => {
+      const axes = device.axes.length
+        ? device.axes.map((value, index) => `A${index}=${value.toFixed(3)}`).join('  ')
         : 'no axes';
-      const pressed = pad.buttons
-        .map((button, index) => (button.pressed || button.value > 0.05) ? `B${index}=${button.value.toFixed(2)}` : '')
+      const pressed = device.buttons
+        .map((value, index) => value > 0.05 ? `B${index}=${value.toFixed(2)}` : '')
         .filter(Boolean)
         .join('  ') || 'none';
-      return `[${pad.index}] ${pad.id}\n  ${axes}\n  active buttons: ${pressed}`;
+      return `[${device.source}] ${device.name}\n  ${axes}\n  active buttons: ${pressed}`;
     }).join('\n\n');
   }
 
@@ -323,7 +380,7 @@ export function installDesktopDriveControls() {
     setupOpen = !setupOpen;
     if (setupOpen) {
       releaseAll();
-      captureBaseline();
+      void pollNativeDevices().then(captureBaseline);
     } else if (stage !== 'done') {
       stage = 'idle';
     }
@@ -346,8 +403,8 @@ export function installDesktopDriveControls() {
       const movement = findAxisMovement();
       if (!movement) return;
       bindings.steering = {
-        deviceId: movement.pad.id,
-        deviceIndex: movement.pad.index,
+        deviceId: movement.device.id,
+        deviceIndex: movement.device.index,
         kind: 'axis',
         index: movement.axis,
         rest: movement.rest,
@@ -382,20 +439,19 @@ export function installDesktopDriveControls() {
 
   function axisAmount(binding: AxisBinding | undefined) {
     if (!binding) return 0;
-    const pad = resolveDevice(binding);
-    if (!pad) return 0;
-    return ((pad.axes[binding.index] ?? binding.rest) - binding.rest) * binding.direction;
+    const device = resolveDevice(binding);
+    if (!device) return 0;
+    return ((device.axes[binding.index] ?? binding.rest) - binding.rest) * binding.direction;
   }
 
   function inputActive(binding: InputBinding | undefined) {
     if (!binding) return false;
-    const pad = resolveDevice(binding);
-    if (!pad) return false;
+    const device = resolveDevice(binding);
+    if (!device) return false;
     if (binding.kind === 'button') {
-      const button = pad.buttons[binding.index];
-      return !!button && (button.pressed || button.value > 0.35);
+      return (device.buttons[binding.index] ?? 0) > 0.35;
     }
-    return (((pad.axes[binding.index] ?? binding.rest) - binding.rest) * binding.direction) > pedalThreshold;
+    return (((device.axes[binding.index] ?? binding.rest) - binding.rest) * binding.direction) > pedalThreshold;
   }
 
   function tick(now: number) {
@@ -430,8 +486,10 @@ export function installDesktopDriveControls() {
 
   return () => {
     cancelAnimationFrame(frame);
+    window.clearInterval(nativeTimer);
     window.removeEventListener('keydown', onKeyDown, true);
     releaseAll();
+    nativeDevices = [];
     ui.root.remove();
   };
 }
