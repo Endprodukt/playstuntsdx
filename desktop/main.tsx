@@ -76,6 +76,28 @@ function DesktopApp() {
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, []);
 
+  // PlayStunts DX defaults to the enhanced renderer. The hidden toolbar still
+  // owns the shared graphics state used by the renderer and the in-game option,
+  // so enable that same state once the game UI has mounted instead of creating
+  // a second desktop-only graphics flag.
+  useEffect(() => {
+    if (!assets || !launch) return;
+    let frame = 0;
+    let attempts = 0;
+    const enableEnhancedGraphics = () => {
+      const toggle = document.querySelector<HTMLButtonElement>(
+        '.desktop-game-shell .game-toolbar button[aria-pressed]'
+      );
+      if (toggle) {
+        if (toggle.getAttribute('aria-pressed') !== 'true') toggle.click();
+        return;
+      }
+      if (attempts++ < 120) frame = requestAnimationFrame(enableEnhancedGraphics);
+    };
+    frame = requestAnimationFrame(enableEnhancedGraphics);
+    return () => cancelAnimationFrame(frame);
+  }, [assets, launch]);
+
   if (error) return <div className="desktop-message desktop-error" role="alert">{error}</div>;
   if (!assets || !launch) return <div className="desktop-message" role="status">Loading PlayStunts DX…</div>;
 
