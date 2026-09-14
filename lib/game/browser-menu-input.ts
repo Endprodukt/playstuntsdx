@@ -4,6 +4,7 @@ import {PC_PIT_INPUT_HZ,ORIGINAL_PIT_DIVISOR,ORIGINAL_GAME_TIMER_DIVIDER} from '
 import {originalJoystickSteering} from './joystick-steering.ts';
 import {originalDrivingKeyControls} from './driving-key-controls.ts';
 import {originalKeyboardScanWord} from './keyboard-scan-word.ts';
+import {desktopInputDevice,getDesktopWheelInput} from './desktop-wheel-input.ts';
 /** Browser hardware boundary for the native original polling routine. */
 export function originalBrowserKey(key:string,shift=false){
  const functionKey=/^F([1-9]|10)$/.exec(key);if(functionKey)return ((shift?0x54:0x3b)+Number(functionKey[1])-1)<<8;
@@ -41,8 +42,15 @@ export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joysti
  page?.addEventListener('visibilitychange',visibility);
  element.addEventListener('keydown',keyboard);element.addEventListener('keyup',keyup);element.addEventListener('blur',clear);element.addEventListener('pointerdown',down);element.addEventListener('pointermove',pointer);element.addEventListener('pointerup',pointer);element.addEventListener('pointercancel',leave);element.addEventListener('lostpointercapture',leave);element.addEventListener('pointerleave',leave);element.addEventListener('contextmenu',contextMenu);window.addEventListener('blur',clear);
  const gamepad=()=>{
-  // Original225bc returns no joystick sample while DS:4602 bit0 is clear.
+  const wheelSelected=desktopInputDevice()==='wheel';
   if(!active||disposed||(options.joystickEnabled&&!options.joystickEnabled()))return {mask:0,direction:0,axis:0};
+  if(wheelSelected){
+   const wheel=getDesktopWheelInput();
+   if(!wheel.configured||!wheel.connected)return {mask:0,direction:0,axis:0};
+   const horizontal=Math.max(-1,Math.min(1,wheel.steering));
+   const left=horizontal<-.18,right=horizontal>.18,up=wheel.throttle>.12,down=wheel.brake>.12;
+   return {axis:horizontal,mask:(up?1:0)|(down?2:0)|(right?4:0)|(left?8:0),direction:up?(left?8:right?2:1):down?(left?6:right?4:5):left?7:right?3:0};
+  }
   const pad=Array.from(navigator.getGamepads?.()??[]).find(p=>p?.connected);if(!pad)return {mask:0,direction:0,axis:0};
   const horizontal=pad.axes[0]??0,vertical=pad.axes[1]??0,pressed=(i:number)=>!!pad.buttons[i]?.pressed;
   const left=horizontal<-.5||pressed(14),right=horizontal>.5||pressed(15),up=vertical<-.5||pressed(12),down=vertical>.5||pressed(13);
@@ -60,7 +68,7 @@ export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joysti
   keyDown:(scan:number)=>Number(scanHeld(scan&255)),
   mouse:()=>({x,y,buttons:active?buttons:0}),
   joystickButtons:()=>gamepad().mask&48,
-  // The browser gamepad is a calibrated virtual axis:0..62, centre31.
+  // Browser gamepads and the calibrated desktop wheel both expose a virtual axis:0..62, centre31.
   joystickSteering:()=>originalJoystickSteering(Math.round((gamepad().axis+1)*31),0,256),
   resetMouse(mode=1){mouseBounds=mode?[24,296,0,200]:[0,320,0,200];if(mode){x=160;y=100;}pointerEdges.length=0;},
   controls:()=>originalDrivingKeyControls(options.drivingBindings?.()??[57,28,71,72,73,77,81,80,79,75],scan=>scanHeld(scan)||(scan===57&&scanHeld(30))||(scan===28&&scanHeld(44)),()=>gamepad().mask),
