@@ -8,7 +8,7 @@ type Sprite={file:string;width:number;height:number;x:number;y:number;source:str
  * does not imply that their original drawing behavior has been implemented.
  */
 export default function CockpitArtwork({car,wheel,children}:{car:keyof typeof cockpitIndex;wheel:number;children:ReactNode}){
- const [enhancedTextures,setEnhancedTextures]=useState(true);
+ const [enhancedTextures,setEnhancedTextures]=useState(false);
  useEffect(()=>{
   const sync=()=>setEnhancedTextures(enhancedTexturesEnabled());
   sync();window.addEventListener(ENHANCED_TEXTURES_EVENT,sync);
