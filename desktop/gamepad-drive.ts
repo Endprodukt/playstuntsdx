@@ -1,6 +1,14 @@
 import {clearDesktopWheelInput,setDesktopWheelInput} from '../lib/game/desktop-wheel-input';
 
-type SetupStage = 'idle' | 'steering' | 'throttle' | 'brake' | 'done';
+type SetupStage =
+  | 'idle'
+  | 'steering-left'
+  | 'steering-right'
+  | 'throttle-rest'
+  | 'throttle-full'
+  | 'brake-rest'
+  | 'brake-full'
+  | 'done';
 type DeviceSource = 'WebView2' | 'Windows';
 
 type AxisBinding = {
@@ -14,6 +22,17 @@ type AxisBinding = {
   direction: 1 | -1;
 };
 
+type SteeringBinding = {
+  deviceId: string;
+  deviceIndex: number;
+  deviceSource?: DeviceSource;
+  kind: 'axis';
+  index: number;
+  left: number;
+  center: number;
+  right: number;
+};
+
 type ButtonBinding = {
   deviceId: string;
   deviceIndex: number;
@@ -23,8 +42,9 @@ type ButtonBinding = {
 };
 
 type InputBinding = AxisBinding | ButtonBinding;
+type AnyBinding = SteeringBinding | InputBinding;
 type WheelBindings = {
-  steering?: AxisBinding;
+  steering?: SteeringBinding;
   throttle?: InputBinding;
   brake?: InputBinding;
 };
@@ -43,16 +63,13 @@ type DeviceSnapshot = {
   buttons: number[];
 };
 
+type InputSnapshot = Map<string, DeviceSnapshot>;
+
 type NativeJoystick = {
   id: string;
   name: string;
   axes: number[];
   buttons: number[];
-};
-
-type PendingCapture = {
-  stage: 'steering' | 'throttle' | 'brake';
-  binding: InputBinding;
 };
 
 type SetupUi = {
@@ -63,6 +80,7 @@ type SetupUi = {
   bindings: HTMLDivElement;
   devices: HTMLDivElement;
   start: HTMLButtonElement;
+  capture: HTMLButtonElement;
   clear: HTMLButtonElement;
   close: HTMLButtonElement;
 };
@@ -73,11 +91,10 @@ type TauriGlobal = {
   };
 };
 
-const storageKey = 'playstunts-dx-wheel-bindings-v1';
+const storageKey = 'playstunts-dx-wheel-bindings-v2';
+const oldStorageKey = 'playstunts-dx-wheel-bindings-v1';
 const axisCaptureThreshold = 0.42;
 const buttonCaptureThreshold = 0.55;
-const axisReleaseThreshold = 0.12;
-const buttonReleaseThreshold = 0.2;
 
 let nativeDevices: InputDevice[] = [];
 
@@ -116,7 +133,7 @@ function saveBindings(bindings: WheelBindings) {
   window.localStorage.setItem(storageKey, JSON.stringify(bindings));
 }
 
-function resolveDevice(binding: InputBinding | undefined) {
+function resolveDevice(binding: AnyBinding | undefined) {
   if (!binding) return undefined;
   const all = devices();
   return all.find(device =>
@@ -126,14 +143,19 @@ function resolveDevice(binding: InputBinding | undefined) {
     ?? all.find(device => device.id === binding.deviceId && (!binding.deviceSource || device.source === binding.deviceSource));
 }
 
-function bindingName(binding: InputBinding | undefined) {
+function bindingName(binding: AnyBinding | undefined) {
   if (!binding) return 'not assigned';
   const device = resolveDevice(binding);
   const deviceName = device?.name || binding.deviceId || `Device ${binding.deviceIndex}`;
   return `${deviceName} — ${binding.kind === 'axis' ? `Axis ${binding.index}` : `Button ${binding.index}`}`;
 }
 
-function createSetupUi(onStart: () => void, onClear: () => void, onToggle: () => void): SetupUi {
+function createSetupUi(
+  onStart: () => void,
+  onCapture: () => void,
+  onClear: () => void,
+  onToggle: () => void,
+): SetupUi {
   const root = document.createElement('div');
   root.style.cssText = 'position:fixed;right:16px;top:16px;z-index:2147483647;font:14px/1.4 system-ui,Segoe UI,sans-serif;color:#f5f5f5;';
 
@@ -151,11 +173,11 @@ function createSetupUi(onStart: () => void, onClear: () => void, onToggle: () =>
   title.style.cssText = 'font-size:18px;font-weight:700;margin-bottom:8px;';
 
   const note = document.createElement('div');
-  note.textContent = 'WebView2 and native Windows controller devices are watched at the same time. Leave wheel and pedals at rest before starting.';
+  note.textContent = 'Each calibration point is measured only when you press Enter or Capture. Wheel, pedals and shifter may be separate devices.';
   note.style.cssText = 'color:#bbb;margin-bottom:12px;';
 
   const status = document.createElement('div');
-  status.style.cssText = 'padding:10px 12px;background:#242424;border-radius:6px;font-weight:700;margin-bottom:12px;';
+  status.style.cssText = 'padding:10px 12px;background:#242424;border-radius:6px;font-weight:700;margin-bottom:12px;white-space:pre-wrap;';
 
   const bindings = document.createElement('div');
   bindings.style.cssText = 'white-space:pre-wrap;color:#ddd;margin-bottom:12px;';
@@ -176,6 +198,12 @@ function createSetupUi(onStart: () => void, onClear: () => void, onToggle: () =>
   start.style.cssText = 'border:1px solid #aaa;background:#eee;color:#111;border-radius:5px;padding:7px 10px;cursor:pointer;font:inherit;';
   start.addEventListener('click', onStart);
 
+  const capture = document.createElement('button');
+  capture.type = 'button';
+  capture.textContent = 'Capture [Enter]';
+  capture.style.cssText = 'border:1px solid #aaa;background:#eee;color:#111;border-radius:5px;padding:7px 10px;cursor:pointer;font:inherit;';
+  capture.addEventListener('click', onCapture);
+
   const clear = document.createElement('button');
   clear.type = 'button';
   clear.textContent = 'Clear bindings';
@@ -188,12 +216,12 @@ function createSetupUi(onStart: () => void, onClear: () => void, onToggle: () =>
   close.style.cssText = 'border:1px solid #777;background:#222;color:#fff;border-radius:5px;padding:7px 10px;cursor:pointer;font:inherit;';
   close.addEventListener('click', onToggle);
 
-  controls.append(start, clear, close);
+  controls.append(start, capture, clear, close);
   panel.append(title, note, status, bindings, deviceTitle, devicesElement, controls);
   root.append(toggle, panel);
   document.body.append(root);
 
-  return { root, toggle, panel, status, bindings, devices: devicesElement, start, clear, close };
+  return { root, toggle, panel, status, bindings, devices: devicesElement, start, capture, clear, close };
 }
 
 export function installDesktopDriveControls() {
@@ -201,9 +229,9 @@ export function installDesktopDriveControls() {
   let lastUiUpdate = 0;
   let setupOpen = false;
   let stage: SetupStage = 'idle';
-  let pending: PendingCapture | undefined;
   let bindings = loadBindings();
-  let baseline = new Map<string, DeviceSnapshot>();
+  let referenceSnapshot: InputSnapshot | undefined;
+  let captureNotice = '';
   let pollingNative = false;
   const tauri = (window as typeof window & { __TAURI__?: TauriGlobal }).__TAURI__;
 
@@ -230,8 +258,8 @@ export function installDesktopDriveControls() {
   void pollNativeDevices();
   const nativeTimer = window.setInterval(() => void pollNativeDevices(), 33);
 
-  function captureBaseline() {
-    baseline = new Map(
+  function snapshotDevices(): InputSnapshot {
+    return new Map(
       devices().map(device => [
         deviceKey(device),
         {
@@ -242,7 +270,7 @@ export function installDesktopDriveControls() {
     );
   }
 
-  function sameInput(a: InputBinding | undefined, device: InputDevice, kind: 'axis' | 'button', index: number) {
+  function sameInput(a: AnyBinding | undefined, device: InputDevice, kind: 'axis' | 'button', index: number) {
     return !!a
       && a.deviceId === device.id
       && a.deviceIndex === device.index
@@ -251,55 +279,54 @@ export function installDesktopDriveControls() {
       && a.index === index;
   }
 
-  function findAxisMovement(exclude: InputBinding[] = []) {
-    let best: { device: InputDevice; axis: number; rest: number; value: number; delta: number } | undefined;
+  function findAxisDifference(before: InputSnapshot, exclude: AnyBinding[] = []) {
+    let best: { device: InputDevice; axis: number; before: number; value: number; delta: number } | undefined;
     for (const device of devices()) {
-      const before = baseline.get(deviceKey(device));
-      if (!before) continue;
+      const previous = before.get(deviceKey(device));
+      if (!previous) continue;
       for (let axis = 0; axis < device.axes.length; axis += 1) {
         if (exclude.some(binding => sameInput(binding, device, 'axis', axis))) continue;
-        const rest = before.axes[axis] ?? 0;
+        const from = previous.axes[axis] ?? 0;
         const value = device.axes[axis] ?? 0;
-        const delta = Math.abs(value - rest);
+        const delta = Math.abs(value - from);
         if (delta >= axisCaptureThreshold && (!best || delta > best.delta)) {
-          best = { device, axis, rest, value, delta };
+          best = { device, axis, before: from, value, delta };
         }
       }
     }
     return best;
   }
 
-  function axisBinding(movement: NonNullable<ReturnType<typeof findAxisMovement>>): AxisBinding {
-    return {
-      deviceId: movement.device.id,
-      deviceIndex: movement.device.index,
-      deviceSource: movement.device.source,
-      kind: 'axis',
-      index: movement.axis,
-      rest: movement.rest,
-      active: movement.value,
-      direction: (movement.value - movement.rest >= 0 ? 1 : -1) as 1 | -1,
-    };
-  }
-
-  function findPedalMovement(exclude: InputBinding[] = []) {
-    const axis = findAxisMovement(exclude);
-    let buttonBest: { device: InputDevice; button: number; delta: number } | undefined;
+  function findInputDifference(before: InputSnapshot, exclude: AnyBinding[] = []) {
+    const axis = findAxisDifference(before, exclude);
+    let buttonBest: { device: InputDevice; button: number; before: number; value: number; delta: number } | undefined;
     for (const device of devices()) {
-      const before = baseline.get(deviceKey(device));
-      if (!before) continue;
+      const previous = before.get(deviceKey(device));
+      if (!previous) continue;
       for (let button = 0; button < device.buttons.length; button += 1) {
         if (exclude.some(binding => sameInput(binding, device, 'button', button))) continue;
+        const from = previous.buttons[button] ?? 0;
         const value = device.buttons[button] ?? 0;
-        const delta = value - (before.buttons[button] ?? 0);
+        const delta = Math.abs(value - from);
         if ((value > buttonCaptureThreshold || delta >= buttonCaptureThreshold)
           && (!buttonBest || delta > buttonBest.delta)) {
-          buttonBest = { device, button, delta };
+          buttonBest = { device, button, before: from, value, delta };
         }
       }
     }
 
-    if (axis && (!buttonBest || axis.delta >= buttonBest.delta)) return axisBinding(axis);
+    if (axis && (!buttonBest || axis.delta >= buttonBest.delta)) {
+      return {
+        deviceId: axis.device.id,
+        deviceIndex: axis.device.index,
+        deviceSource: axis.device.source,
+        kind: 'axis' as const,
+        index: axis.axis,
+        rest: axis.before,
+        active: axis.value,
+        direction: (axis.value - axis.before >= 0 ? 1 : -1) as 1 | -1,
+      };
+    }
     if (buttonBest) {
       return {
         deviceId: buttonBest.device.id,
@@ -312,28 +339,39 @@ export function installDesktopDriveControls() {
     return undefined;
   }
 
-  function stageText() {
-    if (!setupOpen) return 'Wheel setup closed.';
-    if (stage === 'steering') return pending
-      ? 'Steering detected — return the wheel to center.'
-      : '1/3 — Turn the steering wheel LEFT to full lock, then return it to center.';
-    if (stage === 'throttle') return pending
-      ? 'Gas detected — release the pedal completely.'
-      : '2/3 — Press GAS firmly through its full travel, then release it.';
-    if (stage === 'brake') return pending
-      ? 'Brake detected — release the pedal completely.'
-      : '3/3 — Press BRAKE firmly through its full travel, then release it.';
-    if (stage === 'done') return 'Calibration saved. Set Input Device to WHEEL, close this window and test the car.';
+  function stageInstruction() {
+    if (stage === 'steering-left') return '1/6 — Turn the wheel fully LEFT and hold it. Press Enter or Capture.';
+    if (stage === 'steering-right') return '2/6 — Turn the wheel fully RIGHT and hold it. Press Enter or Capture.';
+    if (stage === 'throttle-rest') return '3/6 — Release GAS completely. Press Enter or Capture.';
+    if (stage === 'throttle-full') return '4/6 — Press GAS fully and hold it. Press Enter or Capture.';
+    if (stage === 'brake-rest') return '5/6 — Release BRAKE completely. Press Enter or Capture.';
+    if (stage === 'brake-full') return '6/6 — Press BRAKE fully and hold it. Press Enter or Capture.';
+    if (stage === 'done') return 'Calibration saved. Release the pedals, keep Input Device on WHEEL, close this window and drive.';
     return Object.keys(bindings).length
       ? 'Bindings loaded. Click Start calibration to replace them.'
-      : 'Click Start calibration. Wheel and pedals should be at rest.';
+      : 'Click Start calibration to measure wheel, gas and brake.';
+  }
+
+  function stageText() {
+    const instruction = stageInstruction();
+    return captureNotice ? `${captureNotice}\n${instruction}` : instruction;
+  }
+
+  function axisDetails(binding: AxisBinding | undefined) {
+    if (!binding) return '';
+    return `  rest ${binding.rest.toFixed(3)} / full ${binding.active.toFixed(3)}`;
+  }
+
+  function steeringDetails(binding: SteeringBinding | undefined) {
+    if (!binding) return '';
+    return `  left ${binding.left.toFixed(3)} / center ${binding.center.toFixed(3)} / right ${binding.right.toFixed(3)}`;
   }
 
   function bindingsText() {
     return [
-      `Steering: ${bindingName(bindings.steering)}`,
-      `Gas:      ${bindingName(bindings.throttle)}`,
-      `Brake:    ${bindingName(bindings.brake)}`,
+      `Steering: ${bindingName(bindings.steering)}${steeringDetails(bindings.steering)}`,
+      `Gas:      ${bindingName(bindings.throttle)}${bindings.throttle?.kind === 'axis' ? axisDetails(bindings.throttle) : ''}`,
+      `Brake:    ${bindingName(bindings.brake)}${bindings.brake?.kind === 'axis' ? axisDetails(bindings.brake) : ''}`,
     ].join('\n');
   }
 
@@ -341,6 +379,9 @@ export function installDesktopDriveControls() {
     ui.panel.style.display = setupOpen ? 'block' : 'none';
     ui.status.textContent = stageText();
     ui.bindings.textContent = bindingsText();
+    ui.capture.disabled = stage === 'idle' || stage === 'done';
+    ui.capture.style.opacity = ui.capture.disabled ? '.45' : '1';
+    ui.capture.style.cursor = ui.capture.disabled ? 'default' : 'pointer';
     if (!setupOpen) return;
 
     const all = devices();
@@ -363,107 +404,144 @@ export function installDesktopDriveControls() {
 
   function startCalibration() {
     bindings = {};
-    pending = undefined;
-    stage = 'steering';
+    referenceSnapshot = undefined;
+    captureNotice = '';
+    stage = 'steering-left';
     clearDesktopWheelInput();
-    captureBaseline();
   }
 
   function clearBindings() {
     bindings = {};
-    pending = undefined;
+    referenceSnapshot = undefined;
+    captureNotice = '';
     stage = 'idle';
     window.localStorage.removeItem(storageKey);
+    window.localStorage.removeItem(oldStorageKey);
     clearDesktopWheelInput();
-    captureBaseline();
+  }
+
+  function captureCalibrationPoint() {
+    if (!setupOpen || stage === 'idle' || stage === 'done') return;
+    captureNotice = '';
+
+    if (stage === 'steering-left') {
+      referenceSnapshot = snapshotDevices();
+      stage = 'steering-right';
+      return;
+    }
+
+    if (stage === 'steering-right') {
+      if (!referenceSnapshot) {
+        stage = 'steering-left';
+        captureNotice = 'Left steering point was lost. Capture full LEFT again.';
+        return;
+      }
+      const movement = findAxisDifference(referenceSnapshot);
+      if (!movement) {
+        captureNotice = 'No steering axis changed enough. Hold full RIGHT and press Enter again.';
+        return;
+      }
+      const left = movement.before;
+      const right = movement.value;
+      bindings.steering = {
+        deviceId: movement.device.id,
+        deviceIndex: movement.device.index,
+        deviceSource: movement.device.source,
+        kind: 'axis',
+        index: movement.axis,
+        left,
+        center: (left + right) / 2,
+        right,
+      };
+      referenceSnapshot = undefined;
+      stage = 'throttle-rest';
+      return;
+    }
+
+    if (stage === 'throttle-rest') {
+      referenceSnapshot = snapshotDevices();
+      stage = 'throttle-full';
+      return;
+    }
+
+    if (stage === 'throttle-full') {
+      if (!referenceSnapshot) {
+        stage = 'throttle-rest';
+        captureNotice = 'Gas neutral point was lost. Capture released GAS again.';
+        return;
+      }
+      const movement = findInputDifference(referenceSnapshot, bindings.steering ? [bindings.steering] : []);
+      if (!movement) {
+        captureNotice = 'No gas input changed enough. Hold GAS fully down and press Enter again.';
+        return;
+      }
+      bindings.throttle = movement;
+      referenceSnapshot = undefined;
+      stage = 'brake-rest';
+      return;
+    }
+
+    if (stage === 'brake-rest') {
+      referenceSnapshot = snapshotDevices();
+      stage = 'brake-full';
+      return;
+    }
+
+    if (!referenceSnapshot) {
+      stage = 'brake-rest';
+      captureNotice = 'Brake neutral point was lost. Capture released BRAKE again.';
+      return;
+    }
+    const exclude = [bindings.steering, bindings.throttle].filter(
+      (binding): binding is AnyBinding => !!binding,
+    );
+    const movement = findInputDifference(referenceSnapshot, exclude);
+    if (!movement) {
+      captureNotice = 'No brake input changed enough. Hold BRAKE fully down and press Enter again.';
+      return;
+    }
+    bindings.brake = movement;
+    referenceSnapshot = undefined;
+    stage = 'done';
+    saveBindings(bindings);
   }
 
   function toggleSetup() {
     setupOpen = !setupOpen;
     if (setupOpen) {
       clearDesktopWheelInput();
-      void pollNativeDevices().then(captureBaseline);
+      void pollNativeDevices();
     } else if (stage !== 'done') {
-      pending = undefined;
+      referenceSnapshot = undefined;
+      captureNotice = '';
       stage = 'idle';
     }
   }
 
-  const ui = createSetupUi(startCalibration, clearBindings, toggleSetup);
+  const ui = createSetupUi(startCalibration, captureCalibrationPoint, clearBindings, toggleSetup);
 
   function onKeyDown(event: KeyboardEvent) {
-    if (event.key !== 'F8' || event.repeat) return;
+    if (event.key === 'F8' && !event.repeat) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      toggleSetup();
+      return;
+    }
+    if (!setupOpen || event.repeat || (event.key !== 'Enter' && event.code !== 'NumpadEnter')) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    toggleSetup();
+    captureCalibrationPoint();
   }
   window.addEventListener('keydown', onKeyDown, true);
 
-  function updatePendingCapture() {
-    if (!pending) return false;
-    const device = resolveDevice(pending.binding);
-    if (!device) {
-      pending = undefined;
-      captureBaseline();
-      return false;
-    }
-
-    if (pending.binding.kind === 'axis') {
-      const value = device.axes[pending.binding.index] ?? pending.binding.rest;
-      if (Math.abs(value - pending.binding.rest) > Math.abs(pending.binding.active - pending.binding.rest)) {
-        pending.binding.active = value;
-        pending.binding.direction = value - pending.binding.rest >= 0 ? 1 : -1;
-      }
-      if (Math.abs(value - pending.binding.rest) > axisReleaseThreshold) return true;
-    } else if ((device.buttons[pending.binding.index] ?? 0) > buttonReleaseThreshold) return true;
-
-    const finished = pending;
-    pending = undefined;
-    if (finished.stage === 'steering') {
-      bindings.steering = finished.binding as AxisBinding;
-      stage = 'throttle';
-    } else if (finished.stage === 'throttle') {
-      bindings.throttle = finished.binding;
-      stage = 'brake';
-    } else {
-      bindings.brake = finished.binding;
-      stage = 'done';
-      saveBindings(bindings);
-    }
-    captureBaseline();
-    return true;
-  }
-
-  function advanceCalibration() {
-    if (!setupOpen || stage === 'idle' || stage === 'done') return;
-    if (updatePendingCapture()) return;
-
-    if (stage === 'steering') {
-      const movement = findAxisMovement();
-      if (movement) pending = { stage, binding: axisBinding(movement) };
-      return;
-    }
-
-    if (stage === 'throttle') {
-      const movement = findPedalMovement(bindings.steering ? [bindings.steering] : []);
-      if (movement) pending = { stage, binding: movement };
-      return;
-    }
-
-    const exclude = [bindings.steering, bindings.throttle].filter(
-      (binding): binding is InputBinding => !!binding,
-    );
-    const movement = findPedalMovement(exclude);
-    if (movement) pending = { stage, binding: movement };
-  }
-
-  function normalizedAxis(binding: AxisBinding | undefined) {
+  function steeringAmount(binding: SteeringBinding | undefined) {
     if (!binding) return 0;
     const device = resolveDevice(binding);
     if (!device) return 0;
-    const range = binding.active - binding.rest;
+    const range = binding.right - binding.left;
     if (Math.abs(range) < 0.05) return 0;
-    return ((device.axes[binding.index] ?? binding.rest) - binding.rest) / range;
+    const value = device.axes[binding.index] ?? binding.center;
+    return Math.max(-1, Math.min(1, ((value - binding.left) / range) * 2 - 1));
   }
 
   function inputAmount(binding: InputBinding | undefined) {
@@ -471,7 +549,9 @@ export function installDesktopDriveControls() {
     const device = resolveDevice(binding);
     if (!device) return 0;
     if (binding.kind === 'button') return Math.max(0, Math.min(1, device.buttons[binding.index] ?? 0));
-    return Math.max(0, Math.min(1, normalizedAxis(binding)));
+    const range = binding.active - binding.rest;
+    if (Math.abs(range) < 0.05) return 0;
+    return Math.max(0, Math.min(1, ((device.axes[binding.index] ?? binding.rest) - binding.rest) / range));
   }
 
   function publishWheelInput() {
@@ -487,15 +567,13 @@ export function installDesktopDriveControls() {
     setDesktopWheelInput({
       configured: true,
       connected: true,
-      // Steering is calibrated by moving LEFT first. Expose conventional -1 left / +1 right.
-      steering: Math.max(-1, Math.min(1, -normalizedAxis(bindings.steering))),
+      steering: steeringAmount(bindings.steering),
       throttle: inputAmount(bindings.throttle),
       brake: inputAmount(bindings.brake),
     });
   }
 
   function tick(now: number) {
-    advanceCalibration();
     publishWheelInput();
     if (now - lastUiUpdate > 100) {
       lastUiUpdate = now;
