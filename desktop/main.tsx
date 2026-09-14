@@ -12,6 +12,12 @@ type DesktopLaunch = ReturnType<typeof nativeLaunchProfile> & {
   track?: number[];
 };
 
+type TauriGlobal = {
+  core?: {
+    invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>;
+  };
+};
+
 function DesktopApp() {
   const [assets, setAssets] = useState<Assets | null>(null);
   const [launch, setLaunch] = useState<DesktopLaunch | null>(null);
@@ -39,6 +45,35 @@ function DesktopApp() {
 
     void load();
     return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    let toggling = false;
+
+    async function toggleFullscreen() {
+      const tauri = (window as typeof window & { __TAURI__?: TauriGlobal }).__TAURI__;
+      if (!tauri?.core || toggling) return;
+      toggling = true;
+      try {
+        await tauri.core.invoke<boolean>('toggle_fullscreen');
+      } catch (reason) {
+        console.error('PlayStunts DX fullscreen toggle failed:', reason);
+      } finally {
+        toggling = false;
+      }
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      const fullscreenKey = event.key === 'F11' || (event.altKey && event.key === 'Enter');
+      if (!fullscreenKey || event.repeat) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void toggleFullscreen();
+    }
+
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
   }, []);
 
   if (error) return <div className="desktop-message desktop-error" role="alert">{error}</div>;
