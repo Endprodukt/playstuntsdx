@@ -4,6 +4,7 @@
  * arg_isOpponent label is misleading). Track tiles are supplied by the caller.
  */
 import { i16,u16,intCos } from './math.ts';
+import { updateForceFeedbackTelemetry } from './force-feedback.ts';
 export interface GripState {
  speed:number;roadSpeed:number;steeringAngle:number;wheelAngle:number;
  spin:number;frontWheelAngle:number;slip:number;demandedGrip:number;surfaceGrip:number;
@@ -13,7 +14,11 @@ export interface GripState {
 export interface GripTuning {grip:number;surfaceGrip:number[]}
 export function stepGrip(before:GripState,t:GripTuning,player=true,trackElement=0,onContactScratch?:(words:[number,number])=>void):GripState {
  const s={...before,surfaces:[...before.surfaces]};
- if(!s.allContact){s.frontWheelAngle=0;s.sliding=0;return s}
+ if(!s.allContact){
+  s.frontWheelAngle=0;s.sliding=0;
+  if(player)updateForceFeedbackTelemetry({speed:s.speed,roadSpeed:s.roadSpeed,steeringAngle:s.steeringAngle,wheelAngle:s.wheelAngle,frontWheelAngle:s.frontWheelAngle,slip:0,spin:s.spin,sliding:false,surfaces:s.surfaces,allContact:s.allContact});
+  return s;
+ }
  // Original grounded grip leaves the divisor in the later contact stack.
  onContactScratch?.([1024,0]);
  const grass=s.surfaces.filter(x=>x===4).length;
@@ -58,6 +63,7 @@ export function stepGrip(before:GripState,t:GripTuning,player=true,trackElement=
    s.soundFlags|=s.surfaces.includes(1)?2:4;
   }else{s.speed=0;s.roadSpeed=0}
  }
+ if(player)updateForceFeedbackTelemetry({speed:s.speed,roadSpeed:s.roadSpeed,steeringAngle:s.steeringAngle,wheelAngle:s.wheelAngle,frontWheelAngle:s.frontWheelAngle,slip:s.slip,spin:s.spin,sliding:!!s.sliding,surfaces:s.surfaces,allContact:s.allContact});
  s.slip=0;
  return s;
 }
