@@ -1,3 +1,5 @@
+use std::{fs, path::PathBuf};
+
 #[tauri::command]
 fn toggle_fullscreen(window: tauri::Window) -> Result<bool, String> {
     let fullscreen = window.is_fullscreen().map_err(|error| error.to_string())?;
@@ -6,10 +8,67 @@ fn toggle_fullscreen(window: tauri::Window) -> Result<bool, String> {
     Ok(next)
 }
 
+fn mt32_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(directory) = executable.parent() {
+            roots.push(directory.join("mt32"));
+        }
+    }
+    if let Ok(current) = std::env::current_dir() {
+        roots.push(current.join("mt32"));
+        if let Some(parent) = current.parent() {
+            roots.push(parent.join("mt32"));
+        }
+    }
+    roots.dedup();
+    roots
+}
+
+fn mt32_names(kind: &str) -> Result<&'static [&'static str], String> {
+    match kind {
+        "control" => Ok(&["ctrl_mt32_1_07.rom", "MT32_CONTROL.ROM"]),
+        "pcm" => Ok(&["pcm_mt32.rom", "MT32_PCM.ROM"]),
+        _ => Err(format!("Unknown MT-32 ROM kind: {kind}")),
+    }
+}
+
+fn find_mt32_rom(kind: &str) -> Result<PathBuf, String> {
+    let names = mt32_names(kind)?;
+    for root in mt32_roots() {
+        for name in names {
+            let path = root.join(name);
+            if path.is_file() {
+                return Ok(path);
+            }
+        }
+    }
+    Err(format!(
+        "MT-32 {kind} ROM not found. Put ctrl_mt32_1_07.rom and pcm_mt32.rom (or MT32_CONTROL.ROM and MT32_PCM.ROM) in the mt32 folder next to PlayStuntsDX.exe."
+    ))
+}
+
+#[tauri::command]
+fn check_mt32_roms() -> Result<(), String> {
+    find_mt32_rom("control")?;
+    find_mt32_rom("pcm")?;
+    Ok(())
+}
+
+#[tauri::command]
+fn read_mt32_rom(kind: String) -> Result<Vec<u8>, String> {
+    let path = find_mt32_rom(&kind)?;
+    fs::read(&path).map_err(|error| format!("Could not read {}: {error}", path.display()))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![toggle_fullscreen])
+        .invoke_handler(tauri::generate_handler![
+            toggle_fullscreen,
+            check_mt32_roms,
+            read_mt32_rom
+        ])
         .run(tauri::generate_context!())
         .expect("error while running PlayStunts DX");
 }
