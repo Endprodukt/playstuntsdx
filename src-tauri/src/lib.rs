@@ -10,6 +10,11 @@ fn toggle_fullscreen(window: tauri::Window) -> Result<bool, String> {
 }
 
 #[tauri::command]
+fn exit_game(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
 async fn toggle_mt32_panel(app: tauri::AppHandle) -> Result<bool, String> {
     if let Some(panel) = app.get_webview_window("mt32-panel") {
         let visible = panel.is_visible().map_err(|error| error.to_string())?;
@@ -100,6 +105,7 @@ pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             toggle_fullscreen,
+            exit_game,
             toggle_mt32_panel,
             check_mt32_roms,
             read_mt32_rom
