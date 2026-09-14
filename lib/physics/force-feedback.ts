@@ -89,9 +89,10 @@ export function sampleForceFeedback(physicalSteering: number) {
   const phase = (Date.now() / 1000) * Math.PI * 2 * frequency;
   const grassRumble = Math.sin(phase) * grass * speed * 0.13 * contact;
 
-  // Conservative ceiling for the first hardware pass: ±48% of nominal
-  // DirectInput force. Strength is applied separately by the desktop setting.
-  const target = clamp(centering + aligning + grassRumble, -0.48, 0.48);
+  // Scale the complete physics signal together so the balance between steering,
+  // slide forces and grass vibration stays intact. Leave some DirectInput headroom.
+  const outputScale = 1.8;
+  const target = clamp((centering + aligning + grassRumble) * outputScale, -0.90, 0.90);
   smoothedForce = smoothedForce * 0.58 + target * 0.42;
   return smoothedForce;
 }
