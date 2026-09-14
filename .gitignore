@@ -9,6 +9,7 @@ dist-desktop/
 *.tsbuildinfo
 public/game/
 local-assets/
+mt32/
 *.rom
 *.exe
 *.EXE
