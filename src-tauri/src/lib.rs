@@ -10,7 +10,7 @@ fn toggle_fullscreen(window: tauri::Window) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn toggle_mt32_panel(app: tauri::AppHandle) -> Result<bool, String> {
+async fn toggle_mt32_panel(app: tauri::AppHandle) -> Result<bool, String> {
     if let Some(panel) = app.get_webview_window("mt32-panel") {
         let visible = panel.is_visible().map_err(|error| error.to_string())?;
         if visible {
@@ -28,12 +28,13 @@ fn toggle_mt32_panel(app: tauri::AppHandle) -> Result<bool, String> {
     let panel = WebviewWindowBuilder::new(
         &app,
         "mt32-panel",
-        WebviewUrl::App("index.html?window=mt32".into()),
+        WebviewUrl::App("index.html".into()),
     )
     .title("Roland MT-32 - PlayStunts DX")
     .inner_size(1180.0, 470.0)
     .resizable(true)
     .center()
+    .initialization_script("window.__PLAYSTUNTS_DX_WINDOW__ = 'mt32';")
     .build()
     .map_err(|error| error.to_string())?;
     panel.set_focus().map_err(|error| error.to_string())?;
