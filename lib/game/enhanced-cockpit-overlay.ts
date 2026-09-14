@@ -15,13 +15,57 @@ type PanelData={
 type LoadedImage={image:HTMLImageElement;enhanced:boolean};
 type MaskedSprite={canvas:HTMLCanvasElement;enhanced:boolean};
 type DynamicSurface={canvas:HTMLCanvasElement;context:CanvasRenderingContext2D;image:ImageData};
-type CarAssets={layout:CockpitLayout;panel:PanelData;images:Map<string,LoadedImage>;masked:Map<string,MaskedSprite>;dynamic?:DynamicSurface};
+type SnapshotSurface={canvas:HTMLCanvasElement;context:CanvasRenderingContext2D};
+type CarAssets={layout:CockpitLayout;panel:PanelData;images:Map<string,LoadedImage>;masked:Map<string,MaskedSprite>;dynamic?:DynamicSurface;replaySnapshot?:SnapshotSurface};
 type DrawState={car:string;pixels:Uint8Array;steering:number;knobX:number;knobY:number};
+type ReplayBarArt={keys:string[];resources:Record<string,number[]>};
+type ReplayFrame={x:number;y:number;width:number;height:number;pixels:number[]};
+type ReplayRect={x:number;y:number;width:number;height:number};
+type ReplayOverlay={background:ReplayFrame;rects:ReplayRect[]};
 
 const indexPromise=fetch('/game/cockpit/index.json').then(async response=>{
  if(!response.ok)throw Error('Cockpit index could not load');
  return response.json() as Promise<Record<string,CockpitLayout>>;
 });
+
+let replayOverlay:ReplayOverlay|undefined;
+void fetch('/game/replay-bar-art.json').then(async response=>{
+ if(!response.ok)return;
+ const art=await response.json() as ReplayBarArt;
+ const word=(bytes:number[],at:number)=>(bytes[at]??0)|((bytes[at+1]??0)<<8),signed=(value:number)=>value<<16>>16;
+ const frames=art.keys.map(key=>{
+  const bytes=art.resources[key];if(!bytes||bytes.length<16)return undefined;
+  const width=word(bytes,0),height=word(bytes,2),x=signed(word(bytes,8)),y=signed(word(bytes,10));
+  if(width<=0||height<=0||bytes.length<16+width*height)return undefined;
+  return {x,y,width,height,pixels:bytes.slice(16,16+width*height)};
+ }).filter((frame):frame is ReplayFrame=>!!frame);
+ if(!frames.length)return;
+ const rects:ReplayRect[]=[],seen=new Set<string>();
+ const add=(x:number,y:number,width:number,height:number,padding=0)=>{
+  const left=Math.max(0,x-padding),top=Math.max(0,y-padding),right=Math.min(320,x+width+padding),bottom=Math.min(200,y+height+padding);
+  if(right<=left||bottom<=top)return;
+  const key=`${left}/${top}/${right}/${bottom}`;if(seen.has(key))return;seen.add(key);
+  rects.push({x:left,y:top,width:right-left,height:bottom-top});
+ };
+ for(const frame of frames)add(frame.x,frame.y,frame.width,frame.height,1);
+ // Native replay progress bar and both clock strings are raster operations,
+ // not sprites, so retain their authored screen regions as well.
+ add(152,176,120,9,1);add(150,185,120,15,1);
+ replayOverlay={background:frames[0],rects};
+}).catch(()=>{});
+
+function replayControlsVisible(data:ReplayOverlay,pixels:Uint8Array){
+ const frame=data.background;if(pixels.length<64000)return false;
+ let checked=0,matched=0;
+ const step=Math.max(1,Math.floor(Math.sqrt(frame.width*frame.height/128)));
+ for(let y=0;y<frame.height;y+=step)for(let x=0;x<frame.width;x+=step){
+  const px=frame.x+x,py=frame.y+y;if(px<0||px>=320||py<0||py>=200)continue;
+  checked++;if(pixels[py*320+px]===frame.pixels[y*frame.width+x])matched++;
+ }
+ // The replay buttons and selection outline overwrite part of the background,
+ // so require only a clear majority of the immutable backing sprite to match.
+ return checked>=16&&matched/checked>=0.6;
+}
 
 function image(url:string){
  return new Promise<HTMLImageElement>((resolve,reject)=>{
@@ -99,6 +143,15 @@ export function createEnhancedCockpitOverlay(){
    if(!enabled||closed)return false;
    const assets=ensure(state.car);if(!assets)return false;
    const {layout,panel,images}=assets,sx=width/320,sy=height/200;
+   const activeReplay=replayOverlay&&replayControlsVisible(replayOverlay,state.pixels)?replayOverlay:undefined;
+   let replaySnapshot:HTMLCanvasElement|undefined;
+   if(activeReplay){
+    if(!assets.replaySnapshot||assets.replaySnapshot.canvas.width!==width||assets.replaySnapshot.canvas.height!==height){
+     const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;assets.replaySnapshot={canvas,context:canvas.getContext('2d')!};
+    }
+    replaySnapshot=assets.replaySnapshot.canvas;
+    assets.replaySnapshot.context.setTransform(1,0,0,1,0,0);assets.replaySnapshot.context.clearRect(0,0,width,height);assets.replaySnapshot.context.drawImage(context.canvas,0,0,width,height);
+   }
    const draw=(source:CanvasImageSource,enhanced:boolean,x:number,y:number,w:number,h:number)=>{
     context.imageSmoothingEnabled=enhanced;
     context.drawImage(source,x*sx,y*sy,w*sx,h*sy);
@@ -154,6 +207,17 @@ export function createEnhancedCockpitOverlay(){
    if(marker?.points?.length){
     const sprite=masked('dot.png','dota.png');
     if(sprite){const position=cockpitMarker(marker.points,wheel.scaled);draw(sprite.canvas,sprite.enhanced,position.x-marker.art.anchorX,position.y-marker.art.anchorY,marker.art.width,marker.art.height);}
+   }
+
+   // Replay controls are authored as an opaque native UI over the cockpit.
+   // Restore only their real sprite/text/progress regions after the enhanced
+   // cockpit so wheel/dashboard artwork can never cover the Escape replay menu.
+   if(activeReplay&&replaySnapshot){
+    context.imageSmoothingEnabled=false;
+    for(const rect of activeReplay.rects){
+     const x=rect.x*sx,y=rect.y*sy,w=rect.width*sx,h=rect.height*sy;
+     context.drawImage(replaySnapshot,x,y,w,h,x,y,w,h);
+    }
    }
    return true;
   },
