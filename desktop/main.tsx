@@ -33,6 +33,16 @@ function desktopSoundDevice(): DesktopSoundDevice {
   return saved && soundDevices.has(saved) ? saved : 'sound-blaster';
 }
 
+function exitGame() {
+  const tauri = (window as typeof window & { __TAURI__?: TauriGlobal }).__TAURI__;
+  if (!tauri?.core) {
+    window.close();
+    return;
+  }
+  void tauri.core.invoke<void>('exit_game')
+    .catch(reason => console.error('PlayStunts DX exit failed:', reason));
+}
+
 function DesktopApp() {
   const selectedSound = desktopSoundDevice();
   const [assets, setAssets] = useState<Assets | null>(null);
@@ -174,7 +184,7 @@ function DesktopApp() {
     <main className="desktop-game-shell">
       <OpeningSequence
         assets={assets}
-        onBack={() => window.location.reload()}
+        onBack={exitGame}
         embedded
         autoStart
         soundDevice={soundDevice}
