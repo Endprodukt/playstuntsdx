@@ -33,7 +33,14 @@ export function createLoadedNativeManualRaceSession(data:NativeDemoData,prepared
  const result=createAllocatedManualSession(data,prepared);result.session.initializeLoadedReplay();return {...result,entry:'replay' as const};
 }
 function createAllocatedManualSession(data:NativeDemoData,prepared:Awaited<ReturnType<typeof prepareNativeAllocatedRace>>){
- const d=0x2d1a0,memory=prepared.memory,view=new DataView(memory.buffer,memory.byteOffset,memory.byteLength),length=view.getUint16(d+0x8fd8,true),bank=view.getUint16(d+0x9c40,true)+view.getUint16(d+0x9c42,true)*16;
+ const d=0x2d1a0,memory=prepared.memory;
+ // DS:A42A is the original passed_security flag. The DOS loader/cracks or a
+ // successful manual doc-check set it before racing. The reconstructed native
+ // runtime has no copy-protection prompt, so mark the check as passed before
+ // entering the original race logic; otherwise input selection deliberately
+ // crashes the player's car after frame 80 (~4 seconds at the original 20 Hz).
+ memory[d+0xa42a]=1;
+ const view=new DataView(memory.buffer,memory.byteOffset,memory.byteLength),length=view.getUint16(d+0x8fd8,true),bank=view.getUint16(d+0x9c40,true)+view.getUint16(d+0x9c42,true)*16;
  const car=(at:number)=>{
   const id=String.fromCharCode(...memory.slice(d+at,d+at+4)),tuning=data.cars.find(car=>car.id===id);
   if(!tuning)throw Error('Original car simulation is missing: '+id);
