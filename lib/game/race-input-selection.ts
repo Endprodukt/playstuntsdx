@@ -29,18 +29,19 @@ export function selectOriginalRaceInput(host:NativeRaceInputHost,d:number,forced
  if(m[d+0x8ff4]||m[d+0x8eac]||m[d+0xa3c2]===1)return 0;
  if(!m[d+0xa42a]&&!m[d+0x7fee]&&view.getUint16(d+0x8c26,true)>80)host.crash(1,0);
  m=host.memory();let input:number;
- if(m[d+0x12c]||m[d+0x4602]){
+ const wheel=desktopInputDevice()==='wheel'?getDesktopWheelInput():undefined;
+ const wheelActive=!!wheel?.configured&&wheel.connected;
+ if(m[d+0x12c]||m[d+0x4602]||wheelActive){
   let target:number;
-  if(m[d+0x12c]){
+  if(m[d+0x12c]&&!wheelActive){
    const sample=host.mouse();m=host.memory();view=new DataView(m.buffer,m.byteOffset,m.byteLength);
    view.setUint16(d+0xa77c,sample.x&65535,true);view.setUint16(d+0xa7de,sample.y&65535,true);view.setUint16(d+0x893a,sample.buttons&65535,true);
    target=Math.trunc((((sample.x&65535)-160)<<16>>16)/2)<<24>>24;
    target=Math.abs(target)<16?0:target>0?target-16:target+16;
    m[d+0x5424]=target;input=sample.buttons&1?2:sample.buttons&2?1:0;
   }else{
-   const wheel=desktopInputDevice()==='wheel'?getDesktopWheelInput():undefined;
    m=host.memory();
-   if(wheel?.configured&&wheel.connected)target=originalWheelSteeringTarget(m,d,wheel.steering);
+   if(wheelActive)target=originalWheelSteeringTarget(m,d,wheel.steering);
    else{
     target=host.joystickSteering()<<24>>24;
     if(target>0)target=m[d+0x306c+target];else if(target<0)target=-m[d+0x306c-target];
