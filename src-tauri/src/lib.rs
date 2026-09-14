@@ -12,6 +12,7 @@ fn toggle_fullscreen(window: tauri::Window) -> Result<bool, String> {
 
 #[tauri::command]
 fn exit_game(app: tauri::AppHandle) {
+    force_feedback::stop();
     app.exit(0);
 }
 
@@ -250,6 +251,51 @@ fn native_joysticks() -> Vec<NativeJoystick> {
     }
 }
 
+#[cfg(target_os = "windows")]
+mod force_feedback {
+    #[link(name = "stunts_ffb", kind = "static")]
+    extern "C" {
+        fn stunts_ffb_set_force(force: i32) -> i32;
+        fn stunts_ffb_status() -> i32;
+        fn stunts_ffb_stop();
+    }
+
+    pub fn set(force: f64) -> i32 {
+        let normalized = force.clamp(-1.0, 1.0);
+        unsafe { stunts_ffb_set_force((normalized * 10_000.0).round() as i32) }
+    }
+
+    pub fn status() -> i32 {
+        unsafe { stunts_ffb_status() }
+    }
+
+    pub fn stop() {
+        unsafe { stunts_ffb_stop() }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+mod force_feedback {
+    pub fn set(_force: f64) -> i32 { -1 }
+    pub fn status() -> i32 { -1 }
+    pub fn stop() {}
+}
+
+#[tauri::command]
+fn native_set_force_feedback(force: f64) -> i32 {
+    force_feedback::set(force)
+}
+
+#[tauri::command]
+fn native_force_feedback_status() -> i32 {
+    force_feedback::status()
+}
+
+#[tauri::command]
+fn native_stop_force_feedback() {
+    force_feedback::stop();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -259,7 +305,10 @@ pub fn run() {
             toggle_mt32_panel,
             check_mt32_roms,
             read_mt32_rom,
-            native_joysticks
+            native_joysticks,
+            native_set_force_feedback,
+            native_force_feedback_status,
+            native_stop_force_feedback
         ])
         .run(tauri::generate_context!())
         .expect("error while running PlayStunts DX");
