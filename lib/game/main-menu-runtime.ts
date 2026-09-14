@@ -1,7 +1,7 @@
 import {advanceOriginalMenu,type OriginalMenuState} from './main-menu-input.ts';
 import {originalMainMenuHit} from './main-menu-hit.ts';
 import {originalMenuSelectionFlash} from './menu-selection-flash.ts';
-export interface MainMenuInput {delta:number;key:number;mouseEnabled:boolean;x:number;y:number}
+export interface MainMenuInput {delta:number;key:number;mouseEnabled:boolean;x:number;y:number;selection?:number}
 export interface MainMenuPresentation {
  selectionColours?:Readonly<{late:number;early:number}>;
  redraw(mode:number):void;
@@ -23,7 +23,9 @@ export function createOriginalMainMenu(presentation:MainMenuPresentation,idleCou
  };
  const accept=(input:MainMenuInput)=>{
   if(closed)throw Error('Original main menu has already returned');
-  const result=advanceOriginalMenu(state,input.delta,input.key,originalMainMenuHit(input.x,input.y,input.mouseEnabled));
+  const direct=input.selection!==undefined&&input.selection>=0&&input.selection<5?input.selection:-1;
+  const hit=direct>=0?direct:originalMainMenuHit(input.x,input.y,input.mouseEnabled);
+  const result=advanceOriginalMenu(state,input.delta,input.key,hit);
   state=result.state;if(result.result!==undefined)closed=true;
   return result;
  };
