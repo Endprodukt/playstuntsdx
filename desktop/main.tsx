@@ -12,11 +12,20 @@ type DesktopLaunch = ReturnType<typeof nativeLaunchProfile> & {
   track?: number[];
 };
 
+type DesktopSoundDevice = 'off' | 'pc-speaker' | 'tandy' | 'adlib' | 'sound-blaster' | 'mt32';
+const soundKey = 'playstunts-dx-sound-device';
+const soundDevices = new Set<DesktopSoundDevice>(['off', 'pc-speaker', 'tandy', 'adlib', 'sound-blaster', 'mt32']);
+
 type TauriGlobal = {
   core?: {
     invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>;
   };
 };
+
+function desktopSoundDevice(): DesktopSoundDevice {
+  const saved = window.localStorage.getItem(soundKey) as DesktopSoundDevice | null;
+  return saved && soundDevices.has(saved) ? saved : 'sound-blaster';
+}
 
 function DesktopApp() {
   const [assets, setAssets] = useState<Assets | null>(null);
@@ -101,10 +110,14 @@ function DesktopApp() {
   if (error) return <div className="desktop-message desktop-error" role="alert">{error}</div>;
   if (!assets || !launch) return <div className="desktop-message" role="status">Loading PlayStunts DX…</div>;
 
-  // Until PlayStunts DX has its own MT-32 ROM setup dialog, do not let a saved
-  // browser MT-32 selection prevent the desktop game from starting. The normal
-  // native AdLib path remains fully functional without proprietary ROM files.
-  const soundDevice = launch.soundDevice === 'mt32' ? undefined : launch.soundDevice;
+  const selectedSound = desktopSoundDevice();
+  const soundDevice = selectedSound === 'mt32'
+    ? 'mt32'
+    : selectedSound === 'tandy'
+      ? 'tandy'
+      : selectedSound === 'pc-speaker'
+        ? 'pc-speaker'
+        : undefined;
 
   return (
     <main className="desktop-game-shell">
@@ -115,7 +128,7 @@ function DesktopApp() {
         autoStart
         soundDevice={soundDevice}
         displayMode={launch.displayMode}
-        initiallyMuted={launch.initiallyMuted}
+        initiallyMuted={selectedSound === 'off'}
         hercules={launch.hercules}
         directory={launch.directory}
         initialTrack={launch.track}
