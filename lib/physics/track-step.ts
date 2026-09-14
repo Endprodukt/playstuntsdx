@@ -6,6 +6,7 @@ import {roadsidePosts} from './roadside-posts.ts';
 import { stepEngine, type EngineState, type EngineTuning } from './engine.ts';
 import { stepSteering } from './steering.ts';
 import { stepGrip, type GripState, type GripTuning } from './grip.ts';
+import { updateForceFeedbackContact } from './force-feedback.ts';
 import { reconstructPose } from './chassis.ts';
 import { trackContact, type CrashImpact, type TrackGeometry } from './track-contact.ts';
 import { i16, vecTransform, type Vector } from './math.ts';
@@ -56,7 +57,12 @@ export function stepTrack(
     })(),
     retainContactScratch,
   );
-  return moveTrack(before,wheels,track,engine,grip,engineRoadSpeed,contactScratch);
+  const moved = moveTrack(before,wheels,track,engine,grip,engineRoadSpeed,contactScratch);
+  // stepGrip captures the player's transient signed slip before it is cleared.
+  // Refresh its contact fields here, after the real wheel-contact pass, so FFB
+  // uses this tick's surfaces rather than the previous tick's contact history.
+  updateForceFeedbackContact(moved.grip.surfaces,moved.grip.allContact);
+  return moved;
 }
 /** Shared movement stage after engine and grip; car-specific event handling remains with the caller. */
 export function moveTrack(before:LevelState,wheels:Vector[],track:TrackGeometry,engine:EngineState,grip:GripState,engineRoadSpeed:number,contactScratch?:number[]):ReturnType<typeof stepTrack>{

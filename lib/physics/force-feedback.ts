@@ -28,6 +28,21 @@ export function updateForceFeedbackTelemetry(next: ForceFeedbackTelemetry) {
   };
 }
 
+/**
+ * Replaces only the wheel-contact part of the latest player sample after the
+ * real track-contact pass. This keeps transient grip/slip data from stepGrip,
+ * while surface rumble uses the wheel surfaces produced by the same physics tick.
+ */
+export function updateForceFeedbackContact(surfaces: number[], allContact: number) {
+  if (!telemetry) return;
+  telemetry = {
+    ...telemetry,
+    surfaces: [...surfaces],
+    allContact,
+    updatedAt: Date.now(),
+  };
+}
+
 export function clearForceFeedbackTelemetry() {
   telemetry = undefined;
   smoothedForce = 0;
@@ -68,8 +83,8 @@ export function sampleForceFeedback(physicalSteering: number) {
   const spin = clamp(state.spin / 96, -1, 1);
   const aligning = -(slip * 0.34 + spin * 0.20) * speed * contact;
 
-  // Grass stays deliberately coarse like the original surface. Frequency rises
-  // with speed and disappears completely on road or while airborne.
+  // Surface 4 is the same real wheel surface that Stunts' grip code treats as
+  // grass/off-road. Road therefore contributes no artificial vibration here.
   const frequency = 15 + speed * 18;
   const phase = (Date.now() / 1000) * Math.PI * 2 * frequency;
   const grassRumble = Math.sin(phase) * grass * speed * 0.13 * contact;
