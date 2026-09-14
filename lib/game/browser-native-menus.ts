@@ -39,6 +39,7 @@ import type {createNativeRaceSession} from './native-race-session.ts';
 import {runNativeMenuCoordinator} from './native-menu-coordinator.ts';
 import {runNativeMainMenuSelection} from './native-main-menu.ts';
 import {restoreOriginalMainMenuPixels} from './main-menu-raster.ts';
+import {originalMainMenuBounds} from './main-menu-hit.ts';
 import {runNativeCarMenu,type NativeCarMenuHost} from './native-car-runtime.ts';
 import {runNativeOpponentMenu,type NativeOpponentHost} from './native-opponent-runtime.ts';
 import {runNativeOptions,type NativeOptionsHost} from './native-options-runtime.ts';
@@ -60,6 +61,7 @@ import {runNativeRaceResults,type NativeRaceResultsState,type NativeRaceResultsH
 import type {NativeHighScorePreparationHost} from './native-high-score-preparation.ts';
 import type {Assets} from './types.ts';
 const ENHANCED_BACKGROUND_ROOT='/site/enhanced-backgrounds';
+const HIRES_MAIN_MENU='/game/hires/main-menu.png';
 const enhancedTrackOverviews=['desert','tropical','alpine','city','country'].map(name=>`${ENHANCED_BACKGROUND_ROOT}/${name}-overview.png`);
 type TextResources={resources:NativeDialogHost['resources']};
 type ScreenResources=NativeEditorHost['screenResources'];
@@ -78,6 +80,11 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  ]);
 
  const mainMenuArt=await binary('main-menu-art.bin');
+ const highResMainMenu=new Image();let highResMainMenuReady=false;
+ highResMainMenu.decoding='async';
+ highResMainMenu.onload=()=>{highResMainMenuReady=true;options.graphics?.refresh?.();};
+ highResMainMenu.onerror=()=>{highResMainMenuReady=false;};
+ highResMainMenu.src=HIRES_MAIN_MENU;
  const original=bundledTrackReplays(options.assets.tracks,binary);
  for(const [name,entry] of Object.entries(scores))original.set(nativeFileKey('',name,'.hig'),()=>binary('high-scores/'+entry.file));
  const files=await createNativeFileStore(original,await openNativeFilePersistence());
@@ -101,7 +108,11 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   if(presentHercules){const owner=scanoutOwner??lastNativeDisplay?.owner;if(!owner)throw Error('Native Hercules display owner is missing');presentHercules(owner);return;}
   context.setTransform(1,0,0,1,0,0);context.imageSmoothingEnabled=false;
   if(screen==='main'&&!options.displayMode)restoreOriginalMainMenuPixels(pixels,mainMenuArt,outline);
-  {for(let i=0;i<64000;i++){const c=pixels[i];image.data[i*4]=displayPalette[c*3];image.data[i*4+1]=displayPalette[c*3+1];image.data[i*4+2]=displayPalette[c*3+2];image.data[i*4+3]=255;}drawing.putImageData(image,0,0);context.drawImage(surface,0,0,canvas.width,canvas.height);}
+  for(let i=0;i<64000;i++){const c=pixels[i];image.data[i*4]=displayPalette[c*3];image.data[i*4+1]=displayPalette[c*3+1];image.data[i*4+2]=displayPalette[c*3+2];image.data[i*4+3]=255;}drawing.putImageData(image,0,0);
+  if(screen==='main'&&!options.displayMode&&options.graphics?.enabled&&highResMainMenuReady){
+   context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';context.drawImage(highResMainMenu,0,0,canvas.width,canvas.height);
+   if(outline){const [selection,color]=outline,[left,top,right,bottom]=originalMainMenuBounds[selection],sx=canvas.width/320,sy=canvas.height/200,c=color*3;context.fillStyle=`rgb(${displayPalette[c]} ${displayPalette[c+1]} ${displayPalette[c+2]})`;context.fillRect(left*sx,top*sy,(right-left+1)*sx,sy);context.fillRect(left*sx,bottom*sy,(right-left+1)*sx,sy);context.fillRect(left*sx,top*sy,sx,(bottom-top+1)*sy);context.fillRect(right*sx,top*sy,sx,(bottom-top+1)*sy);}
+  }else context.drawImage(surface,0,0,canvas.width,canvas.height);
  };
  const present=()=>paint();
  const host={pixels,font,smallFont,resources:{...misc.resources,...mainText.resources},present,input:input.read,release:input.release,gameCounter:input.gameCounter,counter:input.counter,waitTicks:input.waitTicks,enumerate:async(path:string,extension:string)=>files.enumerate(path,extension),editPath:(path:string,length:number,timeout:number,field:{x:number;y:number})=>editNativePath({pixels,font,present,counters:input.counters,keyboard:input.keyboard},path,length,timeout,field)};
@@ -249,7 +260,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    let waitingField:{x:number;y:number}|undefined;
    const opponent={
     async show(resource:string,mode:number,x:number,y:number,border:number){
-     pixels.set(runtime.pixels);if(alternate){const owner=alternate.owner,m=owner.memory(),d=owner.d,word=(at:number)=>m[d+at]|(m[d+at+1]<<8);restoreOriginalDisplayWindow(m,d,owner.mode);const content=drawOriginalDialogDisplay(m,d,owner.mode,owner.drawing,gameText.resources[resource],0,{text:word(0x4e8a),border:border===4?word(0x4ec2):border,disabled:0},0xe800,undefined,mode,{x,y});waitingField=content.fields[0];presentRaceDialog(content.layout.bounds,alternateDialogPresent);return;}
+     pixels.set(runtime.pixels);if(alternate){const owner=alternate.owner,m=owner.memory(),d=owner.d,word=(at:number)=>m[d+at]|m[d+at+1]<<8;restoreOriginalDisplayWindow(m,d,owner.mode);const content=drawOriginalDialogDisplay(m,d,owner.mode,owner.drawing,gameText.resources[resource],0,{text:word(0x4e8a),border:border===4?word(0x4ec2):border,disabled:0},0xe800,undefined,mode,{x,y});waitingField=content.fields[0];presentRaceDialog(content.layout.bounds,alternateDialogPresent);return;}
      const content=drawOriginalDialog(pixels,font,gameText.resources[resource],0,{text:memory()[0x2d1a0+0x4e8a],border,disabled:0},undefined,mode,{x,y});waitingField=content.fields[0];presentRaceDialog(content.layout.bounds);
     },
     drawTime(text:string){if(!waitingField)throw Error('Original opponent timer field is missing');if(alternate){const owner=alternate.owner,m=owner.memory(),d=owner.d,v=new DataView(m.buffer),fontAt=v.getUint16(d+0x4dd2,true)*16,bytes=Array.from(text,c=>c.charCodeAt(0)),x=Math.trunc((320-measureOriginalFont(m.subarray(fontAt,fontAt+65536),bytes))/2);m.set([...bytes,0],d+0xe800);owner.drawing.text(0xe800,x,waitingField.y,true);presentRaceDialog(activeDialogBounds,alternateDialogPresent);return;}const x=Math.trunc((320-measureOriginalFont(font,Array.from(text,c=>c.charCodeAt(0))))/2);drawOriginalFont(pixels,font,text,x,waitingField.y,memory()[0x2d1a0+0x4e8a],Array.from({length:256},(_,i)=>(i*320)&65535),0);presentRaceDialog(activeDialogBounds);},
