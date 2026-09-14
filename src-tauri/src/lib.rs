@@ -1,3 +1,4 @@
+use serde::Serialize;
 use std::{fs, path::PathBuf};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
@@ -100,6 +101,155 @@ fn read_mt32_rom(kind: String) -> Result<Vec<u8>, String> {
     fs::read(&path).map_err(|error| format!("Could not read {}: {error}", path.display()))
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeJoystick {
+    id: String,
+    name: String,
+    axes: Vec<f64>,
+    buttons: Vec<f64>,
+}
+
+#[cfg(target_os = "windows")]
+mod winmm_joystick {
+    use super::NativeJoystick;
+
+    const MAXPNAMELEN: usize = 32;
+    const MAX_JOYSTICKOEMVXDNAME: usize = 260;
+    const JOYERR_NOERROR: u32 = 0;
+    const JOY_RETURNALL: u32 = 0x0000_00ff;
+
+    #[repr(C)]
+    #[allow(non_snake_case)]
+    struct JoyCapsW {
+        wMid: u16,
+        wPid: u16,
+        szPname: [u16; MAXPNAMELEN],
+        wXmin: u32,
+        wXmax: u32,
+        wYmin: u32,
+        wYmax: u32,
+        wZmin: u32,
+        wZmax: u32,
+        wNumButtons: u32,
+        wPeriodMin: u32,
+        wPeriodMax: u32,
+        wRmin: u32,
+        wRmax: u32,
+        wUmin: u32,
+        wUmax: u32,
+        wVmin: u32,
+        wVmax: u32,
+        wCaps: u32,
+        wMaxAxes: u32,
+        wNumAxes: u32,
+        wMaxButtons: u32,
+        szRegKey: [u16; MAXPNAMELEN],
+        szOEMVxD: [u16; MAX_JOYSTICKOEMVXDNAME],
+    }
+
+    #[repr(C)]
+    #[allow(non_snake_case)]
+    struct JoyInfoEx {
+        dwSize: u32,
+        dwFlags: u32,
+        dwXpos: u32,
+        dwYpos: u32,
+        dwZpos: u32,
+        dwRpos: u32,
+        dwUpos: u32,
+        dwVpos: u32,
+        dwButtons: u32,
+        dwButtonNumber: u32,
+        dwPOV: u32,
+        dwReserved1: u32,
+        dwReserved2: u32,
+    }
+
+    #[link(name = "winmm")]
+    extern "system" {
+        fn joyGetNumDevs() -> u32;
+        fn joyGetDevCapsW(id: usize, caps: *mut JoyCapsW, size: u32) -> u32;
+        fn joyGetPosEx(id: u32, info: *mut JoyInfoEx) -> u32;
+    }
+
+    fn wide_string(value: &[u16]) -> String {
+        let end = value.iter().position(|&c| c == 0).unwrap_or(value.len());
+        String::from_utf16_lossy(&value[..end])
+    }
+
+    fn normalize(value: u32, min: u32, max: u32) -> f64 {
+        if max <= min {
+            return 0.0;
+        }
+        (((value.saturating_sub(min)) as f64 / (max - min) as f64) * 2.0 - 1.0)
+            .clamp(-1.0, 1.0)
+    }
+
+    pub fn read() -> Vec<NativeJoystick> {
+        let mut devices = Vec::new();
+        let count = unsafe { joyGetNumDevs() };
+        for index in 0..count {
+            let mut caps: JoyCapsW = unsafe { std::mem::zeroed() };
+            if unsafe {
+                joyGetDevCapsW(
+                    index as usize,
+                    &mut caps,
+                    std::mem::size_of::<JoyCapsW>() as u32,
+                )
+            } != JOYERR_NOERROR
+            {
+                continue;
+            }
+
+            let mut info: JoyInfoEx = unsafe { std::mem::zeroed() };
+            info.dwSize = std::mem::size_of::<JoyInfoEx>() as u32;
+            info.dwFlags = JOY_RETURNALL;
+            if unsafe { joyGetPosEx(index, &mut info) } != JOYERR_NOERROR {
+                continue;
+            }
+
+            let raw_axes = [
+                (info.dwXpos, caps.wXmin, caps.wXmax),
+                (info.dwYpos, caps.wYmin, caps.wYmax),
+                (info.dwZpos, caps.wZmin, caps.wZmax),
+                (info.dwRpos, caps.wRmin, caps.wRmax),
+                (info.dwUpos, caps.wUmin, caps.wUmax),
+                (info.dwVpos, caps.wVmin, caps.wVmax),
+            ];
+            let axis_count = (caps.wNumAxes as usize).min(raw_axes.len());
+            let axes = raw_axes[..axis_count]
+                .iter()
+                .map(|&(value, min, max)| normalize(value, min, max))
+                .collect();
+            let button_count = (caps.wNumButtons as usize).min(32);
+            let buttons = (0..button_count)
+                .map(|button| if info.dwButtons & (1u32 << button) != 0 { 1.0 } else { 0.0 })
+                .collect();
+            let name = wide_string(&caps.szPname);
+            devices.push(NativeJoystick {
+                id: format!("winmm:{:04x}:{:04x}:{index}", caps.wMid, caps.wPid),
+                name: if name.is_empty() { format!("Windows Joystick {index}") } else { name },
+                axes,
+                buttons,
+            });
+        }
+        devices
+    }
+}
+
+#[tauri::command]
+fn native_joysticks() -> Vec<NativeJoystick> {
+    #[cfg(target_os = "windows")]
+    {
+        return winmm_joystick::read();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Vec::new()
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -108,7 +258,8 @@ pub fn run() {
             exit_game,
             toggle_mt32_panel,
             check_mt32_roms,
-            read_mt32_rom
+            read_mt32_rom,
+            native_joysticks
         ])
         .run(tauri::generate_context!())
         .expect("error while running PlayStunts DX");
