@@ -12,7 +12,9 @@ const neutralWheelInput:DesktopWheelInputState={configured:false,connected:false
 let wheelInput:DesktopWheelInputState={...neutralWheelInput};
 
 export function desktopShellActive(){
- return typeof document!=='undefined'&&!!document.querySelector('.desktop-game-shell');
+ if(typeof window==='undefined')return false;
+ const tauri=(window as typeof window&{__TAURI__?:unknown}).__TAURI__;
+ return !!tauri||(typeof document!=='undefined'&&!!document.querySelector('.desktop-game-shell'));
 }
 
 export function desktopInputDevice():DesktopInputDevice{
