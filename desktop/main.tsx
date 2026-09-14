@@ -6,6 +6,7 @@ import { nativeLaunchProfile } from '../lib/game/native-launch-profile';
 import type { BrowserMt32Power, BrowserNativeMt32Device } from '../lib/game/browser-native-mt32-music';
 import type { Assets } from '../lib/game/types';
 import Mt32Window from './Mt32Window';
+import { installDesktopDriveControls } from './gamepad-drive';
 import {
   MT32_CHANNEL, createMt32Snapshot, createMt32SoundCatalog,
   type Mt32Command, type Mt32HostDevice,
@@ -50,6 +51,8 @@ function DesktopApp() {
   const [error, setError] = useState('');
   const [rolandDevice, setRolandDevice] = useState<BrowserNativeMt32Device>();
   const [rolandPower, setRolandPower] = useState<BrowserMt32Power>();
+
+  useEffect(() => installDesktopDriveControls(), []);
 
   useEffect(() => {
     const controller = new AbortController();
