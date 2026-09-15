@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-desktop/
 release/
+build/asset-helper/
 .next/
 .vinext/
 .wrangler/
@@ -11,6 +12,11 @@ release/
 public/game/
 local-assets/
 Gamedata/
+Custom Cars/
+High Res/
+Runtime/
+config.ini
+ffb.ini
 mt32/
 *.rom
 *.exe
@@ -20,4 +26,6 @@ public/
 __pycache__/
 *.pyc
 .venv/
+.venv-portable/
+src-tauri/generated/
 src-tauri/target/
