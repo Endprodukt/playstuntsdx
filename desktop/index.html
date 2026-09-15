@@ -28,6 +28,85 @@
         };
       })();
     </script>
-    <script type="module" src="/main.tsx"></script>
+    <script type="module">
+      const tauri = window.__TAURI__?.core;
+
+      function parseIni(content) {
+        const values = new Map();
+        let section = '';
+        for (const raw of content.replace(/^\uFEFF/, '').split(/\r?\n/)) {
+          const line = raw.trim();
+          if (!line || line.startsWith(';') || line.startsWith('#')) continue;
+          const sectionMatch = /^\[([^\]]+)\]$/.exec(line);
+          if (sectionMatch) {
+            section = sectionMatch[1].trim().toLowerCase();
+            continue;
+          }
+          const equals = line.indexOf('=');
+          if (equals < 1) continue;
+          const key = line.slice(0, equals).trim().toLowerCase();
+          values.set(`${section}.${key}`, line.slice(equals + 1).trim());
+        }
+        return values;
+      }
+
+      const mappings = new Map([
+        ['playstunts-dx-sound-device', ['Audio', 'Device']],
+        ['stunts-native-game-directory', ['Game', 'Directory']],
+        ['playstunts-dx-wheel-bindings-v2', ['Controls', 'WheelBindings']],
+        ['playstunts-dx-force-feedback-enabled', ['ForceFeedback', 'Enabled']],
+        ['playstunts-dx-force-feedback-strength', ['ForceFeedback', 'Strength']],
+        ['playstunts-dx-enhanced-graphics', ['Display', 'EnhancedGraphics']],
+      ]);
+
+      if (tauri) {
+        try {
+          const file = await tauri.invoke('native_config');
+          const values = parseIni(file.content);
+          const nativeSetItem = Storage.prototype.setItem;
+          const nativeRemoveItem = Storage.prototype.removeItem;
+
+          for (const [storageKey, [section, key]] of mappings) {
+            const value = values.get(`${section.toLowerCase()}.${key.toLowerCase()}`);
+            if (value === undefined || value === '') nativeRemoveItem.call(localStorage, storageKey);
+            else nativeSetItem.call(localStorage, storageKey, value);
+          }
+
+          Storage.prototype.setItem = function(key, value) {
+            nativeSetItem.call(this, key, value);
+            if (this !== localStorage) return;
+            const target = mappings.get(String(key));
+            if (!target) return;
+            void tauri.invoke('native_config_set', {
+              section: target[0],
+              key: target[1],
+              value: String(value),
+            }).catch(reason => console.warn('[Config] Could not save config.ini:', reason));
+          };
+
+          Storage.prototype.removeItem = function(key) {
+            nativeRemoveItem.call(this, key);
+            if (this !== localStorage) return;
+            const target = mappings.get(String(key));
+            if (!target) return;
+            void tauri.invoke('native_config_set', {
+              section: target[0],
+              key: target[1],
+              value: '',
+            }).catch(reason => console.warn('[Config] Could not save config.ini:', reason));
+          };
+
+          const fullscreen = values.get('display.fullscreen')?.toLowerCase();
+          const wantsFullscreen = !['0', 'false', 'no', 'off'].includes(fullscreen ?? 'true');
+          if (!wantsFullscreen && window.__PLAYSTUNTS_DX_WINDOW__ !== 'mt32') {
+            await tauri.invoke('toggle_fullscreen');
+          }
+        } catch (reason) {
+          console.warn('[Config] Could not load config.ini:', reason);
+        }
+      }
+
+      await import('/main.tsx');
+    </script>
   </body>
 </html>
