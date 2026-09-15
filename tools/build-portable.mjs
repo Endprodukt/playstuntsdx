@@ -21,7 +21,7 @@ rmSync(releaseDir, { recursive: true, force: true });
 mkdirSync(releaseDir, { recursive: true });
 copyFileSync(executable, path.join(releaseDir, 'PlayStunts DX.exe'));
 
-for (const directory of ['Gamedata', 'High Res', 'mt32']) {
+for (const directory of ['Gamedata', 'Custom Cars', 'High Res', 'mt32']) {
   mkdirSync(path.join(releaseDir, directory), { recursive: true });
 }
 
@@ -30,3 +30,4 @@ console.log('Portable build ready:');
 console.log(releaseDir);
 console.log('');
 console.log('Put the original Stunts files in Gamedata before launching the portable build.');
+console.log('Optional custom cars can be placed in Custom Cars directly or in nested subfolders.');
