@@ -1,7 +1,7 @@
 export const DESKTOP_CONTROL_BINDINGS_KEY='playstunts-dx-control-bindings-v1';
 
 export type DesktopControlAction=
- |'accelerate'|'brake'|'steer-left'|'steer-right'|'shift-up'|'shift-down'
+ |'accelerate'|'brake'|'steer-left'|'steer-right'|'shift-up'|'shift-down'|'space-action'|'enter-action'
  |'game-menu'|'camera-cycle'|'camera-1'|'camera-2'|'camera-3'|'camera-4'
  |'follow-opponent'|'dashboard'
  |'replay-camera-up'|'replay-camera-down'|'replay-camera-left'|'replay-camera-right'
@@ -31,8 +31,10 @@ export const DESKTOP_CONTROL_DEFINITIONS:readonly DesktopControlDefinition[]=[
  {id:'brake',group:'Driving & menus',label:'Brake / Down',help:'Brake; also moves down in original menus and replay controls.',targetScans:[80],primaryScan:80,defaultKeys:['ArrowDown']},
  {id:'steer-left',group:'Driving & menus',label:'Steer / Left',help:'Steer left; also moves left in original menus and replay controls.',targetScans:[75],primaryScan:75,defaultKeys:['ArrowLeft']},
  {id:'steer-right',group:'Driving & menus',label:'Steer / Right',help:'Steer right; also moves right in original menus and replay controls.',targetScans:[77],primaryScan:77,defaultKeys:['ArrowRight']},
- {id:'shift-up',group:'Driving & menus',label:'Shift Up / Space action',help:'Original shift-up action. Space and A are the original aliases.',targetScans:[57],primaryScan:57,defaultKeys:['Space','KeyA']},
- {id:'shift-down',group:'Driving & menus',label:'Shift Down / Enter action',help:'Original shift-down/confirm action. Enter and Z are the original aliases.',targetScans:[28],primaryScan:28,defaultKeys:['Enter','KeyZ']},
+ {id:'shift-up',group:'Driving & menus',label:'Shift Up',help:'Original A shift-up control.',targetScans:[30],primaryScan:30,defaultKeys:['KeyA']},
+ {id:'shift-down',group:'Driving & menus',label:'Shift Down',help:'Original Z shift-down control.',targetScans:[44],primaryScan:44,defaultKeys:['KeyZ']},
+ {id:'space-action',group:'Driving & menus',label:'Space / Alternate Shift Up',help:'Original Space action. It also shifts up while driving and activates controls in several original screens.',targetScans:[57],primaryScan:57,defaultKeys:['Space']},
+ {id:'enter-action',group:'Driving & menus',label:'Enter / Confirm / Alt. Shift Down',help:'Original Enter action. It confirms menus and also shifts down while driving.',targetScans:[28],primaryScan:28,defaultKeys:['Enter']},
  {id:'game-menu',group:'Driving & menus',label:'Game Menu / Back',help:'Open the in-game menu or back out of the current original screen.',targetScans:[1],primaryScan:1,defaultKeys:['Escape']},
 
  {id:'camera-cycle',group:'Race',label:'Cycle Camera',help:'Cycle the original race camera.',targetScans:[46],primaryScan:46,defaultKeys:['KeyC']},
