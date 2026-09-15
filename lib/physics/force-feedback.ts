@@ -26,7 +26,6 @@ type ForceFeedbackConfig = {
   maxForce: number;
   centeringBase: number;
   centeringSpeed: number;
-  truckStrength: number;
   slideSlip: number;
   slideSpin: number;
   grassStrength: number;
@@ -60,7 +59,6 @@ const defaultConfig: ForceFeedbackConfig = {
   maxForce: 0.98,
   centeringBase: 0.055,
   centeringSpeed: 0.245,
-  truckStrength: 1,
   slideSlip: 0.34,
   slideSpin: 0.20,
   grassStrength: 0.13,
@@ -152,7 +150,6 @@ export function applyForceFeedbackIni(content: string) {
     maxForce: percent('General', 'MaxForce', defaultConfig.maxForce, 10, 100),
     centeringBase: percent('Centering', 'BaseForce', defaultConfig.centeringBase),
     centeringSpeed: percent('Centering', 'SpeedForce', defaultConfig.centeringSpeed),
-    truckStrength: percent('Centering', 'TruckStrength', defaultConfig.truckStrength, 0, 150),
     slideSlip: percent('Slide', 'SlipForce', defaultConfig.slideSlip),
     slideSpin: percent('Slide', 'SpinForce', defaultConfig.slideSpin),
     grassStrength: percent('Grass', 'Strength', defaultConfig.grassStrength),
@@ -354,7 +351,7 @@ export function sampleForceFeedback(physicalSteering: number) {
 
   const stationaryWithoutRoadContact =
     contactCount === 0 && Math.abs(state.speed) < 256 && Math.abs(state.roadSpeed) < 256;
-  const centeringLoad = stationaryWithoutRoadContact ? config.truckStrength : contact;
+  const centeringLoad = stationaryWithoutRoadContact ? 1 : contact;
   const centering =
     -clamp(physicalSteering, -1, 1) *
     (config.centeringBase + config.centeringSpeed * speed) * centeringLoad;

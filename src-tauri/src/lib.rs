@@ -337,11 +337,7 @@ BaseForce=5.5
 ; Default: 24.5
 SpeedForce=24.5
 
-; Starting-truck centering relative to normal low-speed centering.
-; Range: 0 - 150 %
-; Recommended: 50 - 120 %
-; Default: 100
-TruckStrength=100
+; On the starting truck the car is stationary, so BaseForce is used directly.
 
 [Slide]
 ; Counter-steer contribution from signed tyre slip.
