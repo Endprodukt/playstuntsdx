@@ -1,5 +1,8 @@
 import {
+  applyForceFeedbackIni,
   forceFeedbackDrivingActive,
+  forceFeedbackMenuDurationMs,
+  forceFeedbackMenuRepeatMs,
   sampleForceFeedback,
   triggerForceFeedbackMenuPulse,
 } from '../physics/force-feedback';
@@ -9,6 +12,12 @@ type TauriGlobal = {
   core?: {
     invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>;
   };
+};
+
+type NativeForceFeedbackConfigFile = {
+  content: string;
+  path: string;
+  created: boolean;
 };
 
 const enabledKey = 'playstunts-dx-force-feedback-enabled';
@@ -30,6 +39,12 @@ let menuPulseInterval: number | undefined;
 let lastMenuNavigation = 0;
 let lastMenuNavigationAt = 0;
 let statusElement: HTMLSpanElement | undefined;
+let configPathElement: HTMLDivElement | undefined;
+let configLoaded = false;
+let configLoading = false;
+let configPath = '';
+let configCreated = false;
+let configError = '';
 let unloadInstalled = false;
 
 function tauriCore() {
@@ -55,8 +70,42 @@ function statusText() {
   return 'initializing…';
 }
 
+function configText() {
+  if (configError) return `ffb.ini: ${configError}`;
+  if (configLoading) return 'ffb.ini: loading…';
+  if (!configPath) return 'ffb.ini: desktop config not loaded yet';
+  return `ffb.ini: ${configPath}${configCreated ? ' (created)' : ''}`;
+}
+
 function updateStatus() {
   if (statusElement) statusElement.textContent = statusText();
+  if (configPathElement) configPathElement.textContent = configText();
+}
+
+async function reloadForceFeedbackConfig() {
+  const core = tauriCore();
+  if (!core || configLoading) return;
+  configLoading = true;
+  configError = '';
+  updateStatus();
+  try {
+    const file = await core.invoke<NativeForceFeedbackConfigFile>('native_force_feedback_config');
+    applyForceFeedbackIni(file.content);
+    configLoaded = true;
+    configPath = file.path;
+    configCreated = file.created;
+    resampleAndSend(true, true);
+  } catch (reason) {
+    configError = reason instanceof Error ? reason.message : String(reason);
+    console.warn('[FFB] Could not load ffb.ini:', reason);
+  } finally {
+    configLoading = false;
+    updateStatus();
+  }
+}
+
+function ensureForceFeedbackConfig() {
+  if (!configLoaded && !configLoading) void reloadForceFeedbackConfig();
 }
 
 function installFocusRecovery() {
@@ -81,14 +130,12 @@ function pulseMenuFeedback() {
   if (menuPulseInterval !== undefined) window.clearInterval(menuPulseInterval);
   const startedAt = performance.now();
   const pump = () => {
-    if (performance.now() - startedAt >= 115) {
+    if (performance.now() - startedAt >= forceFeedbackMenuDurationMs() + 25) {
       if (menuPulseInterval !== undefined) window.clearInterval(menuPulseInterval);
       menuPulseInterval = undefined;
       resampleAndSend(true, true);
       return;
     }
-    // Native Stunts menus live on a canvas and may not have an active driving
-    // input session. A menu detent is allowed to wake DirectInput by itself.
     resampleAndSend(true, true);
   };
   pump();
@@ -174,9 +221,7 @@ function updateWheelMenuFeedback(input: DesktopWheelInputState) {
     return;
   }
 
-  // The original menu repeats a held direction. Give each repeated selection a
-  // tactile notch without firing at the much faster wheel polling rate.
-  if (navigation !== lastMenuNavigation || now - lastMenuNavigationAt >= 190) {
+  if (navigation !== lastMenuNavigation || now - lastMenuNavigationAt >= forceFeedbackMenuRepeatMs()) {
     pulseMenuFeedback();
     lastMenuNavigationAt = now;
   }
@@ -225,6 +270,17 @@ function installSettingsUi() {
   note.textContent = 'Physics FFB: steering, slide counter-steer, grass, landings, crashes, gear shifts and RPM engine vibration.';
   note.style.cssText = 'margin-top:8px;color:#aaa;font-size:12px;';
 
+  const configRow = document.createElement('div');
+  configRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:10px;';
+  const reloadButton = document.createElement('button');
+  reloadButton.type = 'button';
+  reloadButton.textContent = 'Reload ffb.ini';
+  reloadButton.style.cssText = 'padding:5px 9px;border:1px solid #555;border-radius:4px;background:#252525;color:#eee;cursor:pointer;';
+  configRow.append(reloadButton);
+
+  configPathElement = document.createElement('div');
+  configPathElement.style.cssText = 'margin-top:6px;color:#888;font-size:11px;overflow-wrap:anywhere;';
+
   checkbox.addEventListener('change', () => {
     window.localStorage.setItem(enabledKey, String(checkbox.checked));
     if (checkbox.checked) resampleAndSend(true, true);
@@ -236,8 +292,12 @@ function installSettingsUi() {
     value.textContent = `${slider.value}%`;
     resampleAndSend(true, true);
   });
+  reloadButton.addEventListener('click', () => {
+    configCreated = false;
+    void reloadForceFeedbackConfig();
+  });
 
-  section.append(row, strengthRow, note);
+  section.append(row, strengthRow, note, configRow, configPathElement);
   panel.append(section);
   updateStatus();
 }
@@ -277,6 +337,7 @@ function resampleAndSend(immediate = false, allowIdle = false) {
 
 export function updateDesktopForceFeedback(input: DesktopWheelInputState) {
   if (typeof window === 'undefined') return;
+  ensureForceFeedbackConfig();
   installSettingsUi();
   installFocusRecovery();
   updateWheelMenuFeedback(input);
@@ -291,8 +352,6 @@ export function updateDesktopForceFeedback(input: DesktopWheelInputState) {
 
   latestSteering = input.steering;
   ffbActive = input.configured && input.connected;
-  // DirectInput's wheel-axis polarity is opposite to the normalized physics
-  // convention used by sampleForceFeedback(), so invert once at this boundary.
   resampleAndSend();
 }
 
