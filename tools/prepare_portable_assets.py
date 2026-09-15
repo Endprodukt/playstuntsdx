@@ -12,6 +12,7 @@ import json
 import shutil
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 
 import prepare_desktop_assets as desktop
@@ -227,6 +228,8 @@ def main() -> int:
         return 0
     except Exception as error:
         print(f"PlayStunts DX asset preparation failed: {error}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.flush()
         return 1
 
 
