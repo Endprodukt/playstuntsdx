@@ -9,6 +9,8 @@ const executable = [
   path.join(targetDir, 'playstuntsdx.exe'),
   path.join(targetDir, 'PlayStunts DX.exe'),
 ].find(existsSync);
+const helperStampSource = path.join(root, 'src-tauri', 'generated', 'playstuntsdx-prepare.sha256');
+const helperStampRelease = path.join(releaseDir, '.asset-helper.sha256');
 
 function iniEntries(content) {
   const entries = [];
@@ -69,12 +71,21 @@ if (!executable) {
   throw new Error(`Release executable not found in ${targetDir}. Run npm run desktop:build first.`);
 }
 
-// Keep portable user data between local rebuilds. Runtime is generated data and
-// is deliberately rebuilt so changes to the asset preparation code take effect.
 mkdirSync(releaseDir, { recursive: true });
-rmSync(path.join(releaseDir, 'Runtime'), { recursive: true, force: true });
+
+// Runtime generation is expensive. Keep it across ordinary code rebuilds and
+// invalidate it only when the embedded asset-preparation helper changed.
+const helperStamp = existsSync(helperStampSource) ? readFileSync(helperStampSource, 'utf8').trim() : '';
+const packagedStamp = existsSync(helperStampRelease) ? readFileSync(helperStampRelease, 'utf8').trim() : '';
+if (!helperStamp || helperStamp !== packagedStamp) {
+  rmSync(path.join(releaseDir, 'Runtime'), { recursive: true, force: true });
+  console.log('Asset preparation changed; Runtime will be regenerated on next launch.');
+} else if (existsSync(path.join(releaseDir, 'Runtime'))) {
+  console.log('Asset preparation unchanged; keeping existing Runtime.');
+}
 rmSync(path.join(releaseDir, 'prepare-runtime.log'), { force: true });
 copyFileSync(executable, path.join(releaseDir, 'PlayStunts DX.exe'));
+if (helperStamp) writeFileSync(helperStampRelease, `${helperStamp}\n`);
 
 for (const directory of ['Gamedata', 'Custom Cars', 'High Res', 'mt32']) {
   mkdirSync(path.join(releaseDir, directory), { recursive: true });
