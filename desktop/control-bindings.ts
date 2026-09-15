@@ -86,7 +86,10 @@ export function installDesktopControlBindings(){
   if(disposed||polling||!core)return;polling=true;
   try{
    const next=await core.invoke<NativeJoystick[]>('native_joysticks');if(disposed)return;
-   devices=next;detectButtonCapture(next);updateDesktopControlDevices(next);
+   devices=next;
+   // While capture is armed this updates the runtime baseline in suspended mode.
+   // The button used for assignment therefore cannot leak through to the game.
+   updateDesktopControlDevices(next);detectButtonCapture(next);
   }catch(reason){if(!disposed)console.warn('[Controls] Control-button scan failed:',reason);}
   finally{polling=false;}
  }
