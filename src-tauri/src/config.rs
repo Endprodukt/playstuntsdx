@@ -59,7 +59,9 @@ fn find_value(content: &str, wanted_section: &str, wanted_key: &str) -> Option<S
         if !section.eq_ignore_ascii_case(wanted_section) {
             continue;
         }
-        let (key, value) = line.split_once('=')?;
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
         if key.trim().eq_ignore_ascii_case(wanted_key) {
             return Some(value.trim().to_string());
         }
@@ -84,9 +86,7 @@ pub fn bool_value(section: &str, key: &str, fallback: bool) -> Result<bool, Stri
 }
 
 fn validate_name(kind: &str, value: &str) -> Result<(), String> {
-    if value.trim().is_empty()
-        || value.contains(['\r', '\n', '[', ']', '='])
-    {
+    if value.trim().is_empty() || value.contains(['\r', '\n', '[', ']', '=']) {
         return Err(format!("Invalid config {kind}."));
     }
     Ok(())
