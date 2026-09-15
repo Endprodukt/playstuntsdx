@@ -77,8 +77,8 @@ function defaultBindings():DesktopControlBindings{
 function validButton(value:unknown):DesktopControllerBinding|undefined{
  if(!value||typeof value!=='object')return undefined;
  const entry=value as Partial<DesktopControllerBinding>;
- if(typeof entry.deviceId!=='string'||!entry.deviceId||!Number.isInteger(entry.button)||Number(entry.button)<0)return undefined;
- return {deviceId:entry.deviceId,deviceName:typeof entry.deviceName==='string'?entry.deviceName:undefined,button:Number(entry.button)};
+ if(typeof entry.deviceId!=='string'||!entry.deviceId||typeof entry.button!=='number'||!Number.isInteger(entry.button)||entry.button<0)return undefined;
+ return {deviceId:entry.deviceId,deviceName:typeof entry.deviceName==='string'?entry.deviceName:undefined,button:entry.button};
 }
 
 function readBindings():DesktopControlBindings{
@@ -146,6 +146,10 @@ export function setDesktopControlButton(action:DesktopControlAction,button:Deskt
 
 export function resetDesktopControlAction(action:DesktopControlAction){
  const next=desktopControlBindings(),definition=definitionById.get(action)!;
+ for(const other of DESKTOP_CONTROL_DEFINITIONS){
+  if(other.id===action)continue;
+  next[other.id].keys=next[other.id].keys.filter(key=>!definition.defaultKeys.includes(key));
+ }
  next[action]={keys:[...definition.defaultKeys]};
  saveBindings(next);
 }
