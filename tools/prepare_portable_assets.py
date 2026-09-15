@@ -22,13 +22,17 @@ MUTABLE_GAME_EXTENSIONS = {".TRK", ".RPL", ".HIG"}
 
 
 def copy_portable_assets(files: dict[str, Path], output: Path) -> list[str]:
-    """Copy reference assets without treating user data as a version checksum.
+    """Copy direct assets while separating layout recipes from version checks.
 
-    Stunts tracks, replays and high-score files legitimately change during play
-    or in the editor. Their contents therefore cannot identify the supported
-    game release. Immutable program/resource files retain strict SHA-256 checks.
+    ``direct-asset-recipes.json`` says where a source file is needed in the
+    runtime. It is not a trustworthy release fingerprint because it was built
+    from a working game directory that may also contain setup helpers and user
+    data. Only files explicitly present in ``original-file-checksums.json`` are
+    eligible for strict release validation. Tracks, replays and high scores are
+    mutable by design and are never used to identify the game release.
     """
     recipes = json.loads(desktop.bundled_file("direct-asset-recipes.json").read_text())
+    canonical = json.loads(desktop.bundled_file("original-file-checksums.json").read_text()).get("files", {})
     missing: list[str] = []
     for row in recipes:
         name = row["source"].upper()
@@ -39,8 +43,12 @@ def copy_portable_assets(files: dict[str, Path], output: Path) -> list[str]:
 
         data = file.read_bytes()
         extension = Path(name).suffix.upper()
-        if extension not in MUTABLE_GAME_EXTENSIONS:
-            if desktop.digest(data) != row["sha256"]:
+        reference = canonical.get(name)
+        if reference is not None and extension not in MUTABLE_GAME_EXTENSIONS:
+            expected_size = reference.get("bytes")
+            if expected_size is not None and len(data) != int(expected_size):
+                raise ValueError(f"Unsupported reference file size: {name}")
+            if desktop.digest(data) != reference["sha256"]:
                 raise ValueError(f"Unsupported reference file checksum: {name}")
         elif extension == ".TRK" and len(data) != 1802:
             raise ValueError(f"Invalid Stunts track length: {name}")
