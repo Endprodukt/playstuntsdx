@@ -1,8 +1,14 @@
 export const ENHANCED_TEXTURES_KEY='playstunts-dx-enhanced-textures';
 export const ENHANCED_TEXTURES_EVENT='playstunts-dx-enhanced-textures-changed';
 
+let upgradedRaceModule:Promise<unknown>|undefined;
+
 function isDesktopDx(){
  return typeof window!=='undefined'&&typeof document!=='undefined'&&!!document.querySelector('.desktop-game-shell');
+}
+
+function preloadUpgradedRaceModule(){
+ upgradedRaceModule??=import('./upgraded-race-scene').catch(()=>undefined);
 }
 
 /** Enhanced textures are opt-out in PlayStunts DX. Missing overrides always
@@ -12,12 +18,18 @@ function isDesktopDx(){
 export function enhancedTexturesEnabled(){
  if(!isDesktopDx())return false;
  const saved=window.localStorage.getItem(ENHANCED_TEXTURES_KEY);
- return saved!=='off'&&saved!=='0'&&saved!=='false';
+ const enabled=saved!=='off'&&saved!=='0'&&saved!=='false';
+ // Warm the dynamically loaded driving presentation while the user is still
+ // in the menu. When a race starts the current menu frame can remain on screen
+ // until the upgraded renderer is ready instead of exposing a native frame.
+ if(enabled)preloadUpgradedRaceModule();
+ return enabled;
 }
 
 export function setEnhancedTexturesEnabled(enabled:boolean){
  if(!isDesktopDx())return;
  window.localStorage.setItem(ENHANCED_TEXTURES_KEY,enabled?'on':'off');
+ if(enabled)preloadUpgradedRaceModule();
  window.dispatchEvent(new Event(ENHANCED_TEXTURES_EVENT));
 }
 
