@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +9,9 @@ const venv = path.join(root, '.venv-portable');
 const venvPython = path.join(venv, 'Scripts', 'python.exe');
 const generated = path.join(root, 'src-tauri', 'generated');
 const helper = path.join(generated, 'playstuntsdx-prepare.exe');
+const stamp = path.join(generated, 'playstuntsdx-prepare.sha256');
 const work = path.join(root, 'build', 'asset-helper');
+const force = process.argv.includes('--force');
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -32,8 +35,45 @@ function findPython() {
   throw new Error('Python 3 was not found. Install Python 3 and run the build again.');
 }
 
+function collectFiles(directory, predicate) {
+  const result = [];
+  for (const entry of readdirSync(directory)) {
+    const absolute = path.join(directory, entry);
+    if (statSync(absolute).isDirectory()) result.push(...collectFiles(absolute, predicate));
+    else if (predicate(absolute)) result.push(absolute);
+  }
+  return result;
+}
+
+function helperInputHash() {
+  const files = [
+    ...collectFiles(path.join(root, 'tools'), file => file.endsWith('.py')),
+    path.join(root, 'tools', 'requirements.txt'),
+    path.join(root, 'tools', 'requirements-build.txt'),
+    path.join(root, 'tools', 'credits-layout-recipe.json'),
+    path.join(root, 'tools', 'resource-selections.json'),
+    path.join(root, 'docs', 'direct-asset-recipes.json'),
+    path.join(root, 'docs', 'original-file-checksums.json'),
+  ].sort();
+  const hash = createHash('sha256');
+  hash.update('playstuntsdx-portable-helper-v2\0');
+  for (const file of files) {
+    hash.update(path.relative(root, file).replaceAll('\\', '/'));
+    hash.update('\0');
+    hash.update(readFileSync(file));
+    hash.update('\0');
+  }
+  return hash.digest('hex');
+}
+
 if (process.platform !== 'win32') {
   throw new Error('The embedded PlayStunts DX asset helper must be built on Windows.');
+}
+
+const inputHash = helperInputHash();
+if (!force && existsSync(helper) && existsSync(stamp) && readFileSync(stamp, 'utf8').trim() === inputHash) {
+  console.log('Embedded asset helper unchanged; reusing cached build.');
+  process.exit(0);
 }
 
 if (!existsSync(venvPython)) {
@@ -72,5 +112,6 @@ if (!existsSync(helper)) throw new Error(`Asset preparation helper was not creat
 // Importing the frozen helper also imports Unicorn. Run a cheap smoke test now so
 // a missing native Unicorn DLL fails the build instead of the user's first launch.
 run(helper, ['--help']);
+writeFileSync(stamp, `${inputHash}\n`);
 
 console.log(`Embedded asset helper ready: ${helper}`);
