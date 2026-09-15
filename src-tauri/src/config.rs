@@ -3,6 +3,7 @@ use std::{fs, path::{Path, PathBuf}, time::UNIX_EPOCH};
 
 const DEFAULT_CONFIG: &str = include_str!("../config.default.ini");
 const CUSTOM_CARS_STATE: &str = ".playstuntsdx-custom-cars.state";
+const CUSTOM_TRACKS_STATE: &str = ".playstuntsdx-custom-tracks.state";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,7 +25,7 @@ fn application_root() -> Result<PathBuf, String> {
         .ok_or_else(|| "Could not locate PlayStunts DX executable directory".to_string())
 }
 
-fn collect_custom_car_state(root: &Path, directory: &Path, rows: &mut Vec<String>) -> Result<(), String> {
+fn collect_external_state(root: &Path, directory: &Path, rows: &mut Vec<String>) -> Result<(), String> {
     if !directory.is_dir() {
         return Ok(());
     }
@@ -34,7 +35,7 @@ fn collect_custom_car_state(root: &Path, directory: &Path, rows: &mut Vec<String
         let entry = entry.map_err(|error| format!("Could not scan {}: {error}", directory.display()))?;
         let path = entry.path();
         if path.is_dir() {
-            collect_custom_car_state(root, &path, rows)?;
+            collect_external_state(root, &path, rows)?;
             continue;
         }
         if !path.is_file() {
@@ -59,29 +60,39 @@ fn collect_custom_car_state(root: &Path, directory: &Path, rows: &mut Vec<String
     Ok(())
 }
 
-fn refresh_runtime_for_custom_cars() -> Result<(), String> {
-    if cfg!(debug_assertions) {
-        return Ok(());
-    }
-    let root = application_root()?;
-    let custom_root = root.join("Custom Cars");
-    let state_path = root.join(CUSTOM_CARS_STATE);
+fn external_state_changed(root: &Path, folder: &str, state_name: &str) -> Result<bool, String> {
+    let source = root.join(folder);
+    let state_path = root.join(state_name);
     let mut rows = Vec::new();
-    collect_custom_car_state(&custom_root, &custom_root, &mut rows)?;
+    collect_external_state(&source, &source, &mut rows)?;
     rows.sort_by_key(|row| row.to_ascii_lowercase());
     let current = rows.join("\n");
     let previous = fs::read_to_string(&state_path).ok();
     if previous.as_deref() == Some(current.as_str()) {
+        return Ok(false);
+    }
+    fs::write(&state_path, current)
+        .map_err(|error| format!("Could not save {folder} state {}: {error}", state_path.display()))?;
+    Ok(true)
+}
+
+fn refresh_runtime_for_custom_content() -> Result<(), String> {
+    if cfg!(debug_assertions) {
+        return Ok(());
+    }
+    let root = application_root()?;
+    let cars_changed = external_state_changed(&root, "Custom Cars", CUSTOM_CARS_STATE)?;
+    let tracks_changed = external_state_changed(&root, "Custom Tracks", CUSTOM_TRACKS_STATE)?;
+    if !cars_changed && !tracks_changed {
         return Ok(());
     }
 
     let runtime = root.join("Runtime");
     if runtime.exists() {
-        fs::remove_dir_all(&runtime)
-            .map_err(|error| format!("Could not refresh {} after Custom Cars changed: {error}", runtime.display()))?;
+        fs::remove_dir_all(&runtime).map_err(|error| {
+            format!("Could not refresh {} after custom content changed: {error}", runtime.display())
+        })?;
     }
-    fs::write(&state_path, current)
-        .map_err(|error| format!("Could not save Custom Cars state {}: {error}", state_path.display()))?;
     Ok(())
 }
 
@@ -90,7 +101,7 @@ pub fn path() -> Result<PathBuf, String> {
 }
 
 pub fn ensure() -> Result<NativeConfigFile, String> {
-    refresh_runtime_for_custom_cars()?;
+    refresh_runtime_for_custom_content()?;
     let path = path()?;
     let created = if path.exists() {
         false
