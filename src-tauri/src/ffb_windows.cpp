@@ -8,6 +8,7 @@
 
 namespace {
 std::atomic<int> requestedForce{0};
+std::atomic<bool> refreshRequested{false};
 std::atomic<int> status{0};
 std::once_flag workerOnce;
 
@@ -108,26 +109,50 @@ void runWorker() {
         return;
     }
 
-    effect->Start(1, 0);
-    status.store(1);
+    status.store(0);
     int lastForce = 0x7fffffff;
+    bool needsRestart = true;
+    auto nextHealthCheck = std::chrono::steady_clock::now();
+    auto nextAcquireAttempt = nextHealthCheck;
 
     for (;;) {
+        const auto now = std::chrono::steady_clock::now();
         const int force = std::clamp(requestedForce.load(), -DI_FFNOMINALMAX, DI_FFNOMINALMAX);
-        if (force != lastForce) {
-            DICONSTANTFORCE updateForce{};
-            updateForce.lMagnitude = force;
-            DIEFFECT update{};
-            update.dwSize = sizeof(DIEFFECT);
-            update.cbTypeSpecificParams = sizeof(DICONSTANTFORCE);
-            update.lpvTypeSpecificParams = &updateForce;
-            HRESULT result = effect->SetParameters(&update, DIEP_TYPESPECIFICPARAMS | DIEP_START);
-            if (FAILED(result)) {
-                device->Acquire();
+        const bool refresh = refreshRequested.exchange(false);
+
+        if (now >= nextHealthCheck) {
+            DWORD effectStatus = 0;
+            const HRESULT health = effect->GetEffectStatus(&effectStatus);
+            if (FAILED(health) || !(effectStatus & DIEGES_PLAYING)) needsRestart = true;
+            nextHealthCheck = now + std::chrono::milliseconds(100);
+        }
+
+        if ((force != lastForce || refresh || needsRestart) && now >= nextAcquireAttempt) {
+            HRESULT result = device->Acquire();
+            if (SUCCEEDED(result)) {
+                device->SendForceFeedbackCommand(DISFFC_SETACTUATORSON);
+                DICONSTANTFORCE updateForce{};
+                updateForce.lMagnitude = force;
+                DIEFFECT update{};
+                update.dwSize = sizeof(DIEFFECT);
+                update.cbTypeSpecificParams = sizeof(DICONSTANTFORCE);
+                update.lpvTypeSpecificParams = &updateForce;
                 result = effect->SetParameters(&update, DIEP_TYPESPECIFICPARAMS | DIEP_START);
             }
-            status.store(SUCCEEDED(result) ? 1 : 0);
-            if (SUCCEEDED(result)) lastForce = force;
+
+            if (SUCCEEDED(result)) {
+                lastForce = force;
+                needsRestart = false;
+                status.store(1);
+                nextHealthCheck = now + std::chrono::milliseconds(100);
+            } else {
+                // Foreground-exclusive DirectInput devices are expected to become
+                // unacquired while another window has focus. Keep retrying without
+                // treating that normal focus transition as a missing wheel.
+                needsRestart = true;
+                status.store(0);
+                nextAcquireAttempt = now + std::chrono::milliseconds(50);
+            }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(4));
     }
@@ -142,6 +167,9 @@ void ensureWorker() {
 
 extern "C" int stunts_ffb_set_force(int force) {
     requestedForce.store(std::clamp(force, -DI_FFNOMINALMAX, DI_FFNOMINALMAX));
+    // A resend is also a recovery request. This matters when foreground focus
+    // returns while the desired force happens to be identical to the old value.
+    refreshRequested.store(true);
     ensureWorker();
     return status.load();
 }
@@ -153,4 +181,5 @@ extern "C" int stunts_ffb_status() {
 
 extern "C" void stunts_ffb_stop() {
     requestedForce.store(0);
+    refreshRequested.store(true);
 }

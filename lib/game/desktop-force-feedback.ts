@@ -16,7 +16,9 @@ const sendIntervalMs = 15;
 
 let uiInstalled = false;
 let menuFeedbackInstalled = false;
+let focusRecoveryInstalled = false;
 let pending = false;
+let resendAfterPending = false;
 let lastSend = 0;
 let latestForce = 0;
 let lastStatus = 0;
@@ -48,6 +50,18 @@ function statusText() {
 
 function updateStatus() {
   if (statusElement) statusElement.textContent = statusText();
+}
+
+function installFocusRecovery() {
+  if (focusRecoveryInstalled || typeof window === 'undefined' || typeof document === 'undefined') return;
+  focusRecoveryInstalled = true;
+  const recover = () => {
+    if (enabled()) void sendForce(latestForce, true);
+  };
+  window.addEventListener('focus', recover);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) recover();
+  });
 }
 
 function installMenuFeedback() {
@@ -142,7 +156,11 @@ function installSettingsUi() {
 
 async function sendForce(force: number, immediate = false) {
   const core = tauriCore();
-  if (!core || pending) return;
+  if (!core) return;
+  if (pending) {
+    if (immediate) resendAfterPending = true;
+    return;
+  }
   const now = performance.now();
   if (!immediate && now - lastSend < sendIntervalMs) return;
   lastSend = now;
@@ -155,12 +173,17 @@ async function sendForce(force: number, immediate = false) {
   } finally {
     pending = false;
     updateStatus();
+    if (resendAfterPending) {
+      resendAfterPending = false;
+      void sendForce(latestForce, true);
+    }
   }
 }
 
 export function updateDesktopForceFeedback(input: DesktopWheelInputState) {
   if (typeof window === 'undefined') return;
   installSettingsUi();
+  installFocusRecovery();
 
   if (!unloadInstalled) {
     unloadInstalled = true;
