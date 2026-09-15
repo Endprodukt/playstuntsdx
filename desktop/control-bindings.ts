@@ -87,6 +87,26 @@ export function installDesktopControlBindings(){
  };
  window.addEventListener('keydown',keyboardCapture,true);
 
+ // Buttons in the F8 panel can retain DOM focus after the panel is hidden.
+ // If that happens, a trusted Escape would never reach the game canvas. Route
+ // it back to the original input adapter instead of requiring a mouse click.
+ const forwardEscape=(event:KeyboardEvent)=>{
+  if(event.code!=='Escape'||!event.isTrusted||capture)return;
+  const panel=section?.parentElement;
+  if(panel&&panel.style.display!=='none')return;
+  if(event.target instanceof HTMLCanvasElement)return;
+  const canvas=document.querySelector<HTMLCanvasElement>('.desktop-game-shell canvas');
+  if(!canvas)return;
+  canvas.focus({preventScroll:true});
+  canvas.dispatchEvent(new KeyboardEvent(event.type,{
+   key:'Escape',code:'Escape',bubbles:true,cancelable:true,repeat:event.repeat,
+   ctrlKey:event.ctrlKey,shiftKey:event.shiftKey,altKey:event.altKey,metaKey:event.metaKey,
+  }));
+  event.preventDefault();event.stopImmediatePropagation();
+ };
+ window.addEventListener('keydown',forwardEscape,true);
+ window.addEventListener('keyup',forwardEscape,true);
+
  function detectButtonCapture(next:readonly NativeJoystick[]){
   if(!capture||capture.kind!=='button'){captureBefore=snapshot(next);return;}
   for(const device of next){
@@ -126,6 +146,10 @@ export function installDesktopControlBindings(){
  frame=requestAnimationFrame(mount);
 
  return()=>{
-  disposed=true;window.clearInterval(timer);cancelAnimationFrame(frame);window.removeEventListener('keydown',keyboardCapture,true);setDesktopControlCapture(false);updateDesktopControlDevices([]);section?.remove();
+  disposed=true;window.clearInterval(timer);cancelAnimationFrame(frame);
+  window.removeEventListener('keydown',keyboardCapture,true);
+  window.removeEventListener('keydown',forwardEscape,true);
+  window.removeEventListener('keyup',forwardEscape,true);
+  setDesktopControlCapture(false);updateDesktopControlDevices([]);section?.remove();
  };
 }
