@@ -214,12 +214,31 @@ def prepare(original: Path, custom_root: Path, output: Path) -> dict[str, object
     return report
 
 
+def self_test_unicorn() -> None:
+    """Execute generated x86 code so CFG-incompatible frozen builds fail early."""
+    from unicorn import Uc, UC_ARCH_X86, UC_MODE_16
+
+    emulator = Uc(UC_ARCH_X86, UC_MODE_16)
+    emulator.mem_map(0, 0x1000)
+    emulator.mem_write(0, b"\x90\x90")
+    emulator.emu_start(0, 2, count=2)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--original", required=True, type=Path)
+    parser.add_argument("--self-test-unicorn", action="store_true")
+    parser.add_argument("--original", type=Path)
     parser.add_argument("--custom-cars", type=Path)
-    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+
+    if args.self_test_unicorn:
+        self_test_unicorn()
+        print("Unicorn execution self-test passed.")
+        return 0
+    if args.original is None or args.output is None:
+        parser.error("--original and --output are required unless --self-test-unicorn is used")
+
     custom_root = args.custom_cars or args.original.resolve().parent / "Custom Cars"
     try:
         custom_root.mkdir(parents=True, exist_ok=True)
