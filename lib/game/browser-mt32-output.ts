@@ -21,7 +21,7 @@ export async function loadBrowserMt32Output(signal?:AbortSignal){
  const aborted=()=>{if(signal?.aborted)throw new DOMException('Roland audio closed','AbortError');};
  aborted();
  if(!host.stuntsCreateMunt||host.stuntsMuntVersion!==bridgeVersion){
-  loading??=new Promise<void>((resolve,reject)=>{const script=document.createElement('script');script.type='module';script.src='/mt32-local/bootstrap.mjs?v='+bridgeVersion;script.onload=()=>resolve();script.onerror=()=>{script.remove();loading=undefined;reject(Error('Roland synthesizer failed to load'));};document.head.appendChild(script);});
+  loading??=new Promise<void>((resolve,reject)=>{const script=document.createElement('script');script.type='module';script.src='/game/mt32-local/bootstrap.mjs?v='+bridgeVersion;script.onload=()=>resolve();script.onerror=()=>{script.remove();loading=undefined;reject(Error('Roland synthesizer failed to load'));};document.head.appendChild(script);});
   await loading;
  }
  aborted();if(!host.stuntsCreateMunt||host.stuntsMuntVersion!==bridgeVersion)throw Error('Roland synthesizer is unavailable');
