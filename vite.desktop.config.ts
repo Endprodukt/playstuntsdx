@@ -55,6 +55,14 @@ function desktopRuntimeAdaptation(): Plugin {
           .replace(showroomCall, 'createUpgradedCarMenu(palette,materials.indices)');
       }
 
+      if (normalized.endsWith('/lib/game/browser-mt32-output.ts')) {
+        const browserBootstrap = "script.src='/game/mt32-local/bootstrap.mjs?v='+bridgeVersion";
+        if (!source.includes(browserBootstrap)) {
+          throw new Error('Desktop runtime adaptation is out of date for browser-mt32-output.ts');
+        }
+        return source.replace(browserBootstrap, "script.src='/mt32-local/bootstrap.mjs?v='+bridgeVersion");
+      }
+
       if (normalized.endsWith('/lib/game/native-options-runtime.ts')) {
         const audioControl = 'else reply=await host.audio(value.type);';
         const actionClose = '   }}finally{retained?.close();}\n  }';
