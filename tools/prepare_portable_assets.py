@@ -1,9 +1,10 @@
-"""Prepare the portable PlayStunts DX runtime, including optional custom cars.
+"""Prepare the portable PlayStunts DX runtime, including optional custom content.
 
 Custom cars may live directly in ``Custom Cars`` next to the application or in
 arbitrarily nested subdirectories. A CARxxxx.RES file defines a car and its
 STxxxx.P3S, STDAxxxx.PVS and STDBxxxx.PVS companions must live in the same
-folder. Original Stunts files are never modified.
+folder. Custom ``.TRK`` files may likewise live directly in ``Custom Tracks``
+or in nested folders. Original Stunts files are never modified.
 """
 from __future__ import annotations
 
@@ -19,6 +20,7 @@ import prepare_desktop_assets as desktop
 from extract import resources, unpack
 
 MAX_CARS = 32
+STUNTS_TRACK_BYTES = 1802
 MUTABLE_GAME_EXTENSIONS = {".TRK", ".RPL", ".HIG"}
 
 
@@ -51,7 +53,7 @@ def copy_portable_assets(files: dict[str, Path], output: Path) -> list[str]:
                 raise ValueError(f"Unsupported reference file size: {name}")
             if desktop.digest(data) != reference["sha256"]:
                 raise ValueError(f"Unsupported reference file checksum: {name}")
-        elif extension == ".TRK" and len(data) != 1802:
+        elif extension == ".TRK" and len(data) != STUNTS_TRACK_BYTES:
             raise ValueError(f"Invalid Stunts track length: {name}")
 
         relative = Path(row["path"])
@@ -74,6 +76,19 @@ def custom_car_candidates(root: Path) -> list[Path]:
             and path.suffix.upper() == ".RES"
             and path.stem.upper().startswith("CAR")
             and len(path.stem) == 7
+        ),
+        key=lambda path: str(path.relative_to(root)).casefold(),
+    )
+
+
+def custom_track_candidates(root: Path) -> list[Path]:
+    if not root.is_dir():
+        return []
+    return sorted(
+        (
+            path
+            for path in root.rglob("*")
+            if path.is_file() and path.suffix.upper() == ".TRK"
         ),
         key=lambda path: str(path.relative_to(root)).casefold(),
     )
@@ -167,6 +182,38 @@ def merge_custom_cars(original: Path, custom_root: Path, merged: Path) -> dict[s
     }
 
 
+def merge_custom_tracks(custom_root: Path, merged: Path) -> dict[str, object]:
+    """Add valid external tracks without replacing supplied or earlier files."""
+    candidates = custom_track_candidates(custom_root)
+    used_names = {path.name.upper() for path in merged.iterdir() if path.is_file()}
+    loaded: list[dict[str, str]] = []
+    skipped: list[dict[str, str]] = []
+
+    for track_file in candidates:
+        relative = str(track_file.relative_to(custom_root))
+        name = track_file.name.upper()
+        data = track_file.read_bytes()
+        if len(data) != STUNTS_TRACK_BYTES:
+            skipped.append({
+                "file": relative,
+                "reason": f"invalid Stunts track length ({len(data)} bytes; expected {STUNTS_TRACK_BYTES})",
+            })
+            continue
+        if name in used_names:
+            skipped.append({"file": relative, "reason": f"duplicate track filename: {name}"})
+            continue
+
+        (merged / name).write_bytes(data)
+        used_names.add(name)
+        loaded.append({"file": relative, "name": name})
+
+    return {
+        "discovered": len(candidates),
+        "loaded": loaded,
+        "skipped": skipped,
+    }
+
+
 def extract_car_models(source: Path, output: Path) -> None:
     """Desktop extractor variant that accepts original plus custom model banks."""
     output.mkdir(parents=True, exist_ok=True)
@@ -198,17 +245,20 @@ def extract_car_models(source: Path, output: Path) -> None:
 def prepare(original: Path, custom_root: Path, output: Path) -> dict[str, object]:
     original = original.resolve()
     custom_root = custom_root.resolve()
+    custom_tracks_root = custom_root.parent / "Custom Tracks"
     if not original.is_dir():
         raise ValueError(f"Gamedata directory does not exist: {original}")
 
-    with tempfile.TemporaryDirectory(prefix="playstuntsdx-custom-cars-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="playstuntsdx-custom-content-") as temporary:
         merged = Path(temporary) / "merged"
-        custom_report = merge_custom_cars(original, custom_root, merged)
+        custom_car_report = merge_custom_cars(original, custom_root, merged)
+        custom_track_report = merge_custom_tracks(custom_tracks_root, merged)
         desktop.copy_verified = copy_portable_assets
         desktop.extract_car_models = extract_car_models
         report = desktop.prepare(merged, output)
 
-    report["customCars"] = custom_report
+    report["customCars"] = custom_car_report
+    report["customTracks"] = custom_track_report
     manifest = output / "desktop-preparation.json"
     manifest.write_text(json.dumps(report, indent=2) + "\n")
     return report
@@ -240,8 +290,10 @@ def main() -> int:
         parser.error("--original and --output are required unless --self-test-unicorn is used")
 
     custom_root = args.custom_cars or args.original.resolve().parent / "Custom Cars"
+    custom_tracks_root = custom_root.parent / "Custom Tracks"
     try:
         custom_root.mkdir(parents=True, exist_ok=True)
+        custom_tracks_root.mkdir(parents=True, exist_ok=True)
         report = prepare(args.original, custom_root, args.output)
         print(json.dumps(report, separators=(",", ":")))
         return 0
