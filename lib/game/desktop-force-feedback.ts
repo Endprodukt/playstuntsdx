@@ -2,7 +2,6 @@ import {
   applyForceFeedbackIni,
   forceFeedbackDrivingActive,
   forceFeedbackMenuDurationMs,
-  forceFeedbackMenuRepeatMs,
   sampleForceFeedback,
   triggerForceFeedbackMenuPulse,
 } from '../physics/force-feedback';
@@ -37,7 +36,6 @@ let lastStatus = 0;
 let lastMenuPulseRequest = 0;
 let menuPulseInterval: number | undefined;
 let lastMenuNavigation = 0;
-let lastMenuNavigationAt = 0;
 let statusElement: HTMLSpanElement | undefined;
 let configPathElement: HTMLDivElement | undefined;
 let configLoaded = false;
@@ -160,6 +158,7 @@ function installMenuFeedback() {
     (event) => {
       if (
         enabled() &&
+        !event.repeat &&
         ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code) &&
         eventIsOnMenuControl(event.target)
       ) {
@@ -206,25 +205,21 @@ function updateWheelMenuFeedback(input: DesktopWheelInputState) {
     forceFeedbackDrivingActive()
   ) {
     lastMenuNavigation = 0;
-    lastMenuNavigationAt = 0;
     return;
   }
 
   const horizontal = input.steering < -0.18 ? -1 : input.steering > 0.18 ? 1 : 0;
   const vertical = input.throttle > 0.12 ? 2 : input.brake > 0.12 ? -2 : 0;
   const navigation = vertical || horizontal;
-  const now = performance.now();
 
   if (!navigation) {
     lastMenuNavigation = 0;
-    lastMenuNavigationAt = 0;
     return;
   }
 
-  if (navigation !== lastMenuNavigation || now - lastMenuNavigationAt >= forceFeedbackMenuRepeatMs()) {
-    pulseMenuFeedback();
-    lastMenuNavigationAt = now;
-  }
+  // A menu detent belongs to the transition into a new direction, not to the
+  // amount of time that direction is held. Returning to centre arms the next tick.
+  if (navigation !== lastMenuNavigation) pulseMenuFeedback();
   lastMenuNavigation = navigation;
 }
 
@@ -359,7 +354,6 @@ export function stopDesktopForceFeedback() {
   latestForce = 0;
   ffbActive = false;
   lastMenuNavigation = 0;
-  lastMenuNavigationAt = 0;
   if (menuPulseInterval !== undefined && typeof window !== 'undefined') {
     window.clearInterval(menuPulseInterval);
     menuPulseInterval = undefined;
