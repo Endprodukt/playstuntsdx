@@ -29,23 +29,28 @@ type TauriGlobal = {
   };
 };
 
+function tauriCore() {
+  return (window as typeof window & { __TAURI__?: TauriGlobal }).__TAURI__?.core;
+}
+
 function desktopSoundDevice(): DesktopSoundDevice {
   const saved = window.localStorage.getItem(soundKey) as DesktopSoundDevice | null;
   return saved && soundDevices.has(saved) ? saved : 'sound-blaster';
 }
 
 function exitGame() {
-  const tauri = (window as typeof window & { __TAURI__?: TauriGlobal }).__TAURI__;
-  if (!tauri?.core) {
+  const core = tauriCore();
+  if (!core) {
     window.close();
     return;
   }
-  void tauri.core.invoke<void>('exit_game')
+  void core.invoke<void>('exit_game')
     .catch(reason => console.error('PlayStunts DX exit failed:', reason));
 }
 
 function DesktopApp() {
   const selectedSound = desktopSoundDevice();
+  const [gamedataReady, setGamedataReady] = useState<boolean | null>(null);
   const [assets, setAssets] = useState<Assets | null>(null);
   const [launch, setLaunch] = useState<DesktopLaunch | null>(null);
   const [error, setError] = useState('');
@@ -59,6 +64,16 @@ function DesktopApp() {
 
     async function load() {
       try {
+        const core = tauriCore();
+        if (core) {
+          const ready = await core.invoke<boolean>('check_gamedata');
+          if (controller.signal.aborted) return;
+          setGamedataReady(ready);
+          if (!ready) return;
+        } else {
+          setGamedataReady(true);
+        }
+
         const response = await fetch('/game/assets.json', { signal: controller.signal });
         if (!response.ok) throw new Error('PlayStunts DX game assets could not be loaded.');
         const loadedAssets = (await response.json()) as Assets;
@@ -83,9 +98,9 @@ function DesktopApp() {
     let togglingMt32 = false;
 
     async function invokeBoolean(command: string) {
-      const tauri = (window as typeof window & { __TAURI__?: TauriGlobal }).__TAURI__;
-      if (!tauri?.core) return;
-      await tauri.core.invoke<boolean>(command);
+      const core = tauriCore();
+      if (!core) return;
+      await core.invoke<boolean>(command);
     }
 
     function onKeyDown(event: KeyboardEvent) {
@@ -174,8 +189,18 @@ function DesktopApp() {
     return () => cancelAnimationFrame(frame);
   }, [assets, launch]);
 
+  if (gamedataReady === false) {
+    return (
+      <div className="desktop-message desktop-gamedata-message" role="status">
+        <div>
+          <strong>Original game data not found</strong>
+          <span>Copy your complete Stunts game files into the Gamedata folder next to PlayStunts DX.exe, then restart.</span>
+        </div>
+      </div>
+    );
+  }
   if (error) return <div className="desktop-message desktop-error" role="alert">{error}</div>;
-  if (!assets || !launch) return <div className="desktop-message" role="status">Loading PlayStunts DX…</div>;
+  if (gamedataReady === null || !assets || !launch) return <div className="desktop-message" role="status">Loading PlayStunts DX…</div>;
 
   const soundDevice = selectedSound === 'mt32'
     ? 'mt32'
