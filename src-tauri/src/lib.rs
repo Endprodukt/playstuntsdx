@@ -1,5 +1,59 @@
-use std::{fs, path::PathBuf};
+use serde::Serialize;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GameDataStatus {
+    ready: bool,
+    path: String,
+}
+
+fn executable_directory() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|executable| executable.parent().map(Path::to_path_buf))
+}
+
+fn gamedata_candidates() -> Vec<PathBuf> {
+    let executable = executable_directory().map(|directory| directory.join("Gamedata"));
+    let working = std::env::current_dir().ok().map(|directory| directory.join("Gamedata"));
+
+    let mut roots = if cfg!(debug_assertions) {
+        [working, executable].into_iter().flatten().collect::<Vec<_>>()
+    } else {
+        [executable, working].into_iter().flatten().collect::<Vec<_>>()
+    };
+    roots.dedup();
+    roots
+}
+
+fn gamedata_ready(root: &Path) -> bool {
+    ["GAME.PRE", "GAME1.P3S", "MAIN.RES"]
+        .iter()
+        .all(|name| root.join(name).is_file())
+}
+
+#[tauri::command]
+fn check_gamedata() -> GameDataStatus {
+    let roots = gamedata_candidates();
+    if let Some(root) = roots.iter().find(|root| gamedata_ready(root)) {
+        return GameDataStatus {
+            ready: true,
+            path: root.to_string_lossy().into_owned(),
+        };
+    }
+
+    let root = roots.into_iter().next().unwrap_or_else(|| PathBuf::from("Gamedata"));
+    let _ = fs::create_dir_all(&root);
+    GameDataStatus {
+        ready: false,
+        path: root.to_string_lossy().into_owned(),
+    }
+}
 
 #[tauri::command]
 fn toggle_fullscreen(window: tauri::Window) -> Result<bool, String> {
@@ -104,6 +158,7 @@ fn read_mt32_rom(kind: String) -> Result<Vec<u8>, String> {
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            check_gamedata,
             toggle_fullscreen,
             exit_game,
             toggle_mt32_panel,
