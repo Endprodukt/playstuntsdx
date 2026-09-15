@@ -1,8 +1,25 @@
 use serde::Serialize;
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Component, Path, PathBuf},
+    process::Command,
+};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
-const REQUIRED_GAMEDATA: [&str; 3] = ["GAME.PRE", "GAME1.P3S", "MAIN.RES"];
+const REQUIRED_GAMEDATA: [&str; 6] = [
+    "SETUP.EXE",
+    "EGA.CMN",
+    "GAME.PRE",
+    "GAME1.P3S",
+    "GAME2.P3S",
+    "SDMAIN.PVS",
+];
+
+#[cfg(not(debug_assertions))]
+const PREPARE_HELPER: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/generated/playstuntsdx-prepare.exe"
+));
 
 #[tauri::command]
 fn toggle_fullscreen(window: tauri::Window) -> Result<bool, String> {
@@ -15,6 +32,17 @@ fn toggle_fullscreen(window: tauri::Window) -> Result<bool, String> {
 #[tauri::command]
 fn exit_game(app: tauri::AppHandle) {
     app.exit(0);
+}
+
+fn application_root() -> Result<PathBuf, String> {
+    if cfg!(debug_assertions) {
+        return std::env::current_dir().map_err(|error| error.to_string());
+    }
+    let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+    executable
+        .parent()
+        .map(Path::to_path_buf)
+        .ok_or_else(|| "Could not determine the PlayStunts DX directory.".to_string())
 }
 
 fn gamedata_roots() -> Vec<PathBuf> {
@@ -35,22 +63,110 @@ fn gamedata_roots() -> Vec<PathBuf> {
 }
 
 fn preferred_gamedata_root() -> Result<PathBuf, String> {
-    if cfg!(debug_assertions) {
-        if let Ok(current) = std::env::current_dir() {
-            return Ok(current.join("Gamedata"));
+    Ok(application_root()?.join("Gamedata"))
+}
+
+fn complete_gamedata(root: &Path) -> bool {
+    REQUIRED_GAMEDATA.iter().all(|name| root.join(name).is_file())
+}
+
+fn runtime_root() -> Result<PathBuf, String> {
+    Ok(application_root()?.join("Runtime"))
+}
+
+fn runtime_game_root() -> Result<PathBuf, String> {
+    Ok(runtime_root()?.join("game"))
+}
+
+fn runtime_is_ready() -> Result<bool, String> {
+    let root = runtime_root()?;
+    Ok(root.join("desktop-preparation.json").is_file()
+        && root.join("game").join("assets.json").is_file())
+}
+
+fn checked_runtime_path(path: &str) -> Result<PathBuf, String> {
+    let input = Path::new(path);
+    if input.is_absolute() {
+        return Err("Runtime path must be relative.".to_string());
+    }
+    let mut clean = PathBuf::new();
+    for component in input.components() {
+        match component {
+            Component::Normal(value) => clean.push(value),
+            Component::CurDir => {}
+            _ => return Err("Runtime path leaves the game data directory.".to_string()),
         }
     }
-    let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-    let directory = executable
-        .parent()
-        .ok_or_else(|| "Could not determine the PlayStunts DX directory.".to_string())?;
-    Ok(directory.join("Gamedata"))
+    if clean.as_os_str().is_empty() {
+        return Err("Runtime path is empty.".to_string());
+    }
+    Ok(clean)
+}
+
+#[cfg(not(debug_assertions))]
+fn build_runtime(gamedata: &Path) -> Result<(), String> {
+    let runtime = runtime_root()?;
+    if runtime.exists() {
+        fs::remove_dir_all(&runtime)
+            .map_err(|error| format!("Could not replace {}: {error}", runtime.display()))?;
+    }
+
+    let helper = std::env::temp_dir().join(format!(
+        "playstuntsdx-prepare-{}.exe",
+        std::process::id()
+    ));
+    fs::write(&helper, PREPARE_HELPER)
+        .map_err(|error| format!("Could not unpack the PlayStunts DX runtime helper: {error}"))?;
+
+    let mut command = Command::new(&helper);
+    command
+        .arg("--original")
+        .arg(gamedata)
+        .arg("--output")
+        .arg(&runtime);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+
+    let output = command.output();
+    let _ = fs::remove_file(&helper);
+    let output = output.map_err(|error| format!("Could not start the PlayStunts DX runtime helper: {error}"))?;
+    if !output.status.success() {
+        let _ = fs::remove_dir_all(&runtime);
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let detail = if !stderr.is_empty() { stderr } else { stdout };
+        return Err(if detail.is_empty() {
+            "The original Stunts files could not be prepared.".to_string()
+        } else {
+            detail
+        });
+    }
+    if !runtime_is_ready()? {
+        let _ = fs::remove_dir_all(&runtime);
+        return Err("The original Stunts files were prepared incompletely.".to_string());
+    }
+    Ok(())
+}
+
+fn ensure_runtime(gamedata: &Path) -> Result<(), String> {
+    if cfg!(debug_assertions) || runtime_is_ready()? {
+        return Ok(());
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        build_runtime(gamedata)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
 fn check_gamedata() -> Result<bool, String> {
     for root in gamedata_roots() {
-        if REQUIRED_GAMEDATA.iter().all(|name| root.join(name).is_file()) {
+        if complete_gamedata(&root) {
+            ensure_runtime(&root)?;
             return Ok(true);
         }
     }
@@ -59,6 +175,31 @@ fn check_gamedata() -> Result<bool, String> {
     fs::create_dir_all(&root)
         .map_err(|error| format!("Could not create {}: {error}", root.display()))?;
     Ok(false)
+}
+
+#[tauri::command]
+fn runtime_file_exists(path: String) -> Result<bool, String> {
+    let path = runtime_game_root()?.join(checked_runtime_path(&path)?);
+    Ok(path.is_file())
+}
+
+#[tauri::command]
+fn read_runtime_file(path: String) -> Result<tauri::ipc::Response, String> {
+    let path = runtime_game_root()?.join(checked_runtime_path(&path)?);
+    let bytes = fs::read(&path)
+        .map_err(|error| format!("Could not read runtime file {}: {error}", path.display()))?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+#[tauri::command]
+fn write_runtime_file(path: String, data: Vec<u8>) -> Result<(), String> {
+    let path = runtime_game_root()?.join(checked_runtime_path(&path)?);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create {}: {error}", parent.display()))?;
+    }
+    fs::write(&path, data)
+        .map_err(|error| format!("Could not write runtime file {}: {error}", path.display()))
 }
 
 #[tauri::command]
@@ -130,7 +271,7 @@ fn find_mt32_rom(kind: &str) -> Result<PathBuf, String> {
         }
     }
     Err(format!(
-        "MT-32 {kind} ROM not found. Put ctrl_mt32_1_07.rom and pcm_mt32.rom (or MT32_CONTROL.ROM and MT32_PCM.ROM) in the mt32 folder next to PlayStuntsDX.exe."
+        "MT-32 {kind} ROM not found. Put ctrl_mt32_1_07.rom and pcm_mt32.rom (or MT32_CONTROL.ROM and MT32_PCM.ROM) in the mt32 folder next to PlayStunts DX.exe."
     ))
 }
 
@@ -275,7 +416,11 @@ mod winmm_joystick {
             let name = wide_string(&caps.szPname);
             devices.push(NativeJoystick {
                 id: format!("winmm:{:04x}:{:04x}:{index}", caps.wMid, caps.wPid),
-                name: if name.is_empty() { format!("Windows Joystick {index}") } else { name },
+                name: if name.is_empty() {
+                    format!("Windows Joystick {index}")
+                } else {
+                    name
+                },
                 axes,
                 buttons,
             });
@@ -303,6 +448,9 @@ pub fn run() {
             toggle_fullscreen,
             exit_game,
             check_gamedata,
+            runtime_file_exists,
+            read_runtime_file,
+            write_runtime_file,
             toggle_mt32_panel,
             check_mt32_roms,
             read_mt32_rom,
