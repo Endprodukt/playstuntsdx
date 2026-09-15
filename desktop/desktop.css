@@ -82,6 +82,30 @@ body {
   text-align: center;
 }
 
+.desktop-gamedata-note {
+  display: grid;
+  gap: 0.65rem;
+  width: min(420px, 100%);
+  padding: 1rem 1.15rem;
+  border: 1px solid #555;
+  background: #111;
+}
+
+.desktop-gamedata-note strong {
+  font-size: 1rem;
+}
+
+.desktop-gamedata-note span {
+  color: #ddd;
+  font-size: 0.9rem;
+}
+
+.desktop-gamedata-note small {
+  color: #888;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
 .desktop-error {
   color: #ffb4b4;
 }
