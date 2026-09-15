@@ -53,11 +53,16 @@
 
         const mappings = new Map([
           ['playstunts-dx-sound-device', ['Audio', 'Device']],
+          ['playstunts-dx-music-enabled', ['Audio', 'Music']],
+          ['playstunts-dx-sound-enabled', ['Audio', 'Effects']],
           ['stunts-native-game-directory', ['Game', 'Directory']],
+          ['playstunts-dx-input-device', ['Controls', 'InputDevice']],
           ['playstunts-dx-wheel-bindings-v2', ['Controls', 'WheelBindings']],
           ['playstunts-dx-force-feedback-enabled', ['ForceFeedback', 'Enabled']],
           ['playstunts-dx-force-feedback-strength', ['ForceFeedback', 'Strength']],
           ['playstunts-dx-enhanced-graphics', ['Display', 'EnhancedGraphics']],
+          ['playstunts-dx-enhanced-textures', ['Display', 'EnhancedTextures']],
+          ['playstunts-dx-original-graphics-level', ['Display', 'OriginalGraphicsLevel']],
         ]);
 
         if (tauri) {
