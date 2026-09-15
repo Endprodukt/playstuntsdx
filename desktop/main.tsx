@@ -22,6 +22,7 @@ type DesktopLaunch = ReturnType<typeof nativeLaunchProfile> & {
 
 type DesktopSoundDevice = 'off' | 'pc-speaker' | 'tandy' | 'adlib' | 'sound-blaster' | 'mt32';
 const soundKey = 'playstunts-dx-sound-device';
+const graphicsKey = 'playstunts-dx-enhanced-graphics';
 const soundDevices = new Set<DesktopSoundDevice>(['off', 'pc-speaker', 'tandy', 'adlib', 'sound-blaster', 'mt32']);
 
 type TauriGlobal = {
@@ -37,6 +38,11 @@ function tauriCore() {
 function desktopSoundDevice(): DesktopSoundDevice {
   const saved = window.localStorage.getItem(soundKey) as DesktopSoundDevice | null;
   return saved && soundDevices.has(saved) ? saved : 'sound-blaster';
+}
+
+function desktopEnhancedGraphics() {
+  const saved = window.localStorage.getItem(graphicsKey);
+  return saved === null ? true : saved !== 'false';
 }
 
 function exitGame() {
@@ -170,26 +176,35 @@ function DesktopApp() {
     return () => { window.clearInterval(timer); channel.close(); };
   }, [selectedSound, rolandDevice, rolandPower]);
 
-  // PlayStunts DX defaults to the enhanced renderer. The hidden toolbar still
-  // owns the shared graphics state used by the renderer and the in-game option,
-  // so enable that same state once the game UI has mounted instead of creating
-  // a second desktop-only graphics flag.
+  // The hidden toolbar owns the same enhanced-graphics state as the in-game
+  // switch. Apply config.ini once it exists, then mirror later changes back to
+  // the same config through the localStorage bridge installed before startup.
   useEffect(() => {
     if (!assets || !launch) return;
     let frame = 0;
     let attempts = 0;
-    const enableEnhancedGraphics = () => {
+    let observer: MutationObserver | undefined;
+    const configureEnhancedGraphics = () => {
       const toggle = document.querySelector<HTMLButtonElement>(
         '.desktop-game-shell .game-toolbar button[aria-pressed]'
       );
       if (toggle) {
-        if (toggle.getAttribute('aria-pressed') !== 'true') toggle.click();
+        const desired = desktopEnhancedGraphics();
+        observer = new MutationObserver(() => {
+          window.localStorage.setItem(graphicsKey, String(toggle.getAttribute('aria-pressed') === 'true'));
+        });
+        observer.observe(toggle, { attributes: true, attributeFilter: ['aria-pressed'] });
+        if ((toggle.getAttribute('aria-pressed') === 'true') !== desired) toggle.click();
+        else window.localStorage.setItem(graphicsKey, String(desired));
         return;
       }
-      if (attempts++ < 120) frame = requestAnimationFrame(enableEnhancedGraphics);
+      if (attempts++ < 120) frame = requestAnimationFrame(configureEnhancedGraphics);
     };
-    frame = requestAnimationFrame(enableEnhancedGraphics);
-    return () => cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(configureEnhancedGraphics);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
   }, [assets, launch]);
 
   if (gamedataReady === false) {
