@@ -55,10 +55,16 @@ function enabled() {
   return window.localStorage.getItem(enabledKey) === 'true';
 }
 
-function strength() {
-  if (typeof window === 'undefined') return 0.5;
+function strengthSetting() {
+  if (typeof window === 'undefined') return 50;
   const saved = Number(window.localStorage.getItem(strengthKey) ?? '50');
-  return Math.max(0, Math.min(1, Number.isFinite(saved) ? saved / 100 : 0.5));
+  return Math.max(0, Math.min(100, Number.isFinite(saved) ? saved : 50));
+}
+
+function strength() {
+  // The UI keeps its familiar 0-100 range, while the final output multiplier
+  // is doubled internally: 50% = 1.0x and 100% = 2.0x the previous output.
+  return strengthSetting() / 50;
 }
 
 function statusText() {
@@ -255,7 +261,7 @@ function installSettingsUi() {
   slider.min = '0';
   slider.max = '100';
   slider.step = '1';
-  slider.value = String(Math.round(strength() * 100));
+  slider.value = String(Math.round(strengthSetting()));
   const value = document.createElement('span');
   value.style.textAlign = 'right';
   value.textContent = `${slider.value}%`;
