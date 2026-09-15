@@ -31,6 +31,7 @@ fn toggle_fullscreen(window: tauri::Window) -> Result<bool, String> {
 
 #[tauri::command]
 fn exit_game(app: tauri::AppHandle) {
+    force_feedback::stop();
     app.exit(0);
 }
 
@@ -288,6 +289,255 @@ fn read_mt32_rom(kind: String) -> Result<Vec<u8>, String> {
     fs::read(&path).map_err(|error| format!("Could not read {}: {error}", path.display()))
 }
 
+const DEFAULT_FFB_INI: &str = r#"; ============================================================
+; PlayStunts DX - Force Feedback Configuration
+; ============================================================
+;
+; Percent values describe the effect's share of full DirectInput force.
+; Example: 15 = 15%, 0.8 = 0.8%.
+;
+; Range       = accepted technical range. Values outside it are clamped.
+; Recommended = useful tuning range for most wheels.
+; Default     = current PlayStunts DX tuning.
+;
+; Missing or invalid values fall back to the built-in default for that value.
+; Delete this file to have PlayStunts DX generate a fresh default file.
+; Use "Reload ffb.ini" in Wheel Setup [F8] after editing; no restart is needed.
+; ============================================================
+
+[General]
+; Base multiplier for steering/slide/grass physics.
+; Range: 0 - 300 %
+; Recommended: 100 - 240 %
+; Default: 180
+PhysicsStrength=180
+
+; Limit applied to the continuous physics force before transient bumps.
+; Range: 10 - 100 %
+; Recommended: 70 - 95 %
+; Default: 90
+PhysicsLimit=90
+
+; Absolute final DirectInput force limit for all effects combined.
+; Range: 10 - 100 %
+; Recommended: 80 - 100 %
+; Default: 98
+MaxForce=98
+
+[Centering]
+; Low-speed self-aligning force at full steering input.
+; Range: 0 - 100 %
+; Recommended: 2 - 15 %
+; Default: 5.5
+BaseForce=5.5
+
+; Additional self-aligning force added as road speed increases.
+; Range: 0 - 100 %
+; Recommended: 10 - 40 %
+; Default: 24.5
+SpeedForce=24.5
+
+; Starting-truck centering relative to normal low-speed centering.
+; Range: 0 - 150 %
+; Recommended: 50 - 120 %
+; Default: 100
+TruckStrength=100
+
+[Slide]
+; Counter-steer contribution from signed tyre slip.
+; Range: 0 - 100 %
+; Recommended: 15 - 55 %
+; Default: 34
+SlipForce=34
+
+; Counter-steer contribution from vehicle spin/yaw.
+; Range: 0 - 100 %
+; Recommended: 10 - 40 %
+; Default: 20
+SpinForce=20
+
+[Grass]
+; Per-wheel grass/off-road vibration strength.
+; Range: 0 - 100 %
+; Recommended: 5 - 30 %
+; Default: 13
+Strength=13
+
+; Grass vibration frequency at low speed.
+; Range: 1 - 30 Hz
+; Recommended: 8 - 20 Hz
+; Default: 15
+FrequencyMin=15
+
+; Grass vibration frequency at high speed.
+; Range: 1 - 40 Hz
+; Recommended: 20 - 35 Hz
+; Default: 33
+FrequencyMax=33
+
+[Landing]
+; Original wheel-contact fall speed needed before a landing bump starts.
+; Range: 0 - 1000
+; Recommended: 150 - 300
+; Original Stunts hard-impact threshold: 190
+; Default: 190
+MinFallSpeed=190
+
+; Fall speed at which landing strength reaches MaxStrength.
+; Range: 1 - 2000
+; Recommended: 400 - 1000
+; Default: 593 (matches the current PlayStunts DX tuning saturation)
+MaxFallSpeed=593
+
+; Landing bump strength at MinFallSpeed.
+; Range: 0 - 100 %
+; Recommended: 15 - 45 %
+; Default: 28
+MinStrength=28
+
+; Landing bump strength at or above MaxFallSpeed.
+; Range: 0 - 100 %
+; Recommended: 50 - 95 %
+; Default: 90
+MaxStrength=90
+
+; Complete landing pulse duration.
+; Range: 30 - 300 ms
+; Recommended: 70 - 180 ms
+; Default: 120
+DurationMs=120
+
+[GearShift]
+; Short bump when the real Stunts engine changes gear.
+; Range: 0 - 100 %
+; Recommended: 5 - 35 %
+; Default: 15
+Strength=15
+
+; Complete gear-shift pulse duration.
+; Range: 30 - 250 ms
+; Recommended: 70 - 150 ms
+; Default: 110
+DurationMs=110
+
+[Engine]
+; Engine wobble at idle, as percent of full force.
+; Range: 0 - 30 %
+; Recommended: 0 - 3 %
+; Default: 0.8
+MinStrength=0.8
+
+; Engine wobble near maximum RPM.
+; Range: 0 - 30 %
+; Recommended: 0.5 - 5 %
+; Default: 2.0
+MaxStrength=2.0
+
+; Deliberately slow tactile frequency at low RPM.
+; Range: 1 - 10 Hz
+; Recommended: 2 - 5 Hz
+; Default: 3
+FrequencyMin=3
+
+; Deliberately slow tactile frequency at high RPM.
+; Range: 2 - 12 Hz
+; Recommended: 4 - 8 Hz
+; Default: 6
+FrequencyMax=6
+
+[Crash]
+; Minimum crash kick strength at low collision speed.
+; Range: 0 - 100 %
+; Recommended: 40 - 85 %
+; Default: 72
+MinStrength=72
+
+; Maximum crash kick strength.
+; Range: 0 - 100 %
+; Recommended: 70 - 100 %
+; Default: 100
+MaxStrength=100
+
+; Speed where the crash kick reaches MaxStrength.
+; Range: 10 - 200 mph
+; Recommended: 40 - 100 mph
+; Default: 70
+SpeedForMaxMph=70
+
+; Opposite-direction rebound after the main crash kick.
+; Range: 0 - 100 % of the crash kick
+; Recommended: 10 - 50 %
+; Default: 32
+ReboundStrength=32
+
+; Duration of the strong first part of the crash kick.
+; Range: 30 - 300 ms
+; Recommended: 80 - 220 ms
+; Default: 150
+MainDurationMs=150
+
+; Total crash effect duration, including rebound.
+; Range: 60 - 500 ms
+; Recommended: 150 - 350 ms
+; Default: 240
+TotalDurationMs=240
+
+[Menu]
+; Selection detent strength in the original Stunts menus.
+; Range: 0 - 100 %
+; Recommended: 5 - 35 %
+; Default: 24
+DetentStrength=24
+
+; Duration of one menu detent.
+; Range: 20 - 200 ms
+; Recommended: 50 - 120 ms
+; Default: 90
+DetentDurationMs=90
+
+; Spacing between detents while a wheel/menu direction is held.
+; Range: 80 - 500 ms
+; Recommended: 120 - 300 ms
+; Default: 190
+RepeatMs=190
+"#;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeForceFeedbackConfigFile {
+    content: String,
+    path: String,
+    created: bool,
+}
+
+fn force_feedback_config_path() -> Result<PathBuf, String> {
+    let executable = std::env::current_exe()
+        .map_err(|error| format!("Could not locate PlayStunts DX executable: {error}"))?;
+    let directory = executable
+        .parent()
+        .ok_or_else(|| "Could not locate PlayStunts DX executable directory".to_string())?;
+    Ok(directory.join("ffb.ini"))
+}
+
+#[tauri::command]
+fn native_force_feedback_config() -> Result<NativeForceFeedbackConfigFile, String> {
+    let path = force_feedback_config_path()?;
+    let created = if path.exists() {
+        false
+    } else {
+        fs::write(&path, DEFAULT_FFB_INI)
+            .map_err(|error| format!("Could not create {}: {error}", path.display()))?;
+        true
+    };
+    let content = fs::read_to_string(&path)
+        .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
+    Ok(NativeForceFeedbackConfigFile {
+        content,
+        path: path.to_string_lossy().into_owned(),
+        created,
+    })
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NativeJoystick {
@@ -441,6 +691,55 @@ fn native_joysticks() -> Vec<NativeJoystick> {
     }
 }
 
+#[cfg(target_os = "windows")]
+mod force_feedback {
+    #[link(name = "stunts_ffb", kind = "static")]
+    extern "C" {
+        fn stunts_ffb_set_force(force: i32) -> i32;
+        fn stunts_ffb_status() -> i32;
+        fn stunts_ffb_stop();
+    }
+
+    pub fn set(force: f64) -> i32 {
+        let normalized = force.clamp(-1.0, 1.0);
+        unsafe { stunts_ffb_set_force((normalized * 10_000.0).round() as i32) }
+    }
+
+    pub fn status() -> i32 {
+        unsafe { stunts_ffb_status() }
+    }
+
+    pub fn stop() {
+        unsafe { stunts_ffb_stop() }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+mod force_feedback {
+    pub fn set(_force: f64) -> i32 {
+        -1
+    }
+    pub fn status() -> i32 {
+        -1
+    }
+    pub fn stop() {}
+}
+
+#[tauri::command]
+fn native_set_force_feedback(force: f64) -> i32 {
+    force_feedback::set(force)
+}
+
+#[tauri::command]
+fn native_force_feedback_status() -> i32 {
+    force_feedback::status()
+}
+
+#[tauri::command]
+fn native_stop_force_feedback() {
+    force_feedback::stop();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -454,7 +753,11 @@ pub fn run() {
             toggle_mt32_panel,
             check_mt32_roms,
             read_mt32_rom,
-            native_joysticks
+            native_joysticks,
+            native_force_feedback_config,
+            native_set_force_feedback,
+            native_force_feedback_status,
+            native_stop_force_feedback
         ])
         .run(tauri::generate_context!())
         .expect("error while running PlayStunts DX");

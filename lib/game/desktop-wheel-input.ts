@@ -1,3 +1,5 @@
+import {stopDesktopForceFeedback,updateDesktopForceFeedback} from './desktop-force-feedback';
+
 export type DesktopInputDevice='keyboard'|'joystick'|'mouse'|'wheel';
 export type DesktopWheelInputState={
  configured:boolean;
@@ -30,6 +32,7 @@ export function setDesktopInputDevice(device:DesktopInputDevice){
 
 export function setDesktopWheelInput(state:DesktopWheelInputState){
  wheelInput={...state};
+ updateDesktopForceFeedback(wheelInput);
 }
 
 export function getDesktopWheelInput():DesktopWheelInputState{
@@ -38,4 +41,5 @@ export function getDesktopWheelInput():DesktopWheelInputState{
 
 export function clearDesktopWheelInput(){
  wheelInput={...neutralWheelInput};
+ stopDesktopForceFeedback();
 }
