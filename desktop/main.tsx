@@ -19,6 +19,7 @@ type DesktopLaunch = ReturnType<typeof nativeLaunchProfile> & {
 };
 
 type DesktopSoundDevice = 'off' | 'pc-speaker' | 'tandy' | 'adlib' | 'sound-blaster' | 'mt32';
+type GameDataStatus = { ready: boolean; path: string };
 const soundKey = 'playstunts-dx-sound-device';
 const soundDevices = new Set<DesktopSoundDevice>(['off', 'pc-speaker', 'tandy', 'adlib', 'sound-blaster', 'mt32']);
 
@@ -48,6 +49,7 @@ function DesktopApp() {
   const [assets, setAssets] = useState<Assets | null>(null);
   const [launch, setLaunch] = useState<DesktopLaunch | null>(null);
   const [error, setError] = useState('');
+  const [missingGameDataPath, setMissingGameDataPath] = useState('');
   const [rolandDevice, setRolandDevice] = useState<BrowserNativeMt32Device>();
   const [rolandPower, setRolandPower] = useState<BrowserMt32Power>();
 
@@ -56,6 +58,15 @@ function DesktopApp() {
 
     async function load() {
       try {
+        const tauri = (window as typeof window & { __TAURI__?: TauriGlobal }).__TAURI__;
+        if (tauri?.core) {
+          const gameData = await tauri.core.invoke<GameDataStatus>('check_gamedata');
+          if (!gameData.ready) {
+            if (!controller.signal.aborted) setMissingGameDataPath(gameData.path);
+            return;
+          }
+        }
+
         const response = await fetch('/game/assets.json', { signal: controller.signal });
         if (!response.ok) throw new Error('PlayStunts DX game assets could not be loaded.');
         const loadedAssets = (await response.json()) as Assets;
@@ -172,6 +183,17 @@ function DesktopApp() {
   }, [assets, launch]);
 
   if (error) return <div className="desktop-message desktop-error" role="alert">{error}</div>;
+  if (missingGameDataPath) {
+    return (
+      <div className="desktop-message" role="status">
+        <div className="desktop-gamedata-note">
+          <strong>Original game data not found</strong>
+          <span>Place your Stunts game files in the <b>Gamedata</b> folder next to PlayStunts DX.exe, then restart.</span>
+          <small>{missingGameDataPath}</small>
+        </div>
+      </div>
+    );
+  }
   if (!assets || !launch) return <div className="desktop-message" role="status">Loading PlayStunts DX…</div>;
 
   const soundDevice = selectedSound === 'mt32'
