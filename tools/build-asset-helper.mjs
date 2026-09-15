@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const venv = path.join(root, '.venv-portable');
 const venvPython = path.join(venv, 'Scripts', 'python.exe');
-const noCfgMarker = path.join(venv, '.pyinstaller-no-cfg-v1');
+const noCfgMarker = path.join(venv, '.pyinstaller-no-cfg-v2');
 const generated = path.join(root, 'src-tauri', 'generated');
 const helper = path.join(generated, 'playstuntsdx-prepare.exe');
 const stamp = path.join(generated, 'playstuntsdx-prepare.sha256');
@@ -57,10 +57,10 @@ function helperInputHash() {
     path.join(root, 'docs', 'original-file-checksums.json'),
   ].sort();
   const hash = createHash('sha256');
-  // Bump this whenever the freezing strategy changes. v3 uses a PyInstaller
-  // bootloader compiled without Control Flow Guard because Unicorn's JIT is
-  // incompatible with the stock CFG-enabled Windows bootloader.
-  hash.update('playstuntsdx-portable-helper-v3-no-cfg\0');
+  // Bump this whenever the freezing strategy changes. v4 builds a 64-bit
+  // Windows bootloader explicitly and disables CFG because Unicorn's JIT needs
+  // dynamic control flow that the stock CFG-enabled bootloader can fast-fail.
+  hash.update('playstuntsdx-portable-helper-v4-x64-no-cfg\0');
   for (const file of files) {
     hash.update(path.relative(root, file).replaceAll('\\', '/'));
     hash.update('\0');
@@ -88,7 +88,7 @@ if (!existsSync(venvPython)) {
 run(venvPython, ['-m', 'pip', 'install', '--disable-pip-version-check', '-r', 'tools/requirements.txt', '-r', 'tools/requirements-build.txt']);
 
 if (!existsSync(noCfgMarker)) {
-  console.log('Building a PyInstaller bootloader without Control Flow Guard for Unicorn...');
+  console.log('Building a 64-bit PyInstaller bootloader without Control Flow Guard for Unicorn...');
   run(
     venvPython,
     ['-m', 'pip', 'install', '--disable-pip-version-check', '--force-reinstall', '--no-binary=pyinstaller', 'PyInstaller>=6,<7'],
@@ -96,11 +96,11 @@ if (!existsSync(noCfgMarker)) {
       env: {
         ...process.env,
         PYINSTALLER_COMPILE_BOOTLOADER: '1',
-        PYINSTALLER_BOOTLOADER_WAF_ARGS: '--no-cfg',
+        PYINSTALLER_BOOTLOADER_WAF_ARGS: '--target-arch=64bit --no-cfg',
       },
     },
   );
-  writeFileSync(noCfgMarker, 'PyInstaller Windows bootloader compiled with --no-cfg\n');
+  writeFileSync(noCfgMarker, 'PyInstaller Windows x64 bootloader compiled with --target-arch=64bit --no-cfg\n');
 }
 
 rmSync(generated, { recursive: true, force: true });
