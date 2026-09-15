@@ -7,6 +7,7 @@ import type { BrowserMt32Power, BrowserNativeMt32Device } from '../lib/game/brow
 import type { Assets } from '../lib/game/types';
 import Mt32Window from './Mt32Window';
 import { installDesktopDriveControls } from './gamepad-drive';
+import { ensureDesktopRuntimeStartup } from './runtime-startup';
 import {
   MT32_CHANNEL, createMt32Snapshot, createMt32SoundCatalog,
   type Mt32Command, type Mt32HostDevice,
@@ -70,6 +71,8 @@ function DesktopApp() {
           if (controller.signal.aborted) return;
           setGamedataReady(ready);
           if (!ready) return;
+          await ensureDesktopRuntimeStartup(core);
+          if (controller.signal.aborted) return;
         } else {
           setGamedataReady(true);
         }
