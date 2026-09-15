@@ -1,7 +1,8 @@
 use serde::Serialize;
-use std::{fs, path::PathBuf};
+use std::{fs, path::{Path, PathBuf}, time::UNIX_EPOCH};
 
 const DEFAULT_CONFIG: &str = include_str!("../config.default.ini");
+const CUSTOM_CARS_STATE: &str = ".playstuntsdx-custom-cars.state";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,11 +24,73 @@ fn application_root() -> Result<PathBuf, String> {
         .ok_or_else(|| "Could not locate PlayStunts DX executable directory".to_string())
 }
 
+fn collect_custom_car_state(root: &Path, directory: &Path, rows: &mut Vec<String>) -> Result<(), String> {
+    if !directory.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(directory)
+        .map_err(|error| format!("Could not scan {}: {error}", directory.display()))?
+    {
+        let entry = entry.map_err(|error| format!("Could not scan {}: {error}", directory.display()))?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_custom_car_state(root, &path, rows)?;
+            continue;
+        }
+        if !path.is_file() {
+            continue;
+        }
+        let metadata = entry
+            .metadata()
+            .map_err(|error| format!("Could not inspect {}: {error}", path.display()))?;
+        let modified = metadata
+            .modified()
+            .ok()
+            .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+            .map(|value| format!("{}.{}", value.as_secs(), value.subsec_nanos()))
+            .unwrap_or_else(|| "unknown".to_string());
+        let relative = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        rows.push(format!("{}\t{}\t{}", relative, metadata.len(), modified));
+    }
+    Ok(())
+}
+
+fn refresh_runtime_for_custom_cars() -> Result<(), String> {
+    if cfg!(debug_assertions) {
+        return Ok(());
+    }
+    let root = application_root()?;
+    let custom_root = root.join("Custom Cars");
+    let state_path = root.join(CUSTOM_CARS_STATE);
+    let mut rows = Vec::new();
+    collect_custom_car_state(&custom_root, &custom_root, &mut rows)?;
+    rows.sort_by_key(|row| row.to_ascii_lowercase());
+    let current = rows.join("\n");
+    let previous = fs::read_to_string(&state_path).ok();
+    if previous.as_deref() == Some(current.as_str()) {
+        return Ok(());
+    }
+
+    let runtime = root.join("Runtime");
+    if runtime.exists() {
+        fs::remove_dir_all(&runtime)
+            .map_err(|error| format!("Could not refresh {} after Custom Cars changed: {error}", runtime.display()))?;
+    }
+    fs::write(&state_path, current)
+        .map_err(|error| format!("Could not save Custom Cars state {}: {error}", state_path.display()))?;
+    Ok(())
+}
+
 pub fn path() -> Result<PathBuf, String> {
     Ok(application_root()?.join("config.ini"))
 }
 
 pub fn ensure() -> Result<NativeConfigFile, String> {
+    refresh_runtime_for_custom_cars()?;
     let path = path()?;
     let created = if path.exists() {
         false
