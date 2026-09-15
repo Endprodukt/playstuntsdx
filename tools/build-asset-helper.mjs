@@ -61,6 +61,7 @@ run(venvPython, [
   '--workpath', path.join(work, 'work'),
   '--specpath', work,
   '--add-data', addData('docs/direct-asset-recipes.json'),
+  '--add-data', addData('docs/original-file-checksums.json'),
   '--add-data', addData('tools/credits-layout-recipe.json'),
   '--add-data', addData('tools/resource-selections.json'),
   'tools/prepare_portable_assets.py',
