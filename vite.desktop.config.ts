@@ -1,4 +1,4 @@
-import { rmSync } from 'node:fs';
+import { cpSync, existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
@@ -80,16 +80,32 @@ function desktopRuntimeAdaptation(): Plugin {
 }
 
 /**
- * We still use public/ for legal site artwork shared with the desktop shell.
- * Vite would also copy a developer's locally prepared public/game directory,
- * though. Delete that directory from the desktop output unconditionally so the
- * Tauri executable can only obtain original Stunts-derived data from Gamedata
- * at first run.
+ * Original Stunts-derived files under public/game are development inputs and
+ * must never be shipped in the portable application. The Munt WebAssembly
+ * runtime is application code, however, so copy that runtime to its own static
+ * namespace first. Roland ROMs are deliberately excluded and continue to be
+ * read from the user's external mt32 folder through Tauri.
  */
-function stripPreparedGameAssets(): Plugin {
+function prepareDesktopStaticAssets(): Plugin {
   return {
-    name: 'playstunts-dx-strip-prepared-game-assets',
+    name: 'playstunts-dx-prepare-desktop-static-assets',
     closeBundle() {
+      const muntSource = path.join(root, 'public', 'game', 'mt32-local');
+      const muntTarget = path.join(root, 'dist-desktop', 'mt32-local');
+      const bootstrap = path.join(muntSource, 'bootstrap.mjs');
+      if (!existsSync(bootstrap)) {
+        throw new Error(`Desktop MT-32 runtime is missing: ${bootstrap}. Generate the local Munt runtime before building the portable app.`);
+      }
+
+      rmSync(muntTarget, { recursive: true, force: true });
+      cpSync(muntSource, muntTarget, {
+        recursive: true,
+        filter: source => !source.toLowerCase().endsWith('.rom'),
+      });
+      if (!existsSync(path.join(muntTarget, 'bootstrap.mjs'))) {
+        throw new Error('Desktop MT-32 bootstrap was not copied into the application bundle.');
+      }
+
       rmSync(path.join(root, 'dist-desktop', 'game'), { recursive: true, force: true });
     },
   };
@@ -99,7 +115,7 @@ export default defineConfig({
   root: path.join(root, 'desktop'),
   publicDir: path.join(root, 'public'),
   base: './',
-  plugins: [desktopRuntimeAdaptation(), react(), stripPreparedGameAssets()],
+  plugins: [desktopRuntimeAdaptation(), react(), prepareDesktopStaticAssets()],
   resolve: {
     alias: {
       '@': root,
