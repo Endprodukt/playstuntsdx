@@ -87,7 +87,7 @@ rmSync(path.join(releaseDir, 'prepare-runtime.log'), { force: true });
 copyFileSync(executable, path.join(releaseDir, 'PlayStunts DX.exe'));
 if (helperStamp) writeFileSync(helperStampRelease, `${helperStamp}\n`);
 
-for (const directory of ['Gamedata', 'Custom Cars', 'High Res', 'mt32']) {
+for (const directory of ['Gamedata', 'Custom Cars', 'Custom Tracks', 'High Res', 'mt32']) {
   mkdirSync(path.join(releaseDir, directory), { recursive: true });
 }
 
@@ -134,4 +134,5 @@ console.log(releaseDir);
 console.log('');
 console.log('Put the original Stunts files in Gamedata before launching the portable build.');
 console.log('Optional custom cars can be placed in Custom Cars directly or in nested subfolders.');
+console.log('Optional custom tracks can be placed in Custom Tracks directly or in nested subfolders.');
 console.log('Desktop, control and force-feedback settings are stored in config.ini.');
