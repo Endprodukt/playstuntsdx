@@ -54,6 +54,8 @@ run(venvPython, [
   '--noconfirm',
   '--clean',
   '--onefile',
+  '--noupx',
+  '--collect-all', 'unicorn',
   '--name', 'playstuntsdx-prepare',
   '--distpath', generated,
   '--workpath', path.join(work, 'work'),
@@ -65,4 +67,9 @@ run(venvPython, [
 ]);
 
 if (!existsSync(helper)) throw new Error(`Asset preparation helper was not created: ${helper}`);
+
+// Importing the frozen helper also imports Unicorn. Run a cheap smoke test now so
+// a missing native Unicorn DLL fails the build instead of the user's first launch.
+run(helper, ['--help']);
+
 console.log(`Embedded asset helper ready: ${helper}`);
