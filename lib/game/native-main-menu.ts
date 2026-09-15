@@ -3,7 +3,7 @@ import type {NativeMenuInput} from './native-dialog-runtime.ts';
 import {desktopInputDevice,getDesktopWheelInput} from './desktop-wheel-input.ts';
 export interface NativeMainMenuHost extends MainMenuPresentation {
  counter():number;
- input():Promise<NativeMenuInput>;
+ input():Promise<NativeMenuInput&{keyboardKey?:number}>;
 }
 
 const wheelMenuSelection=()=>{
@@ -26,17 +26,21 @@ const wheelThrottlePressed=()=>{
 
 /** Present and flash before waiting for input, matching 3795..3820. */
 export async function runNativeMainMenuSelection(host:NativeMainMenuHost){
- const menu=createOriginalMainMenu(host);let time=host.counter(),throttleHeld=wheelThrottlePressed();
+ const menu=createOriginalMainMenu(host);let time=host.counter(),throttleHeld=wheelThrottlePressed(),lastWheelSelection=wheelMenuSelection(),wheelOwns=lastWheelSelection!==undefined;
  for(;;){
   const now=host.counter(),delta=(now-time)&65535;time=now;
   menu.frame(delta);
   const input=await host.input(),selection=wheelMenuSelection(),throttle=wheelThrottlePressed(),throttlePress=throttle&&!throttleHeld;
-  throttleHeld=throttle;
-  // In Wheel mode the steering position owns horizontal menu selection.
-  // A fresh throttle press confirms the currently selected sign. Suppress the
-  // old repeated joystick direction keys so wheel/pedal input remains direct.
-  const key=throttlePress?13:selection!==undefined&&(input.key===0x4b00||input.key===0x4d00||input.key===0x4800)?0:input.key;
-  const result=menu.accept({delta,key,x:input.x,y:input.y,mouseEnabled:input.mouseActive,selection});
+  const wheelChanged=selection!==lastWheelSelection;
+  throttleHeld=throttle;lastWheelSelection=selection;
+  // Wheel, keyboard and mouse are all valid main-menu inputs. The most recent
+  // device owns selection until another device is used, so a centred wheel no
+  // longer snaps the menu back while the user navigates with keys or the mouse.
+  if(input.keyboardKey||input.mouseActive)wheelOwns=false;
+  if(wheelChanged||throttlePress)wheelOwns=selection!==undefined;
+  const syntheticWheelDirection=selection!==undefined&&!input.keyboardKey&&(input.key===0x4b00||input.key===0x4d00||input.key===0x4800||input.key===0x5000);
+  const key=throttlePress?13:syntheticWheelDirection?0:input.key;
+  const result=menu.accept({delta,key,x:input.x,y:input.y,mouseEnabled:input.mouseActive,selection:wheelOwns?selection:undefined});
   if(result.result!==undefined)return {selection:result.result,idleExpired:result.state.idleExpired};
  }
 }
