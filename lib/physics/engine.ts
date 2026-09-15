@@ -5,6 +5,7 @@
  */
 import { i16,u16 } from './math.ts';
 import {opponentEngineForce} from './opponent-engine-force.ts';
+import {updateForceFeedbackEngine} from './force-feedback.ts';
 export interface EngineState {speed:number;roadSpeed:number;lastSpeed:number;speedDiff:number;rpm:number;lastRPM:number;gear:number;ratio:number;ratioHigh:number;gravity:number;rearContact:number;allContact:number;automatic:number;shifting:number;shiftTimer:number;limiter:number;knobX:number;knobY:number;targetX:number;targetY:number;accelerating:number;braking:number}
 export interface EngineTuning {gears:number;mass:number;braking:number;idleRPM:number;downshiftRPM:number;upshiftRPM:number;maxRPM:number;gearRatios:number[];gearKnobPoints:number[][];idleTorque:number;torqueCurve:number[];aeroResistance:number}
 export function rpmFromSpeed(rpm:number,speed:number,ratio:number,shifting:number,idle:number){return Math.max(shifting?u16(rpm):Math.floor(u16(speed)*u16(ratio)/65536),u16(idle))}
@@ -36,5 +37,6 @@ export function stepEngine(before:EngineState,t:EngineTuning,input:number,fps:10
  onContactScratch?.([i16(s.rpm),i16(s.speed)]);
  s.rpm=i16(rpmFromSpeed(s.rpm,s.speed,s.ratio,s.shifting,t.idleRPM));
  if(s.allContact&&s.lastRPM>s.rpm){if(i16(s.lastRPM-s.rpm)>2000){if(i16(t.idleTorque*s.ratioHigh)>12000)s.limiter=30}else if(i16(s.rpm-s.lastRPM)>2000){s.limiter=10;s.roadSpeed=u16(s.roadSpeed-1280)}}
+ if(opponentSpeedByte===undefined)updateForceFeedbackEngine(s.rpm,s.gear,!!s.shifting,t.idleRPM,t.maxRPM);
  return s;
 }

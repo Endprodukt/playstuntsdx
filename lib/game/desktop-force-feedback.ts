@@ -21,7 +21,11 @@ let pending = false;
 let resendAfterPending = false;
 let lastSend = 0;
 let latestForce = 0;
+let latestSteering = 0;
+let ffbActive = false;
 let lastStatus = 0;
+let lastMenuPulseRequest = 0;
+let menuPulseInterval: number | undefined;
 let statusElement: HTMLSpanElement | undefined;
 let unloadInstalled = false;
 
@@ -56,7 +60,7 @@ function installFocusRecovery() {
   if (focusRecoveryInstalled || typeof window === 'undefined' || typeof document === 'undefined') return;
   focusRecoveryInstalled = true;
   const recover = () => {
-    if (enabled()) void sendForce(latestForce, true);
+    if (enabled()) resampleAndSend(true);
   };
   window.addEventListener('focus', recover);
   document.addEventListener('visibilitychange', () => {
@@ -64,34 +68,70 @@ function installFocusRecovery() {
   });
 }
 
+function pulseMenuFeedback() {
+  if (!enabled() || typeof window === 'undefined') return;
+  const now = performance.now();
+  if (now - lastMenuPulseRequest < 55) return;
+  lastMenuPulseRequest = now;
+  triggerForceFeedbackMenuPulse();
+
+  if (menuPulseInterval !== undefined) window.clearInterval(menuPulseInterval);
+  const startedAt = performance.now();
+  const pump = () => {
+    if (performance.now() - startedAt >= 100) {
+      if (menuPulseInterval !== undefined) window.clearInterval(menuPulseInterval);
+      menuPulseInterval = undefined;
+      resampleAndSend(true);
+      return;
+    }
+    resampleAndSend(true);
+  };
+  pump();
+  menuPulseInterval = window.setInterval(pump, 16);
+}
+
 function installMenuFeedback() {
   if (menuFeedbackInstalled || typeof document === 'undefined') return;
   menuFeedbackInstalled = true;
 
+  const selector =
+    'button,select,[role="menu"],[role="menuitem"],[role="listbox"],[role="option"],[tabindex]:not([tabindex="-1"]),input[type="range"],input[type="radio"],input[type="checkbox"]';
   const isMenuControl = (target: EventTarget | null) =>
-    target instanceof Element &&
-    !!target.closest(
-      'select,[role="menu"],[role="menuitem"],[role="listbox"],[role="option"],input[type="range"],input[type="radio"],input[type="checkbox"]',
-    );
+    target instanceof Element && !!target.closest(selector);
+  const eventIsOnMenuControl = (target: EventTarget | null) =>
+    isMenuControl(target) || isMenuControl(document.activeElement);
 
   document.addEventListener(
     'keydown',
     (event) => {
       if (
         enabled() &&
-        !event.repeat &&
         ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code) &&
-        isMenuControl(event.target)
+        eventIsOnMenuControl(event.target)
       ) {
-        triggerForceFeedbackMenuPulse();
+        pulseMenuFeedback();
       }
+    },
+    true,
+  );
+  document.addEventListener(
+    'focusin',
+    (event) => {
+      if (enabled() && isMenuControl(event.target)) pulseMenuFeedback();
+    },
+    true,
+  );
+  document.addEventListener(
+    'input',
+    (event) => {
+      if (enabled() && isMenuControl(event.target)) pulseMenuFeedback();
     },
     true,
   );
   document.addEventListener(
     'change',
     (event) => {
-      if (enabled() && isMenuControl(event.target)) triggerForceFeedbackMenuPulse();
+      if (enabled() && isMenuControl(event.target)) pulseMenuFeedback();
     },
     true,
   );
@@ -136,17 +176,19 @@ function installSettingsUi() {
   strengthRow.append(strengthLabel, slider, value);
 
   const note = document.createElement('div');
-  note.textContent = 'Physics FFB: self-aligning steering, slide counter-steer, grass vibration and real landing impacts.';
+  note.textContent = 'Physics FFB: steering, slide counter-steer, grass, landings, gear shifts and RPM engine vibration.';
   note.style.cssText = 'margin-top:8px;color:#aaa;font-size:12px;';
 
   checkbox.addEventListener('change', () => {
     window.localStorage.setItem(enabledKey, String(checkbox.checked));
-    if (!checkbox.checked) void sendForce(0, true);
+    if (checkbox.checked) resampleAndSend(true);
+    else void sendForce(0, true);
     updateStatus();
   });
   slider.addEventListener('input', () => {
     window.localStorage.setItem(strengthKey, slider.value);
     value.textContent = `${slider.value}%`;
+    resampleAndSend(true);
   });
 
   section.append(row, strengthRow, note);
@@ -180,6 +222,13 @@ async function sendForce(force: number, immediate = false) {
   }
 }
 
+function resampleAndSend(immediate = false) {
+  latestForce = ffbActive && enabled()
+    ? -sampleForceFeedback(latestSteering) * strength()
+    : 0;
+  void sendForce(latestForce, immediate);
+}
+
 export function updateDesktopForceFeedback(input: DesktopWheelInputState) {
   if (typeof window === 'undefined') return;
   installSettingsUi();
@@ -193,15 +242,20 @@ export function updateDesktopForceFeedback(input: DesktopWheelInputState) {
     });
   }
 
-  const active = enabled() && input.configured && input.connected;
+  latestSteering = input.steering;
+  ffbActive = input.configured && input.connected;
   // DirectInput's wheel-axis polarity is opposite to the normalized physics
   // convention used by sampleForceFeedback(), so invert once at this boundary.
-  latestForce = active ? -sampleForceFeedback(input.steering) * strength() : 0;
-  void sendForce(latestForce);
+  resampleAndSend();
 }
 
 export function stopDesktopForceFeedback() {
   latestForce = 0;
+  ffbActive = false;
+  if (menuPulseInterval !== undefined && typeof window !== 'undefined') {
+    window.clearInterval(menuPulseInterval);
+    menuPulseInterval = undefined;
+  }
   const core = tauriCore();
   if (core) void core.invoke<void>('native_stop_force_feedback').catch(() => {});
 }

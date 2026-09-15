@@ -11,11 +11,24 @@ export type ForceFeedbackTelemetry = {
   allContact: number;
 };
 
+type EngineForceFeedbackTelemetry = {
+  rpm: number;
+  gear: number;
+  shifting: boolean;
+  idleRPM: number;
+  maxRPM: number;
+  updatedAt: number;
+};
+
 let telemetry: (ForceFeedbackTelemetry & { updatedAt: number }) | undefined;
+let engineTelemetry: EngineForceFeedbackTelemetry | undefined;
 let smoothedForce = 0;
 let impactPulseStrength = 0;
 let impactPulseStartedAt = 0;
+let shiftPulseStartedAt = 0;
 let menuPulseStartedAt = 0;
+let enginePhase = 0;
+let enginePhaseUpdatedAt = 0;
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
@@ -29,6 +42,28 @@ export function updateForceFeedbackTelemetry(next: ForceFeedbackTelemetry) {
     surfaces: [...next.surfaces],
     updatedAt: Date.now(),
   };
+}
+
+/**
+ * Captures the player's real engine state. A gear transition starts one short
+ * tactile bump; RPM drives a deliberately slow periodic motor wobble so wheels
+ * with modest DirectInput update rates do not alias or turn it into chatter.
+ */
+export function updateForceFeedbackEngine(
+  rpm: number,
+  gear: number,
+  shifting: boolean,
+  idleRPM: number,
+  maxRPM: number,
+) {
+  const now = Date.now();
+  const previous = engineTelemetry;
+  const startedShift = !!previous && shifting && !previous.shifting;
+  const changedGear = !!previous && gear !== previous.gear;
+  if (previous && previous.gear > 0 && gear > 0 && (startedShift || changedGear)) {
+    shiftPulseStartedAt = now;
+  }
+  engineTelemetry = { rpm, gear, shifting, idleRPM, maxRPM, updatedAt: now };
 }
 
 /**
@@ -64,9 +99,37 @@ export function triggerForceFeedbackMenuPulse() {
 
 export function clearForceFeedbackTelemetry() {
   telemetry = undefined;
+  engineTelemetry = undefined;
   smoothedForce = 0;
   impactPulseStrength = 0;
   impactPulseStartedAt = 0;
+  shiftPulseStartedAt = 0;
+  enginePhase = 0;
+  enginePhaseUpdatedAt = 0;
+}
+
+function sampleEngineForce(now: number) {
+  const state = engineTelemetry;
+  if (!state || now - state.updatedAt > 250) {
+    enginePhaseUpdatedAt = now;
+    return 0;
+  }
+
+  const range = Math.max(1, state.maxRPM - state.idleRPM);
+  const revs = clamp((state.rpm - state.idleRPM) / range, 0, 1);
+
+  // This is intentionally a low-frequency tactile representation, not literal
+  // combustion frequency. 3..6 Hz remains smooth at the ~15 ms output cadence.
+  const frequency = 3 + revs * 3;
+  const previousTime = enginePhaseUpdatedAt || now;
+  const elapsedSeconds = clamp((now - previousTime) / 1000, 0, 0.05);
+  enginePhaseUpdatedAt = now;
+  enginePhase = (enginePhase + elapsedSeconds * Math.PI * 2 * frequency) % (Math.PI * 2);
+
+  // Keep the engine underneath the steering forces: about 1.2% at idle and
+  // 3% near the limiter before the user's master-strength setting is applied.
+  const amplitude = 0.012 + revs * 0.018;
+  return Math.sin(enginePhase) * amplitude;
 }
 
 /**
@@ -85,11 +148,18 @@ export function sampleForceFeedback(physicalSteering: number) {
       ? Math.sin((menuAge / 80) * Math.PI * 2) * (1 - menuAge / 80) * 0.18
       : 0;
 
+  const shiftAge = now - shiftPulseStartedAt;
+  const shiftForce =
+    shiftPulseStartedAt > 0 && shiftAge >= 0 && shiftAge < 105
+      ? Math.sin((shiftAge / 105) * Math.PI * 2) * (1 - shiftAge / 105) * 0.09
+      : 0;
+  const engineForce = sampleEngineForce(now);
+
   const state = telemetry;
   if (!state || now - state.updatedAt > 250) {
     smoothedForce *= 0.55;
     if (Math.abs(smoothedForce) < 0.002) smoothedForce = 0;
-    return clamp(smoothedForce + menuForce, -0.95, 0.95);
+    return clamp(smoothedForce + menuForce + shiftForce + engineForce, -0.95, 0.95);
   }
 
   const mph = Math.abs(state.speed) >>> 8;
@@ -118,7 +188,7 @@ export function sampleForceFeedback(physicalSteering: number) {
   const grassRumble = Math.sin(phase) * grass * speed * 0.13 * contact;
 
   // Keep the current 1.8x physics tuning intact; only transient events bypass
-  // the smoothing so a landing or menu detent remains crisp at the wheel.
+  // the smoothing so a landing, shift or menu detent remains crisp at the wheel.
   const outputScale = 1.8;
   const target = clamp((centering + aligning + grassRumble) * outputScale, -0.90, 0.90);
   smoothedForce = smoothedForce * 0.58 + target * 0.42;
@@ -131,5 +201,9 @@ export function sampleForceFeedback(physicalSteering: number) {
         impactPulseStrength
       : 0;
 
-  return clamp(smoothedForce + impactForce + menuForce, -0.95, 0.95);
+  return clamp(
+    smoothedForce + impactForce + shiftForce + engineForce + menuForce,
+    -0.95,
+    0.95,
+  );
 }
