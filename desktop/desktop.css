@@ -82,6 +82,24 @@ body {
   text-align: center;
 }
 
+.desktop-gamedata-message > div {
+  display: grid;
+  gap: 0.35rem;
+  max-width: 34rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid #333;
+  border-radius: 4px;
+  background: #111;
+  color: #bbb;
+  font-size: 13px;
+}
+
+.desktop-gamedata-message strong {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .desktop-error {
   color: #ffb4b4;
 }
