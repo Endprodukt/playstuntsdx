@@ -110,6 +110,7 @@ fn checked_runtime_path(path: &str) -> Result<PathBuf, String> {
 #[cfg(not(debug_assertions))]
 fn build_runtime(gamedata: &Path) -> Result<(), String> {
     let runtime = runtime_root()?;
+    let log_path = application_root()?.join("prepare-runtime.log");
     if runtime.exists() {
         fs::remove_dir_all(&runtime)
             .map_err(|error| format!("Could not replace {}: {error}", runtime.display()))?;
@@ -126,6 +127,8 @@ fn build_runtime(gamedata: &Path) -> Result<(), String> {
     command
         .arg("--original")
         .arg(gamedata)
+        .arg("--custom-cars")
+        .arg(application_root()?.join("Custom Cars"))
         .arg("--output")
         .arg(&runtime);
     #[cfg(target_os = "windows")]
@@ -134,24 +137,56 @@ fn build_runtime(gamedata: &Path) -> Result<(), String> {
         command.creation_flags(0x0800_0000);
     }
 
-    let output = command.output();
+    let output = match command.output() {
+        Ok(output) => output,
+        Err(error) => {
+            let message = format!("Could not start the PlayStunts DX runtime helper: {error}");
+            let _ = fs::write(&log_path, format!("PlayStunts DX runtime preparation\n\n{message}\n"));
+            let _ = fs::remove_file(&helper);
+            return Err(format!("{message}\nDetails: {}", log_path.display()));
+        }
+    };
     let _ = fs::remove_file(&helper);
-    let output = output.map_err(|error| format!("Could not start the PlayStunts DX runtime helper: {error}"))?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let exit_status = output
+        .status
+        .code()
+        .map(|code| code.to_string())
+        .unwrap_or_else(|| output.status.to_string());
+    let diagnostic = format!(
+        "PlayStunts DX runtime preparation\nExit status: {exit_status}\nGamedata: {}\nRuntime: {}\n\nSTDOUT\n------\n{}\n\nSTDERR\n------\n{}\n",
+        gamedata.display(),
+        runtime.display(),
+        if stdout.is_empty() { "<empty>" } else { &stdout },
+        if stderr.is_empty() { "<empty>" } else { &stderr },
+    );
+
     if !output.status.success() {
+        let _ = fs::write(&log_path, &diagnostic);
         let _ = fs::remove_dir_all(&runtime);
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let detail = if !stderr.is_empty() { stderr } else { stdout };
-        return Err(if detail.is_empty() {
-            "The original Stunts files could not be prepared.".to_string()
-        } else {
-            detail
+        let detail = stderr
+            .lines()
+            .find(|line| line.contains("PlayStunts DX asset preparation failed:"))
+            .or_else(|| stderr.lines().find(|line| !line.trim().is_empty()))
+            .or_else(|| stdout.lines().find(|line| !line.trim().is_empty()));
+        return Err(match detail {
+            Some(detail) => format!("{detail}\nDetails: {}", log_path.display()),
+            None => format!(
+                "The original Stunts files could not be prepared (helper exit status {exit_status}).\nDetails: {}",
+                log_path.display()
+            ),
         });
     }
     if !runtime_is_ready()? {
+        let message = "The original Stunts files were prepared incompletely.";
+        let _ = fs::write(&log_path, format!("{diagnostic}\n{message}\n"));
         let _ = fs::remove_dir_all(&runtime);
-        return Err("The original Stunts files were prepared incompletely.".to_string());
+        return Err(format!("{message}\nDetails: {}", log_path.display()));
     }
+
+    let _ = fs::remove_file(&log_path);
     Ok(())
 }
 
@@ -471,7 +506,7 @@ mod force_feedback {
     }
 
     pub fn stop() {
-        unsafe { stunts_ffb_stop() }
+        unsafe { stunts_ffb_stop(); }
     }
 }
 
