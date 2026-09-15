@@ -6,6 +6,7 @@ import { nativeLaunchProfile } from '../lib/game/native-launch-profile';
 import type { BrowserMt32Power, BrowserNativeMt32Device } from '../lib/game/browser-native-mt32-music';
 import type { Assets } from '../lib/game/types';
 import Mt32Window from './Mt32Window';
+import { installDesktopControlBindings } from './control-bindings';
 import { installDesktopDriveControls } from './gamepad-drive';
 import { ensureDesktopRuntimeStartup } from './runtime-startup';
 import {
@@ -64,7 +65,14 @@ function DesktopApp() {
   const [rolandDevice, setRolandDevice] = useState<BrowserNativeMt32Device>();
   const [rolandPower, setRolandPower] = useState<BrowserMt32Power>();
 
-  useEffect(() => installDesktopDriveControls(), []);
+  useEffect(() => {
+    const removeDriveControls = installDesktopDriveControls();
+    const removeControlBindings = installDesktopControlBindings();
+    return () => {
+      removeControlBindings();
+      removeDriveControls();
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -125,9 +133,7 @@ function DesktopApp() {
           .finally(() => { togglingFullscreen = false; });
         return;
       }
-      // F12 is the normal MT-32 front-panel shortcut. Keep F10 as a fallback
-      // for development environments where WebView2 may reserve F12 itself.
-      if ((event.key === 'F12' || event.key === 'F10') && selectedSound === 'mt32') {
+      if (event.key === 'F10' && selectedSound === 'mt32') {
         event.preventDefault();
         event.stopImmediatePropagation();
         if (togglingMt32) return;
