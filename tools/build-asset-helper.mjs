@@ -61,7 +61,7 @@ run(venvPython, [
   '--add-data', addData('docs/direct-asset-recipes.json'),
   '--add-data', addData('tools/credits-layout-recipe.json'),
   '--add-data', addData('tools/resource-selections.json'),
-  'tools/prepare_desktop_assets.py',
+  'tools/prepare_portable_assets.py',
 ]);
 
 if (!existsSync(helper)) throw new Error(`Asset preparation helper was not created: ${helper}`);
