@@ -343,7 +343,9 @@ export function sampleForceFeedback(physicalSteering: number) {
     return clamp(smoothedForce + menuForce + shiftForce + engineForce, -config.maxForce, config.maxForce);
   }
 
-  const mph = Math.abs(state.speed) >>> 8;
+  // Stunts stores speed with 8 fractional bits. Preserve those fractional bits
+  // so speed-sensitive steering force ramps continuously instead of in 1 mph steps.
+  const mph = Math.abs(state.speed) / 256;
   const speed = clamp((mph - 1) / 54, 0, 1);
   const contactCount = state.surfaces.filter(surface => surface !== 0).length;
   const contact = clamp(contactCount / 4, 0, 1);
