@@ -13,7 +13,7 @@ type TauriGlobal = {
   };
 };
 
-type NativeForceFeedbackConfigFile = {
+type NativeConfigFile = {
   content: string;
   path: string;
   created: boolean;
@@ -75,10 +75,10 @@ function statusText() {
 }
 
 function configText() {
-  if (configError) return `ffb.ini: ${configError}`;
-  if (configLoading) return 'ffb.ini: loading…';
-  if (!configPath) return 'ffb.ini: desktop config not loaded yet';
-  return `ffb.ini: ${configPath}${configCreated ? ' (created)' : ''}`;
+  if (configError) return `config.ini: ${configError}`;
+  if (configLoading) return 'config.ini: loading…';
+  if (!configPath) return 'config.ini: desktop config not loaded yet';
+  return `config.ini: ${configPath}${configCreated ? ' (created)' : ''}`;
 }
 
 function updateStatus() {
@@ -93,7 +93,7 @@ async function reloadForceFeedbackConfig() {
   configError = '';
   updateStatus();
   try {
-    const file = await core.invoke<NativeForceFeedbackConfigFile>('native_force_feedback_config');
+    const file = await core.invoke<NativeConfigFile>('native_force_feedback_config');
     applyForceFeedbackIni(file.content);
     configLoaded = true;
     configPath = file.path;
@@ -101,7 +101,7 @@ async function reloadForceFeedbackConfig() {
     resampleAndSend(true, true);
   } catch (reason) {
     configError = reason instanceof Error ? reason.message : String(reason);
-    console.warn('[FFB] Could not load ffb.ini:', reason);
+    console.warn('[FFB] Could not load config.ini:', reason);
   } finally {
     configLoading = false;
     updateStatus();
@@ -275,7 +275,7 @@ function installSettingsUi() {
   configRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:10px;';
   const reloadButton = document.createElement('button');
   reloadButton.type = 'button';
-  reloadButton.textContent = 'Reload ffb.ini';
+  reloadButton.textContent = 'Reload config.ini';
   reloadButton.style.cssText = 'padding:5px 9px;border:1px solid #555;border-radius:4px;background:#252525;color:#eee;cursor:pointer;';
   configRow.append(reloadButton);
 
