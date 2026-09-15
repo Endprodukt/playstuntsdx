@@ -18,6 +18,40 @@ import prepare_desktop_assets as desktop
 from extract import resources, unpack
 
 MAX_CARS = 32
+MUTABLE_GAME_EXTENSIONS = {".TRK", ".RPL", ".HIG"}
+
+
+def copy_portable_assets(files: dict[str, Path], output: Path) -> list[str]:
+    """Copy reference assets without treating user data as a version checksum.
+
+    Stunts tracks, replays and high-score files legitimately change during play
+    or in the editor. Their contents therefore cannot identify the supported
+    game release. Immutable program/resource files retain strict SHA-256 checks.
+    """
+    recipes = json.loads(desktop.bundled_file("direct-asset-recipes.json").read_text())
+    missing: list[str] = []
+    for row in recipes:
+        name = row["source"].upper()
+        file = files.get(name)
+        if file is None:
+            missing.append(name)
+            continue
+
+        data = file.read_bytes()
+        extension = Path(name).suffix.upper()
+        if extension not in MUTABLE_GAME_EXTENSIONS:
+            if desktop.digest(data) != row["sha256"]:
+                raise ValueError(f"Unsupported reference file checksum: {name}")
+        elif extension == ".TRK" and len(data) != 1802:
+            raise ValueError(f"Invalid Stunts track length: {name}")
+
+        relative = Path(row["path"])
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError("Invalid runtime output path")
+        target = output / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    return sorted(set(missing))
 
 
 def custom_car_candidates(root: Path) -> list[Path]:
@@ -161,6 +195,7 @@ def prepare(original: Path, custom_root: Path, output: Path) -> dict[str, object
     with tempfile.TemporaryDirectory(prefix="playstuntsdx-custom-cars-") as temporary:
         merged = Path(temporary) / "merged"
         custom_report = merge_custom_cars(original, custom_root, merged)
+        desktop.copy_verified = copy_portable_assets
         desktop.extract_car_models = extract_car_models
         report = desktop.prepare(merged, output)
 
