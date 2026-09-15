@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-desktop/
+release/
 .next/
 .vinext/
 .wrangler/
@@ -9,6 +10,7 @@ dist-desktop/
 *.tsbuildinfo
 public/game/
 local-assets/
+Gamedata/
 mt32/
 *.rom
 *.exe
