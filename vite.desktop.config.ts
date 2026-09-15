@@ -18,20 +18,24 @@ function desktopRuntimeAdaptation(): Plugin {
     enforce: 'pre',
     transform(code, id) {
       const normalized = id.replaceAll('\\', '/');
+      // Git may check source files out with CRLF on Windows. Keep all matching
+      // independent of local line-ending configuration and return one stable
+      // representation to the rest of Vite/Rolldown.
+      const source = code.replace(/\r\n?/g, '\n');
 
       if (normalized.endsWith('/app/OpeningSequence.tsx')) {
         const importLine = "import introMaterials from '@/public/game/track-materials.json';\n";
         const introCall = 'createUpgradedIntro(renderer.memory,introMaterials)';
         const audioSetup = 'applyNativeStartupAudio(initiallyMuted,music.control);';
         const menuSetup = "menus=await createBrowserNativeMenus({settings:{mouse:false,joystick:false,graphics:0},graphics:graphics.current";
-        if (![importLine, introCall, audioSetup, menuSetup].every(value => code.includes(value))) {
+        if (![importLine, introCall, audioSetup, menuSetup].every(value => source.includes(value))) {
           throw new Error('Desktop runtime adaptation is out of date for OpeningSequence.tsx');
         }
 
         const persistentAudio = `${audioSetup}\n   if(!initiallyMuted){\n    const disabled=(value:string|null)=>value!==null&&['0','false','off','no'].includes(value.toLowerCase());\n    if(disabled(window.localStorage.getItem('playstunts-dx-music-enabled')))music.control('toggle-music');\n    if(disabled(window.localStorage.getItem('playstunts-dx-sound-enabled')))music.control('toggle-sound');\n   }`;
         const persistentMenu = `const configuredInput=window.localStorage.getItem('playstunts-dx-input-device');\n   const configuredGraphics=Number(window.localStorage.getItem('playstunts-dx-original-graphics-level')??'0');\n   const desktopMenuSettings={\n    mouse:configuredInput==='mouse',\n    joystick:configuredInput==='joystick'||configuredInput==='wheel',\n    graphics:Number.isInteger(configuredGraphics)&&configuredGraphics>=0&&configuredGraphics<=2?configuredGraphics:0,\n   };\n   menus=await createBrowserNativeMenus({settings:desktopMenuSettings,graphics:graphics.current`;
 
-        return code
+        return source
           .replace(importLine, '')
           .replace("json<{palette:number[]}>('track-materials')", "json<{palette:number[];indices:number[]}>('track-materials')")
           .replace(introCall, 'createUpgradedIntro(renderer.memory,materials)')
@@ -42,10 +46,10 @@ function desktopRuntimeAdaptation(): Plugin {
       if (normalized.endsWith('/lib/game/browser-native-menus.ts')) {
         const importLine = "import showroomMaterials from '../../public/game/track-materials.json';\n";
         const showroomCall = 'createUpgradedCarMenu(palette,showroomMaterials.indices)';
-        if (!code.includes(importLine) || !code.includes(showroomCall)) {
+        if (!source.includes(importLine) || !source.includes(showroomCall)) {
           throw new Error('Desktop runtime adaptation is out of date for browser-native-menus.ts');
         }
-        return code
+        return source
           .replace(importLine, '')
           .replace("json<{palette:number[]}>('track-materials')", "json<{palette:number[];indices:number[]}>('track-materials')")
           .replace(showroomCall, 'createUpgradedCarMenu(palette,materials.indices)');
@@ -55,10 +59,10 @@ function desktopRuntimeAdaptation(): Plugin {
         const audioControl = 'else reply=await host.audio(value.type);';
         const actionClose = '   }}finally{retained?.close();}\n  }';
         const immediateReload = 'window.setTimeout(()=>window.location.reload(),0);';
-        if (![audioControl, actionClose, immediateReload].every(value => code.includes(value))) {
+        if (![audioControl, actionClose, immediateReload].every(value => source.includes(value))) {
           throw new Error('Desktop runtime adaptation is out of date for native-options-runtime.ts');
         }
-        return code
+        return source
           .replace(
             audioControl,
             "else {reply=await host.audio(value.type);if(desktopSoundDevice()){if(value.type==='toggle-music')window.localStorage.setItem('playstunts-dx-music-enabled',String(!!reply));else if(value.type==='toggle-sound')window.localStorage.setItem('playstunts-dx-sound-enabled',String(!!reply));}}",
