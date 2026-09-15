@@ -58,10 +58,21 @@ export function stepTrack(
     retainContactScratch,
   );
   const moved = moveTrack(before,wheels,track,engine,grip,engineRoadSpeed,contactScratch);
+  // 0x20 is set by the original wheel-plane path only when a real contact lands
+  // above fallSpeed 190. Rebuild that wheel's current fall velocity so the FFB
+  // kick scales with the same physics that generated the landing sound flag.
+  const impactSpeed = (moved.grip.soundFlags & 0x20) !== 0
+    ? Math.max(
+        before.suspension.rc1[0] + 21,
+        before.suspension.rc1[1] + 21,
+        before.suspension.rc1[2] + 15,
+        before.suspension.rc1[3] + 15,
+      )
+    : 0;
   // stepGrip captures the player's transient signed slip before it is cleared.
   // Refresh its contact fields here, after the real wheel-contact pass, so FFB
   // uses this tick's surfaces rather than the previous tick's contact history.
-  updateForceFeedbackContact(moved.grip.surfaces,moved.grip.allContact);
+  updateForceFeedbackContact(moved.grip.surfaces,moved.grip.allContact,impactSpeed);
   return moved;
 }
 /** Shared movement stage after engine and grip; car-specific event handling remains with the caller. */

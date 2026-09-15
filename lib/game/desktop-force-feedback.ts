@@ -1,4 +1,7 @@
-import { sampleForceFeedback } from '../physics/force-feedback';
+import {
+  sampleForceFeedback,
+  triggerForceFeedbackMenuPulse,
+} from '../physics/force-feedback';
 import type { DesktopWheelInputState } from './desktop-wheel-input';
 
 type TauriGlobal = {
@@ -12,6 +15,7 @@ const strengthKey = 'playstunts-dx-force-feedback-strength';
 const sendIntervalMs = 15;
 
 let uiInstalled = false;
+let menuFeedbackInstalled = false;
 let pending = false;
 let lastSend = 0;
 let latestForce = 0;
@@ -46,8 +50,42 @@ function updateStatus() {
   if (statusElement) statusElement.textContent = statusText();
 }
 
+function installMenuFeedback() {
+  if (menuFeedbackInstalled || typeof document === 'undefined') return;
+  menuFeedbackInstalled = true;
+
+  const isMenuControl = (target: EventTarget | null) =>
+    target instanceof Element &&
+    !!target.closest(
+      'select,[role="menu"],[role="menuitem"],[role="listbox"],[role="option"],input[type="range"],input[type="radio"],input[type="checkbox"]',
+    );
+
+  document.addEventListener(
+    'keydown',
+    (event) => {
+      if (
+        enabled() &&
+        !event.repeat &&
+        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code) &&
+        isMenuControl(event.target)
+      ) {
+        triggerForceFeedbackMenuPulse();
+      }
+    },
+    true,
+  );
+  document.addEventListener(
+    'change',
+    (event) => {
+      if (enabled() && isMenuControl(event.target)) triggerForceFeedbackMenuPulse();
+    },
+    true,
+  );
+}
+
 function installSettingsUi() {
   if (uiInstalled || typeof document === 'undefined') return;
+  installMenuFeedback();
   const toggle = Array.from(document.querySelectorAll('button'))
     .find(button => button.textContent?.includes('Wheel Setup [F8]'));
   const panel = toggle?.parentElement?.querySelector<HTMLDivElement>('div');
@@ -84,7 +122,7 @@ function installSettingsUi() {
   strengthRow.append(strengthLabel, slider, value);
 
   const note = document.createElement('div');
-  note.textContent = 'Physics FFB: self-aligning steering, slide counter-steer and per-wheel grass vibration.';
+  note.textContent = 'Physics FFB: self-aligning steering, slide counter-steer, grass vibration and real landing impacts.';
   note.style.cssText = 'margin-top:8px;color:#aaa;font-size:12px;';
 
   checkbox.addEventListener('change', () => {

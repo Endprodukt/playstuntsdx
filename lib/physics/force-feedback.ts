@@ -1,3 +1,5 @@
+export type ForceFeedbackSurface = 'road' | 'grass' | 'air';
+
 export type ForceFeedbackTelemetry = {
   speed: number;
   roadSpeed: number;
@@ -6,26 +8,22 @@ export type ForceFeedbackTelemetry = {
   frontWheelAngle: number;
   slip: number;
   spin: number;
-  sliding: boolean;
+  sliding: number;
   surfaces: number[];
   allContact: number;
+  updatedAt: number;
 };
-
-let telemetry: (ForceFeedbackTelemetry & { updatedAt: number }) | undefined;
-let smoothedForce = 0;
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
-/**
- * Captures the player's actual Stunts tyre/grip state before the original grip
- * routine clears its temporary slip value. No synthetic road state is inferred.
- */
-export function updateForceFeedbackTelemetry(next: ForceFeedbackTelemetry) {
-  telemetry = {
-    ...next,
-    surfaces: [...next.surfaces],
-    updatedAt: Date.now(),
-  };
+let telemetry: ForceFeedbackTelemetry | null = null;
+let grassPhase = 0;
+let impactPulseStrength = 0;
+let impactPulseStartedAt = 0;
+let menuPulseStartedAt = 0;
+
+export function updateForceFeedbackTelemetry(next: Omit<ForceFeedbackTelemetry, 'updatedAt'>) {
+  telemetry = { ...next, surfaces: [...next.surfaces], updatedAt: Date.now() };
 }
 
 /**
@@ -33,66 +31,106 @@ export function updateForceFeedbackTelemetry(next: ForceFeedbackTelemetry) {
  * real track-contact pass. This keeps transient grip/slip data from stepGrip,
  * while surface rumble uses the wheel surfaces produced by the same physics tick.
  */
-export function updateForceFeedbackContact(surfaces: number[], allContact: number) {
+export function updateForceFeedbackContact(
+  surfaces: number[],
+  allContact: number,
+  impactSpeed = 0,
+) {
   if (!telemetry) return;
+  const now = Date.now();
   telemetry = {
     ...telemetry,
     surfaces: [...surfaces],
     allContact,
-    updatedAt: Date.now(),
+    updatedAt: now,
   };
+
+  // The original physics sets its landing-impact flag only above fallSpeed 190.
+  // Scale that real impact velocity into a short wheel kick instead of adding a
+  // generic road-bump effect.
+  if (impactSpeed > 190) {
+    impactPulseStrength = clamp(0.28 + (impactSpeed - 190) / 650, 0.28, 0.9);
+    impactPulseStartedAt = now;
+  }
+}
+
+export function triggerForceFeedbackMenuPulse() {
+  menuPulseStartedAt = Date.now();
 }
 
 export function clearForceFeedbackTelemetry() {
-  telemetry = undefined;
-  smoothedForce = 0;
+  telemetry = null;
+  grassPhase = 0;
+  impactPulseStrength = 0;
+  impactPulseStartedAt = 0;
 }
 
-/**
- * Returns normalized DirectInput force in the range -1..1.
- *
- * The base force is self-aligning torque opposing the driver's steering input.
- * During a slide the signed grip slip and spin pull the wheel toward the
- * counter-steer direction. Grass vibration is driven only by wheels whose real
- * contact surface is Stunts surface 4; airborne wheels unload the steering.
- */
 export function sampleForceFeedback(physicalSteering: number) {
-  const state = telemetry;
-  if (!state || Date.now() - state.updatedAt > 250) {
-    smoothedForce *= 0.55;
-    if (Math.abs(smoothedForce) < 0.002) smoothedForce = 0;
-    return smoothedForce;
+  const now = Date.now();
+  const menuAge = now - menuPulseStartedAt;
+  const menuForce =
+    menuPulseStartedAt > 0 && menuAge >= 0 && menuAge < 80
+      ? Math.sin((menuAge / 80) * Math.PI * 2) * (1 - menuAge / 80) * 0.18
+      : 0;
+
+  if (!telemetry || now - telemetry.updatedAt > 250) {
+    return menuForce;
   }
 
-  const mph = Math.abs(state.speed) >>> 8;
-  const speed = clamp((mph - 1) / 54, 0, 1);
-  const contactCount = state.surfaces.filter(surface => surface !== 0).length;
-  const contact = clamp(contactCount / 4, 0, 1);
-  const grassCount = state.surfaces.filter(surface => surface === 4).length;
-  const grass = contactCount ? grassCount / contactCount : 0;
+  const contactCount = telemetry.surfaces.filter((surface) => surface !== 0).length;
+  // Surface id 4 is the real Stunts grass/off-road contact. Road deliberately
+  // receives no artificial continuous vibration.
+  const grassCount = telemetry.surfaces.filter((surface) => surface === 4).length;
+  const contactScale = contactCount / 4;
+  const speedScale = clamp(Math.abs(telemetry.speed) / 1800, 0, 1);
+  const roadSpeedScale = clamp(Math.abs(telemetry.roadSpeed) / 650, 0, 1);
+  const wheelSteering =
+    Math.abs(physicalSteering) > 0.02
+      ? physicalSteering
+      : clamp(telemetry.wheelAngle / 1024, -1, 1);
+  const gripLoad = contactScale * (0.15 + 0.85 * speedScale);
 
-  // SteeringAngle's original range is -240..240. Physical steering is used for
-  // the restoring component so the force follows the actual wheel position even
-  // when the game is still unwinding its internal steering state.
-  const centering = -clamp(physicalSteering, -1, 1) * (0.055 + 0.245 * speed) * contact;
+  // Constant-force self-aligning torque: the steering input supplies direction,
+  // while actual contact and vehicle speed determine how much load the wheel has.
+  const centering =
+    wheelSteering *
+    gripLoad *
+    (0.95 + 1.35 * roadSpeedScale);
 
-  // stepGrip computes signed slip immediately before this telemetry is captured.
-  // Keep it dominant only while the original game itself considers the car to be
-  // sliding, then add the original signed spin accumulator for larger rotations.
-  const slip = state.sliding ? clamp(state.slip / 180, -1, 1) : 0;
-  const spin = clamp(state.spin / 96, -1, 1);
-  const aligning = -(slip * 0.34 + spin * 0.20) * speed * contact;
+  // Counter-steer during a slide comes from the signed slip/spin generated by
+  // the original grip step, not from visual yaw or an invented drift state.
+  const slideAmount = clamp(telemetry.sliding / 28, 0, 1) * contactScale;
+  const signedSlip = clamp(telemetry.slip / 100, -1, 1);
+  const signedSpin = clamp(telemetry.spin / 1200, -1, 1);
+  const slideAligning =
+    clamp(-signedSlip * 1.15 + signedSpin * 0.38, -1.3, 1.3) *
+    Math.max(slideAmount, Math.abs(signedSlip) * 0.65) *
+    (0.3 + 0.7 * speedScale);
 
-  // Surface 4 is the same real wheel surface that Stunts' grip code treats as
-  // grass/off-road. Road therefore contributes no artificial vibration here.
-  const frequency = 15 + speed * 18;
-  const phase = (Date.now() / 1000) * Math.PI * 2 * frequency;
-  const grassRumble = Math.sin(phase) * grass * speed * 0.13 * contact;
+  let grassForce = 0;
+  if (grassCount > 0) {
+    const frequency = 10 + 34 * roadSpeedScale;
+    grassPhase = (grassPhase + (frequency / 66) * Math.PI * 2) % (Math.PI * 2);
+    const grassScale = grassCount / 4;
+    grassForce =
+      Math.sin(grassPhase) *
+      grassScale *
+      (0.28 + 0.88 * roadSpeedScale);
+  } else {
+    grassPhase = 0;
+  }
 
-  // Scale the complete physics signal together so the balance between steering,
-  // slide forces and grass vibration stays intact. Leave some DirectInput headroom.
-  const outputScale = 1.8;
-  const target = clamp((centering + aligning + grassRumble) * outputScale, -0.90, 0.90);
-  smoothedForce = smoothedForce * 0.58 + target * 0.42;
-  return smoothedForce;
+  const impactAge = now - impactPulseStartedAt;
+  const impactForce =
+    impactPulseStartedAt > 0 && impactAge >= 0 && impactAge < 120
+      ? Math.sin((impactAge / 120) * Math.PI * 2) *
+        (1 - impactAge / 120) *
+        impactPulseStrength
+      : 0;
+
+  if (telemetry.allContact === 0 && contactCount === 0) {
+    return menuForce;
+  }
+
+  return clamp(centering + slideAligning + grassForce + impactForce + menuForce, -1, 1);
 }
