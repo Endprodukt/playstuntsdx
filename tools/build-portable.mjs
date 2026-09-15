@@ -28,6 +28,10 @@ function iniEntries(content) {
   return entries;
 }
 
+function iniEntryKey(section, key) {
+  return `${section.trim().toLowerCase()}\0${key.trim().toLowerCase()}`;
+}
+
 function setIniValue(content, section, key, value) {
   const newline = content.includes('\r\n') ? '\r\n' : '\n';
   const lines = content.split(/\r?\n/);
@@ -69,15 +73,17 @@ if (!executable) {
 // is deliberately rebuilt so changes to the asset preparation code take effect.
 mkdirSync(releaseDir, { recursive: true });
 rmSync(path.join(releaseDir, 'Runtime'), { recursive: true, force: true });
+rmSync(path.join(releaseDir, 'prepare-runtime.log'), { force: true });
 copyFileSync(executable, path.join(releaseDir, 'PlayStunts DX.exe'));
 
 for (const directory of ['Gamedata', 'Custom Cars', 'High Res', 'mt32']) {
   mkdirSync(path.join(releaseDir, directory), { recursive: true });
 }
 
+const defaultConfig = path.join(root, 'src-tauri', 'config.default.ini');
 const config = path.join(releaseDir, 'config.ini');
 if (!existsSync(config)) {
-  copyFileSync(path.join(root, 'src-tauri', 'config.default.ini'), config);
+  copyFileSync(defaultConfig, config);
 }
 
 // ffb.ini was used by early desktop builds. Preserve the user's tuning once,
@@ -91,6 +97,24 @@ if (existsSync(legacyFfb)) {
   writeFileSync(config, content.endsWith('\n') ? content : `${content}\n`);
   rmSync(legacyFfb, { force: true });
   console.log('Migrated legacy ffb.ini settings into config.ini.');
+}
+
+// Keep user-edited values, but add every setting introduced by newer builds.
+// This makes an old portable folder self-updating without replacing its INI.
+{
+  let content = readFileSync(config, 'utf8');
+  const existing = new Set(iniEntries(content).map(([section, key]) => iniEntryKey(section, key)));
+  let added = 0;
+  for (const [section, key, value] of iniEntries(readFileSync(defaultConfig, 'utf8'))) {
+    if (existing.has(iniEntryKey(section, key))) continue;
+    content = setIniValue(content, section, key, value);
+    existing.add(iniEntryKey(section, key));
+    added += 1;
+  }
+  if (added) {
+    writeFileSync(config, content.endsWith('\n') ? content : `${content}\n`);
+    console.log(`Added ${added} new config.ini setting${added === 1 ? '' : 's'} without changing existing values.`);
+  }
 }
 
 console.log('');
