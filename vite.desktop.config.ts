@@ -54,7 +54,8 @@ function desktopRuntimeAdaptation(): Plugin {
       if (normalized.endsWith('/lib/game/native-options-runtime.ts')) {
         const audioControl = 'else reply=await host.audio(value.type);';
         const actionClose = '   }}finally{retained?.close();}\n  }';
-        if (!code.includes(audioControl) || !code.includes(actionClose)) {
+        const immediateReload = 'window.setTimeout(()=>window.location.reload(),0);';
+        if (![audioControl, actionClose, immediateReload].every(value => code.includes(value))) {
           throw new Error('Desktop runtime adaptation is out of date for native-options-runtime.ts');
         }
         return code
@@ -65,7 +66,8 @@ function desktopRuntimeAdaptation(): Plugin {
           .replace(
             actionClose,
             "   }}finally{retained?.close();}\n   if(name==='graphics'&&desktopSoundDevice())window.localStorage.setItem('playstunts-dx-original-graphics-level',String(host.settings.graphics));\n  }",
-          );
+          )
+          .replace(immediateReload, 'window.setTimeout(()=>window.location.reload(),120);');
       }
 
       return null;
