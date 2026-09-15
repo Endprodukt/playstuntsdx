@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const venv = path.join(root, '.venv-portable');
 const venvPython = path.join(venv, 'Scripts', 'python.exe');
-const noCfgMarker = path.join(venv, '.pyinstaller-no-cfg-v4');
+const noCfgMarker = path.join(venv, '.pyinstaller-no-cfg-v5');
 const generated = path.join(root, 'src-tauri', 'generated');
 const helper = path.join(generated, 'playstuntsdx-prepare.exe');
 const stamp = path.join(generated, 'playstuntsdx-prepare.sha256');
@@ -66,16 +66,31 @@ function visualStudioX64Environment() {
   const devCmd = path.join(installation, 'Common7', 'Tools', 'VsDevCmd.bat');
   if (!existsSync(devCmd)) throw new Error(`Visual Studio developer environment was not found: ${devCmd}`);
 
-  // Microsoft names the 64-bit Developer Command Prompt architecture "amd64".
-  // Capture a clean amd64 environment instead of inheriting LIB/INCLUDE from
-  // the shell that launched npm; mixed x86 SDK paths fail later with LNK4272.
-  const command = `call "${devCmd}" -no_logo -arch=amd64 -host_arch=amd64 >nul && set`;
-  const configured = spawnSync('cmd.exe', ['/d', '/c', command], {
+  // Use a real command file instead of embedding a quoted path inside cmd /c.
+  // cmd.exe has special nested-quote rules; passing \"C:\\Program Files\\...\"
+  // through a generated command string can leave the quote characters literal.
+  // A .cmd file lets CALL handle the Visual Studio path normally and gives us
+  // the resulting environment via SET on stdout.
+  const envScript = path.join(root, 'build', 'playstuntsdx-vs-amd64-env.cmd');
+  mkdirSync(path.dirname(envScript), { recursive: true });
+  writeFileSync(
+    envScript,
+    [
+      '@echo off',
+      `call "${devCmd}" -no_logo -arch=amd64 -host_arch=amd64`,
+      'if errorlevel 1 exit /b %errorlevel%',
+      'set',
+      '',
+    ].join('\r\n'),
+  );
+
+  const configured = spawnSync('cmd.exe', ['/d', '/c', envScript], {
     cwd: root,
     encoding: 'utf8',
     shell: false,
     env: { ...process.env },
   });
+  rmSync(envScript, { force: true });
   if (configured.error) throw configured.error;
   if (configured.status !== 0) {
     const details = [configured.stdout, configured.stderr].filter(Boolean).join('\n').trim();
@@ -108,9 +123,9 @@ function helperInputHash() {
     path.join(root, 'docs', 'original-file-checksums.json'),
   ].sort();
   const hash = createHash('sha256');
-  // v6 builds the no-CFG 64-bit bootloader inside a clean Visual Studio amd64
-  // developer environment so Windows SDK/CRT libraries cannot be mixed with x86.
-  hash.update('playstuntsdx-portable-helper-v6-vs-amd64-no-cfg\0');
+  // v7 captures the Visual Studio amd64 environment via a temporary command
+  // file so paths containing spaces do not depend on cmd.exe nested quoting.
+  hash.update('playstuntsdx-portable-helper-v7-vs-amd64-cmd-no-cfg\0');
   for (const file of files) {
     hash.update(path.relative(root, file).replaceAll('\\', '/'));
     hash.update('\0');
