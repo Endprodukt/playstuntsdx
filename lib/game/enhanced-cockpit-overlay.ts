@@ -16,7 +16,8 @@ type LoadedImage={image:HTMLImageElement;enhanced:boolean};
 type MaskedSprite={canvas:HTMLCanvasElement;enhanced:boolean};
 type DynamicSurface={canvas:HTMLCanvasElement;context:CanvasRenderingContext2D;image:ImageData};
 type SnapshotSurface={canvas:HTMLCanvasElement;context:CanvasRenderingContext2D};
-type CarAssets={layout:CockpitLayout;panel:PanelData;images:Map<string,LoadedImage>;masked:Map<string,MaskedSprite>;dynamic?:DynamicSurface;replaySnapshot?:SnapshotSurface};
+type LoadedCarAssets={layout:CockpitLayout;panel:PanelData;images:Map<string,LoadedImage>};
+type CarAssets=LoadedCarAssets&{masked:Map<string,MaskedSprite>;dynamic?:DynamicSurface;replaySnapshot?:SnapshotSurface};
 type DrawState={car:string;pixels:Uint8Array;steering:number;knobX:number;knobY:number};
 type ReplayBarArt={keys:string[];resources:Record<string,number[]>};
 type ReplayFrame={x:number;y:number;width:number;height:number;pixels:number[]};
@@ -83,6 +84,35 @@ async function preferredImage(original:string):Promise<LoadedImage>{
  catch{return {image:await image(original),enhanced:false};}
 }
 
+const sharedLoads=new Map<string,Promise<LoadedCarAssets|undefined>>();
+const sharedReady=new Map<string,LoadedCarAssets|undefined>();
+
+function loadCar(car:string){
+ let pending=sharedLoads.get(car);
+ if(pending)return pending;
+ pending=(async()=>{
+  try{
+   const index=await indexPromise,layout=index[car];if(!layout)return undefined;
+   const response=await fetch(`/game/cockpit/${car}/panel.json`);if(!response.ok)return undefined;
+   const panel=await response.json() as PanelData;
+   const files=new Set<string>(['dashboard.png','ins2.png','gbox.png','gnob.png','gnab.png','dot.png','dota.png','ins1.png','inm1.png','ins3.png','inm3.png']);
+   for(const frame of Object.values(layout.frames))files.add(frame.file);
+   const entries=await Promise.all([...files].map(async file=>{
+    try{return [file,await preferredImage(`/game/cockpit/${car}/${file}`)] as const;}
+    catch{return undefined;}
+   }));
+   const images=new Map<string,LoadedImage>();for(const entry of entries)if(entry)images.set(entry[0],entry[1]);
+   return {layout,panel,images};
+  }catch{return undefined;}
+ })().then(value=>{sharedReady.set(car,value);return value;});
+ sharedLoads.set(car,pending);return pending;
+}
+
+function warmEnhancedCockpits(){
+ if(!enhancedTexturesEnabled())return;
+ void indexPromise.then(index=>{for(const car of Object.keys(index))void loadCar(car);}).catch(()=>{});
+}
+
 function composeMaskedSprite(art:LoadedImage,mask:LoadedImage):MaskedSprite{
  const canvas=document.createElement('canvas');
  canvas.width=art.image.naturalWidth;canvas.height=art.image.naturalHeight;
@@ -100,41 +130,28 @@ function composeMaskedSprite(art:LoadedImage,mask:LoadedImage):MaskedSprite{
  return {canvas,enhanced:art.enhanced||mask.enhanced};
 }
 
+// The upgraded race module is warmed while the user is still in the menu.
+// Start decoding cockpit art at the same time so a prepared car can be drawn
+// in high resolution on the very first visible race frame.
+warmEnhancedCockpits();
+
 /** High-resolution cockpit presentation layered over the original native race.
  * The native framebuffer remains authoritative for live gauge pixels; only the
  * authored cockpit artwork is replaced. Missing hires files fall back per-file.
  */
 export function createEnhancedCockpitOverlay(){
  let enabled=enhancedTexturesEnabled(),closed=false;
- const cache=new Map<string,Promise<CarAssets|undefined>>();
- const sync=()=>{enabled=enhancedTexturesEnabled();};
+ const sync=()=>{enabled=enhancedTexturesEnabled();if(enabled)warmEnhancedCockpits();};
  window.addEventListener(ENHANCED_TEXTURES_EVENT,sync);
 
- const load=(car:string)=>{
-  let pending=cache.get(car);
-  if(pending)return pending;
-  pending=(async()=>{
-   try{
-    const index=await indexPromise,layout=index[car];if(!layout)return undefined;
-    const response=await fetch(`/game/cockpit/${car}/panel.json`);if(!response.ok)return undefined;
-    const panel=await response.json() as PanelData;
-    const files=new Set<string>(['dashboard.png','ins2.png','gbox.png','gnob.png','gnab.png','dot.png','dota.png','ins1.png','inm1.png','ins3.png','inm3.png']);
-    for(const frame of Object.values(layout.frames))files.add(frame.file);
-    const entries=await Promise.all([...files].map(async file=>{
-     try{return [file,await preferredImage(`/game/cockpit/${car}/${file}`)] as const;}
-     catch{return undefined;}
-    }));
-    const images=new Map<string,LoadedImage>();for(const entry of entries)if(entry)images.set(entry[0],entry[1]);
-    return {layout,panel,images,masked:new Map<string,MaskedSprite>()};
-   }catch{return undefined;}
-  })();
-  cache.set(car,pending);return pending;
- };
-
  const ready=new Map<string,CarAssets|undefined>();
+ const materialize=(loaded:LoadedCarAssets|undefined):CarAssets|undefined=>loaded?{...loaded,masked:new Map<string,MaskedSprite>()}:undefined;
  const ensure=(car:string)=>{
   if(ready.has(car))return ready.get(car);
-  void load(car).then(value=>{if(!closed)ready.set(car,value);});
+  if(sharedReady.has(car)){
+   const assets=materialize(sharedReady.get(car));ready.set(car,assets);return assets;
+  }
+  void loadCar(car).then(value=>{if(!closed)ready.set(car,materialize(value));});
   return undefined;
  };
 
@@ -221,6 +238,6 @@ export function createEnhancedCockpitOverlay(){
    }
    return true;
   },
-  close(){closed=true;window.removeEventListener(ENHANCED_TEXTURES_EVENT,sync);cache.clear();ready.clear();},
+  close(){closed=true;window.removeEventListener(ENHANCED_TEXTURES_EVENT,sync);ready.clear();},
  };
 }
