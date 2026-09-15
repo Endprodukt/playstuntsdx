@@ -25,6 +25,9 @@ let engineTelemetry: EngineForceFeedbackTelemetry | undefined;
 let smoothedForce = 0;
 let impactPulseStrength = 0;
 let impactPulseStartedAt = 0;
+let crashPulseStrength = 0;
+let crashPulseDirection = 1;
+let crashPulseStartedAt = 0;
 let shiftPulseStartedAt = 0;
 let menuPulseStartedAt = 0;
 let enginePhase = 0;
@@ -42,6 +45,11 @@ export function updateForceFeedbackTelemetry(next: ForceFeedbackTelemetry) {
     surfaces: [...next.surfaces],
     updatedAt: Date.now(),
   };
+}
+
+/** True only while the player-car physics is actively producing fresh samples. */
+export function forceFeedbackDrivingActive() {
+  return !!telemetry && Date.now() - telemetry.updatedAt <= 250;
 }
 
 /**
@@ -70,11 +78,13 @@ export function updateForceFeedbackEngine(
  * Replaces only the wheel-contact part of the latest player sample after the
  * real track-contact pass. This keeps transient grip/slip data from stepGrip,
  * while surface rumble uses the wheel surfaces produced by the same physics tick.
+ * A crash speed is supplied only for a newly accepted original crash impact.
  */
 export function updateForceFeedbackContact(
   surfaces: number[],
   allContact: number,
   impactSpeed = 0,
+  crashSpeed?: number,
 ) {
   if (!telemetry) return;
   const now = Date.now();
@@ -91,6 +101,15 @@ export function updateForceFeedbackContact(
     impactPulseStrength = clamp(0.28 + (impactSpeed - 190) / 650, 0.28, 0.9);
     impactPulseStartedAt = now;
   }
+
+  if (crashSpeed !== undefined) {
+    const mph = Math.abs(crashSpeed) >>> 8;
+    crashPulseStrength = clamp(0.72 + (mph / 70) * 0.28, 0.72, 1);
+    const directionSource =
+      telemetry.spin || telemetry.slip || telemetry.frontWheelAngle || telemetry.steeringAngle;
+    crashPulseDirection = directionSource ? -Math.sign(directionSource) : 1;
+    crashPulseStartedAt = now;
+  }
 }
 
 export function triggerForceFeedbackMenuPulse() {
@@ -103,7 +122,11 @@ export function clearForceFeedbackTelemetry() {
   smoothedForce = 0;
   impactPulseStrength = 0;
   impactPulseStartedAt = 0;
+  crashPulseStrength = 0;
+  crashPulseDirection = 1;
+  crashPulseStartedAt = 0;
   shiftPulseStartedAt = 0;
+  menuPulseStartedAt = 0;
   enginePhase = 0;
   enginePhaseUpdatedAt = 0;
 }
@@ -126,9 +149,9 @@ function sampleEngineForce(now: number) {
   enginePhaseUpdatedAt = now;
   enginePhase = (enginePhase + elapsedSeconds * Math.PI * 2 * frequency) % (Math.PI * 2);
 
-  // Keep the engine underneath the steering forces: about 1.2% at idle and
-  // 3% near the limiter before the user's master-strength setting is applied.
-  const amplitude = 0.012 + revs * 0.018;
+  // Keep the engine well underneath steering forces: about 0.8% at idle and
+  // 2% near the limiter before the user's master-strength setting is applied.
+  const amplitude = 0.008 + revs * 0.012;
   return Math.sin(enginePhase) * amplitude;
 }
 
@@ -144,14 +167,14 @@ export function sampleForceFeedback(physicalSteering: number) {
   const now = Date.now();
   const menuAge = now - menuPulseStartedAt;
   const menuForce =
-    menuPulseStartedAt > 0 && menuAge >= 0 && menuAge < 80
-      ? Math.sin((menuAge / 80) * Math.PI * 2) * (1 - menuAge / 80) * 0.18
+    menuPulseStartedAt > 0 && menuAge >= 0 && menuAge < 90
+      ? Math.sin((menuAge / 90) * Math.PI * 2) * (1 - menuAge / 90) * 0.24
       : 0;
 
   const shiftAge = now - shiftPulseStartedAt;
   const shiftForce =
-    shiftPulseStartedAt > 0 && shiftAge >= 0 && shiftAge < 105
-      ? Math.sin((shiftAge / 105) * Math.PI * 2) * (1 - shiftAge / 105) * 0.09
+    shiftPulseStartedAt > 0 && shiftAge >= 0 && shiftAge < 110
+      ? Math.sin((shiftAge / 110) * Math.PI * 2) * (1 - shiftAge / 110) * 0.15
       : 0;
   const engineForce = sampleEngineForce(now);
 
@@ -159,7 +182,7 @@ export function sampleForceFeedback(physicalSteering: number) {
   if (!state || now - state.updatedAt > 250) {
     smoothedForce *= 0.55;
     if (Math.abs(smoothedForce) < 0.002) smoothedForce = 0;
-    return clamp(smoothedForce + menuForce + shiftForce + engineForce, -0.95, 0.95);
+    return clamp(smoothedForce + menuForce + shiftForce + engineForce, -0.98, 0.98);
   }
 
   const mph = Math.abs(state.speed) >>> 8;
@@ -169,10 +192,18 @@ export function sampleForceFeedback(physicalSteering: number) {
   const grassCount = state.surfaces.filter(surface => surface === 4).length;
   const grass = contactCount ? grassCount / contactCount : 0;
 
+  // The starting transporter has no normal road contact yet, but the car is
+  // stationary and should already feel centred. A moving airborne car still
+  // unloads normally, so jumps do not gain an artificial spring in mid-air.
+  const stationaryWithoutRoadContact =
+    contactCount === 0 && Math.abs(state.speed) < 256 && Math.abs(state.roadSpeed) < 256;
+  const centeringLoad = stationaryWithoutRoadContact ? 1 : contact;
+
   // SteeringAngle's original range is -240..240. Physical steering is used for
   // the restoring component so the force follows the actual wheel position even
   // when the game is still unwinding its internal steering state.
-  const centering = -clamp(physicalSteering, -1, 1) * (0.055 + 0.245 * speed) * contact;
+  const centering =
+    -clamp(physicalSteering, -1, 1) * (0.055 + 0.245 * speed) * centeringLoad;
 
   // stepGrip computes signed slip immediately before this telemetry is captured.
   // Keep it dominant only while the original game itself considers the car to be
@@ -188,7 +219,7 @@ export function sampleForceFeedback(physicalSteering: number) {
   const grassRumble = Math.sin(phase) * grass * speed * 0.13 * contact;
 
   // Keep the current 1.8x physics tuning intact; only transient events bypass
-  // the smoothing so a landing, shift or menu detent remains crisp at the wheel.
+  // the smoothing so a landing, shift, crash or menu detent remains crisp.
   const outputScale = 1.8;
   const target = clamp((centering + aligning + grassRumble) * outputScale, -0.90, 0.90);
   smoothedForce = smoothedForce * 0.58 + target * 0.42;
@@ -201,9 +232,24 @@ export function sampleForceFeedback(physicalSteering: number) {
         impactPulseStrength
       : 0;
 
+  const crashAge = now - crashPulseStartedAt;
+  let crashForce = 0;
+  if (crashPulseStartedAt > 0 && crashAge >= 0 && crashAge < 240) {
+    if (crashAge < 150) {
+      crashForce =
+        Math.sin((crashAge / 150) * Math.PI) * crashPulseStrength * crashPulseDirection;
+    } else {
+      crashForce =
+        -Math.sin(((crashAge - 150) / 90) * Math.PI) *
+        crashPulseStrength *
+        crashPulseDirection *
+        0.32;
+    }
+  }
+
   return clamp(
-    smoothedForce + impactForce + shiftForce + engineForce + menuForce,
-    -0.95,
-    0.95,
+    smoothedForce + impactForce + crashForce + shiftForce + engineForce + menuForce,
+    -0.98,
+    0.98,
   );
 }

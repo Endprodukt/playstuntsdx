@@ -1,4 +1,5 @@
 import {
+  forceFeedbackDrivingActive,
   sampleForceFeedback,
   triggerForceFeedbackMenuPulse,
 } from '../physics/force-feedback';
@@ -26,6 +27,8 @@ let ffbActive = false;
 let lastStatus = 0;
 let lastMenuPulseRequest = 0;
 let menuPulseInterval: number | undefined;
+let lastMenuNavigation = 0;
+let lastMenuNavigationAt = 0;
 let statusElement: HTMLSpanElement | undefined;
 let unloadInstalled = false;
 
@@ -60,7 +63,7 @@ function installFocusRecovery() {
   if (focusRecoveryInstalled || typeof window === 'undefined' || typeof document === 'undefined') return;
   focusRecoveryInstalled = true;
   const recover = () => {
-    if (enabled()) resampleAndSend(true);
+    if (enabled()) resampleAndSend(true, !forceFeedbackDrivingActive());
   };
   window.addEventListener('focus', recover);
   document.addEventListener('visibilitychange', () => {
@@ -78,13 +81,15 @@ function pulseMenuFeedback() {
   if (menuPulseInterval !== undefined) window.clearInterval(menuPulseInterval);
   const startedAt = performance.now();
   const pump = () => {
-    if (performance.now() - startedAt >= 100) {
+    if (performance.now() - startedAt >= 115) {
       if (menuPulseInterval !== undefined) window.clearInterval(menuPulseInterval);
       menuPulseInterval = undefined;
-      resampleAndSend(true);
+      resampleAndSend(true, true);
       return;
     }
-    resampleAndSend(true);
+    // Native Stunts menus live on a canvas and may not have an active driving
+    // input session. A menu detent is allowed to wake DirectInput by itself.
+    resampleAndSend(true, true);
   };
   pump();
   menuPulseInterval = window.setInterval(pump, 16);
@@ -96,8 +101,10 @@ function installMenuFeedback() {
 
   const selector =
     'button,select,[role="menu"],[role="menuitem"],[role="listbox"],[role="option"],[tabindex]:not([tabindex="-1"]),input[type="range"],input[type="radio"],input[type="checkbox"]';
+  const isNativeMenuCanvas = (target: EventTarget | null) =>
+    target instanceof HTMLCanvasElement && !forceFeedbackDrivingActive();
   const isMenuControl = (target: EventTarget | null) =>
-    target instanceof Element && !!target.closest(selector);
+    (target instanceof Element && !!target.closest(selector)) || isNativeMenuCanvas(target);
   const eventIsOnMenuControl = (target: EventTarget | null) =>
     isMenuControl(target) || isMenuControl(document.activeElement);
 
@@ -111,6 +118,13 @@ function installMenuFeedback() {
       ) {
         pulseMenuFeedback();
       }
+    },
+    true,
+  );
+  document.addEventListener(
+    'pointerdown',
+    (event) => {
+      if (enabled() && isNativeMenuCanvas(event.target)) pulseMenuFeedback();
     },
     true,
   );
@@ -135,6 +149,38 @@ function installMenuFeedback() {
     },
     true,
   );
+}
+
+function updateWheelMenuFeedback(input: DesktopWheelInputState) {
+  if (
+    !enabled() ||
+    !input.configured ||
+    !input.connected ||
+    forceFeedbackDrivingActive()
+  ) {
+    lastMenuNavigation = 0;
+    lastMenuNavigationAt = 0;
+    return;
+  }
+
+  const horizontal = input.steering < -0.18 ? -1 : input.steering > 0.18 ? 1 : 0;
+  const vertical = input.throttle > 0.12 ? 2 : input.brake > 0.12 ? -2 : 0;
+  const navigation = vertical || horizontal;
+  const now = performance.now();
+
+  if (!navigation) {
+    lastMenuNavigation = 0;
+    lastMenuNavigationAt = 0;
+    return;
+  }
+
+  // The original menu repeats a held direction. Give each repeated selection a
+  // tactile notch without firing at the much faster wheel polling rate.
+  if (navigation !== lastMenuNavigation || now - lastMenuNavigationAt >= 190) {
+    pulseMenuFeedback();
+    lastMenuNavigationAt = now;
+  }
+  lastMenuNavigation = navigation;
 }
 
 function installSettingsUi() {
@@ -176,19 +222,19 @@ function installSettingsUi() {
   strengthRow.append(strengthLabel, slider, value);
 
   const note = document.createElement('div');
-  note.textContent = 'Physics FFB: steering, slide counter-steer, grass, landings, gear shifts and RPM engine vibration.';
+  note.textContent = 'Physics FFB: steering, slide counter-steer, grass, landings, crashes, gear shifts and RPM engine vibration.';
   note.style.cssText = 'margin-top:8px;color:#aaa;font-size:12px;';
 
   checkbox.addEventListener('change', () => {
     window.localStorage.setItem(enabledKey, String(checkbox.checked));
-    if (checkbox.checked) resampleAndSend(true);
+    if (checkbox.checked) resampleAndSend(true, true);
     else void sendForce(0, true);
     updateStatus();
   });
   slider.addEventListener('input', () => {
     window.localStorage.setItem(strengthKey, slider.value);
     value.textContent = `${slider.value}%`;
-    resampleAndSend(true);
+    resampleAndSend(true, true);
   });
 
   section.append(row, strengthRow, note);
@@ -222,8 +268,8 @@ async function sendForce(force: number, immediate = false) {
   }
 }
 
-function resampleAndSend(immediate = false) {
-  latestForce = ffbActive && enabled()
+function resampleAndSend(immediate = false, allowIdle = false) {
+  latestForce = enabled() && (ffbActive || allowIdle)
     ? -sampleForceFeedback(latestSteering) * strength()
     : 0;
   void sendForce(latestForce, immediate);
@@ -233,6 +279,7 @@ export function updateDesktopForceFeedback(input: DesktopWheelInputState) {
   if (typeof window === 'undefined') return;
   installSettingsUi();
   installFocusRecovery();
+  updateWheelMenuFeedback(input);
 
   if (!unloadInstalled) {
     unloadInstalled = true;
@@ -252,6 +299,8 @@ export function updateDesktopForceFeedback(input: DesktopWheelInputState) {
 export function stopDesktopForceFeedback() {
   latestForce = 0;
   ffbActive = false;
+  lastMenuNavigation = 0;
+  lastMenuNavigationAt = 0;
   if (menuPulseInterval !== undefined && typeof window !== 'undefined') {
     window.clearInterval(menuPulseInterval);
     menuPulseInterval = undefined;

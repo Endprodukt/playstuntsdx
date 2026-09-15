@@ -69,10 +69,21 @@ export function stepTrack(
         before.suspension.rc1[3] + 15,
       )
     : 0;
+  // crashImpacts is populated only when the original contact/collision path
+  // accepts a new crash. Preserve the pre-impact speed because some crash
+  // responses immediately zero roadSpeed before the FFB layer sees the result.
+  const crashSpeed = moved.crashImpacts.length
+    ? Math.max(Math.abs(before.engine.roadSpeed), Math.abs(engineRoadSpeed))
+    : undefined;
   // stepGrip captures the player's transient signed slip before it is cleared.
   // Refresh its contact fields here, after the real wheel-contact pass, so FFB
   // uses this tick's surfaces rather than the previous tick's contact history.
-  updateForceFeedbackContact(moved.grip.surfaces,moved.grip.allContact,impactSpeed);
+  updateForceFeedbackContact(
+    moved.grip.surfaces,
+    moved.grip.allContact,
+    impactSpeed,
+    crashSpeed,
+  );
   return moved;
 }
 /** Shared movement stage after engine and grip; car-specific event handling remains with the caller. */
