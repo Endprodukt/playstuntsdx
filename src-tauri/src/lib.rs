@@ -2,6 +2,8 @@ use serde::Serialize;
 use std::{fs, path::PathBuf};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
+const REQUIRED_GAMEDATA: [&str; 3] = ["GAME.PRE", "GAME1.P3S", "MAIN.RES"];
+
 #[tauri::command]
 fn toggle_fullscreen(window: tauri::Window) -> Result<bool, String> {
     let fullscreen = window.is_fullscreen().map_err(|error| error.to_string())?;
@@ -13,6 +15,50 @@ fn toggle_fullscreen(window: tauri::Window) -> Result<bool, String> {
 #[tauri::command]
 fn exit_game(app: tauri::AppHandle) {
     app.exit(0);
+}
+
+fn gamedata_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(directory) = executable.parent() {
+            roots.push(directory.join("Gamedata"));
+        }
+    }
+    if let Ok(current) = std::env::current_dir() {
+        roots.push(current.join("Gamedata"));
+        if let Some(parent) = current.parent() {
+            roots.push(parent.join("Gamedata"));
+        }
+    }
+    roots.dedup();
+    roots
+}
+
+fn preferred_gamedata_root() -> Result<PathBuf, String> {
+    if cfg!(debug_assertions) {
+        if let Ok(current) = std::env::current_dir() {
+            return Ok(current.join("Gamedata"));
+        }
+    }
+    let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+    let directory = executable
+        .parent()
+        .ok_or_else(|| "Could not determine the PlayStunts DX directory.".to_string())?;
+    Ok(directory.join("Gamedata"))
+}
+
+#[tauri::command]
+fn check_gamedata() -> Result<bool, String> {
+    for root in gamedata_roots() {
+        if REQUIRED_GAMEDATA.iter().all(|name| root.join(name).is_file()) {
+            return Ok(true);
+        }
+    }
+
+    let root = preferred_gamedata_root()?;
+    fs::create_dir_all(&root)
+        .map_err(|error| format!("Could not create {}: {error}", root.display()))?;
+    Ok(false)
 }
 
 #[tauri::command]
@@ -256,6 +302,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             toggle_fullscreen,
             exit_game,
+            check_gamedata,
             toggle_mt32_panel,
             check_mt32_roms,
             read_mt32_rom,
