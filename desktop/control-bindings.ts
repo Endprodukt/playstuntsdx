@@ -32,7 +32,7 @@ export function installDesktopControlBindings(){
 
  const finishCapture=()=>{capture=undefined;setDesktopControlCapture(false);render();};
  const startCapture=(next:Capture)=>{
-  capture=next;notice=next.kind==='keyboard'?'Press a keyboard key or chord.':'Press a joystick / wheel button.';
+  capture=next;notice=next.kind==='keyboard'?'Press a keyboard key or chord. Backspace/Delete clears it.':'Press a joystick / wheel button. Backspace/Delete clears it.';
   captureBefore=snapshot(devices);setDesktopControlCapture(true);render();
  };
 
@@ -51,7 +51,7 @@ export function installDesktopControlBindings(){
    const label=document.createElement('div');label.textContent=definition.label;label.title=definition.help;label.style.cssText='font-size:12px;color:#ddd;';
    const keyboard=document.createElement('button');keyboard.type='button';keyboard.style.cssText=buttonStyle;keyboard.title='Click, then press a keyboard key or chord';keyboard.textContent=capture?.action===definition.id&&capture.kind==='keyboard'?'Press key…':(bindings[definition.id].keys.map(formatDesktopControlChord).join(' / ')||'—');keyboard.addEventListener('click',()=>startCapture({kind:'keyboard',action:definition.id}));
    const controller=document.createElement('button');controller.type='button';controller.style.cssText=buttonStyle;controller.title='Click, then press a button on a joystick or wheel';controller.textContent=capture?.action===definition.id&&capture.kind==='button'?'Press button…':controllerLabel(bindings[definition.id].button);controller.addEventListener('click',()=>startCapture({kind:'button',action:definition.id}));
-   const reset=document.createElement('button');reset.type='button';reset.textContent='Reset';reset.style.cssText=buttonStyle+'text-align:center;';reset.title='Restore this action to the original keyboard default and clear its controller button';reset.addEventListener('click',()=>{resetDesktopControlAction(definition.id);notice='';finishCapture();});
+   const reset=document.createElement('button');reset.type='button';reset.textContent='Reset';reset.style.cssText=buttonStyle+'text-align:center;';reset.title='Restore this action to the original keyboard default and clear its controller button';reset.addEventListener('click',()=>{resetDesktopControlAction(definition.id);notice='Original binding restored.';finishCapture();});
    row.append(label,keyboard,controller,reset);section.append(row);
   }
   const footer=document.createElement('div');footer.style.cssText='display:flex;gap:8px;align-items:center;margin-top:12px;';
@@ -60,10 +60,19 @@ export function installDesktopControlBindings(){
  }
 
  const keyboardCapture=(event:KeyboardEvent)=>{
-  if(!capture||capture.kind!=='keyboard'||event.repeat)return;
+  if(!capture||event.repeat)return;
   event.preventDefault();event.stopImmediatePropagation();
+  const plainDelete=(event.code==='Backspace'||event.code==='Delete')&&!event.ctrlKey&&!event.altKey&&!event.shiftKey&&!event.metaKey;
+  if(plainDelete){
+   if(capture.kind==='keyboard'){setDesktopControlKeyboard(capture.action,undefined);notice='Keyboard binding cleared.';}
+   else {setDesktopControlButton(capture.action,undefined);notice='Controller binding cleared.';}
+   finishCapture();return;
+  }
+  if(capture.kind==='button'){
+   if(event.code==='Escape'){notice='Controller capture cancelled.';finishCapture();}
+   return;
+  }
   if(reserved.has(event.code)||(event.altKey&&event.code==='Enter')){notice=`${event.key||event.code} is reserved by PlayStunts DX.`;render();return;}
-  if((event.code==='Backspace'||event.code==='Delete')&&!event.ctrlKey&&!event.altKey&&!event.shiftKey&&!event.metaKey){setDesktopControlKeyboard(capture.action,undefined);notice='Keyboard binding cleared.';finishCapture();return;}
   const chord=desktopControlChord(event);if(!chord)return;
   setDesktopControlKeyboard(capture.action,chord);notice=`Assigned ${formatDesktopControlChord(chord)}.`;finishCapture();
  };
@@ -97,7 +106,7 @@ export function installDesktopControlBindings(){
 
  const mount=()=>{
   if(disposed||section)return;
-  const toggle=Array.from(document.querySelectorAll('button')).find(button=>button.textContent?.includes('Wheel Setup [F8]'));
+  const toggle=Array.from(document.querySelectorAll('button')).find(button=>button.textContent?.includes('Wheel Setup [F8]')||button.textContent?.includes('Controls [F8]'));
   const panel=toggle?.parentElement?.querySelector<HTMLDivElement>('div');
   if(!panel){frame=requestAnimationFrame(mount);return;}
   section=document.createElement('div');section.style.cssText='margin-top:12px;padding:12px;background:#181818;border:1px solid #444;border-radius:6px;';panel.append(section);render();
