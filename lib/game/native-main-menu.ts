@@ -1,9 +1,23 @@
 import {createOriginalMainMenu,type MainMenuPresentation} from './main-menu-runtime.ts';
 import type {NativeMenuInput} from './native-dialog-runtime.ts';
 import {desktopInputDevice,getDesktopWheelInput} from './desktop-wheel-input.ts';
+import {confirmBrowserOpeningExit} from './browser-opening-exit.ts';
+import {originalOpeningExitDecision} from './opening-exit-flow.ts';
 export interface NativeMainMenuHost extends MainMenuPresentation {
  counter():number;
  input():Promise<NativeMenuInput&{keyboardKey?:number}>;
+}
+
+type TauriCore={invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>};
+const desktopCanvas=()=>typeof document==='undefined'?null:document.querySelector<HTMLCanvasElement>('.desktop-game-shell canvas[aria-label="Native Stunts opening, menus, races and track editor"]');
+async function confirmDesktopExit(){
+ const canvas=desktopCanvas();
+ if(!canvas)return false;
+ const answer=await confirmBrowserOpeningExit(canvas,new AbortController().signal);
+ if(originalOpeningExitDecision(27,answer)!=='exit')return true;
+ const core=(window as typeof window&{__TAURI__?:{core?:TauriCore}}).__TAURI__?.core;
+ if(core)await core.invoke<void>('exit_game');else window.close();
+ return true;
 }
 
 const wheelMenuSelection=()=>{
@@ -31,6 +45,11 @@ export async function runNativeMainMenuSelection(host:NativeMainMenuHost){
   const now=host.counter(),delta=(now-time)&65535;time=now;
   menu.frame(delta);
   const input=await host.input(),selection=wheelMenuSelection(),throttle=wheelThrottlePressed(),throttlePress=throttle&&!throttleHeld;
+  if(input.key===27&&await confirmDesktopExit()){
+   // The confirmation dialog owns the Escape press. If the user cancels,
+   // remain in this main-menu loop instead of replaying the intro.
+   continue;
+  }
   const wheelChanged=selection!==lastWheelSelection;
   throttleHeld=throttle;lastWheelSelection=selection;
   // Wheel, keyboard and mouse are all valid main-menu inputs. The most recent
