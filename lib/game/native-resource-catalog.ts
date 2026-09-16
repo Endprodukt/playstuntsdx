@@ -16,11 +16,26 @@ export function createNativeResourceCatalog(files:Record<string,OriginalResource
  };
 }
 export async function loadBrowserOriginalResourceCatalog(){
- const root='/game/original-resources/',response=await fetch(root+'manifest.json');
- if(!response.ok)throw Error('Original resource catalog could not load');
- const manifest=await response.json() as {files:Record<string,OriginalResourceFile>};
- return createNativeResourceCatalog(manifest.files,async file=>{
-  const response=await fetch(root+encodeURIComponent(file));if(!response.ok)throw Error('Original resource could not load: '+file);
+ const originalRoot='/game/original-resources/',setupRoot='/game/setup-media/';
+ const [originalResponse,setupResponse]=await Promise.all([fetch(originalRoot+'manifest.json'),fetch(setupRoot+'manifest.json')]);
+ if(!originalResponse.ok)throw Error('Original resource catalog could not load');
+ const originalManifest=await originalResponse.json() as {files:Record<string,OriginalResourceFile>};
+ const original=createNativeResourceCatalog(originalManifest.files,async file=>{
+  const response=await fetch(originalRoot+encodeURIComponent(file));if(!response.ok)throw Error('Original resource could not load: '+file);
   return new Uint8Array(await response.arrayBuffer());
  });
+ // The portable preparation copies every user-supplied source file into
+ // setup-media. Community cars are intentionally not part of the fixed
+ // original-resources recipe, so expose that local copy as a fallback for the
+ // original DOS resource loader. Original catalog entries keep precedence.
+ if(!setupResponse.ok)return original;
+ const setupManifest=await setupResponse.json() as {files:{name:string;bytes:number;sha256:string}[]};
+ const supplemental=createNativeResourceCatalog(Object.fromEntries(setupManifest.files.map(file=>[file.name,{file:file.name,bytes:file.bytes,sha256:file.sha256}])),async file=>{
+  const response=await fetch(setupRoot+encodeURIComponent(file));if(!response.ok)throw Error('Supplied resource could not load: '+file);
+  return new Uint8Array(await response.arrayBuffer());
+ });
+ return {
+  exists(name:string){return original.exists(name)||supplemental.exists(name);},
+  async read(name:string):Promise<Uint8Array|null>{return await original.read(name)??supplemental.read(name);},
+ };
 }
