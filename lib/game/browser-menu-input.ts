@@ -5,6 +5,7 @@ import {originalJoystickSteering} from './joystick-steering.ts';
 import {originalDrivingKeyControls} from './driving-key-controls.ts';
 import {originalKeyboardScanWord} from './keyboard-scan-word.ts';
 import {desktopInputDevice,getDesktopWheelInput} from './desktop-wheel-input.ts';
+import {stopDesktopForceFeedback} from './desktop-force-feedback.ts';
 import {
  desktopControlActionTarget,desktopControlButtonScanHeld,desktopControlKeyboardTarget,
  desktopControlSuppressDefault,takeDesktopControlButtonAction,
@@ -19,6 +20,7 @@ const scanCodes:Record<string,number>={Escape:1,Minus:12,Equal:13,Backspace:14,T
 for(const [letters,start] of [['QWERTYUIOP',16],['ASDFGHJKL',30],['ZXCVBNM',44]] as const)Array.from(letters).forEach((letter,i)=>{scanCodes['Key'+letter]=start+i;});
 Array.from('1234567890').forEach((digit,i)=>{scanCodes['Digit'+digit]=2+i;});for(let i=1;i<=10;i++)scanCodes['F'+i]=58+i;
 export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joystickEnabled?:()=>boolean;drivingBindings?:()=>ArrayLike<number>;onPoll?:()=>void|Promise<void>}={}){
+ stopDesktopForceFeedback();
  let active=true,controlHeld=false,pendingKey=0,pendingTextKey=0;
  let disposed=false,x=160,y=100,buttons=0,last=0,lastPoll=0,request=0,rejectWait:((error:Error)=>void)|undefined;
  const epoch=performance.now(),held=new Set<number>(),mappedHeld=new Map<string,readonly number[]>(),pointerEdges:{x:number;y:number;buttons:number}[]=[];
@@ -74,7 +76,7 @@ export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joysti
    const wheel=getDesktopWheelInput();
    if(!wheel.configured||!wheel.connected)return {mask:0,direction:0,axis:0};
    const horizontal=Math.max(-1,Math.min(1,wheel.steering));
-   const left=horizontal<-.18,right=horizontal>.18,up=wheel.throttle>.12,down=wheel.brake>.12;
+   const left=wheel.hatLeft||horizontal<-.18,right=wheel.hatRight||horizontal>.18,up=wheel.hatUp||wheel.throttle>.12,down=wheel.hatDown||wheel.brake>.12;
    return {axis:horizontal,mask:(up?1:0)|(down?2:0)|(right?4:0)|(left?8:0),direction:up?(left?8:right?2:1):down?(left?6:right?4:5):left?7:right?3:0};
   }
   const pad=Array.from(navigator.getGamepads?.()??[]).find(p=>p?.connected);if(!pad)return {mask:0,direction:0,axis:0};
