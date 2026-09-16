@@ -4,13 +4,19 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const releaseDir = path.join(root, 'release', 'PlayStunts DX');
+const cacheDir = path.join(releaseDir, 'Cache');
 const targetDir = path.join(root, 'src-tauri', 'target', 'release');
 const executable = [
   path.join(targetDir, 'playstuntsdx.exe'),
   path.join(targetDir, 'PlayStunts DX.exe'),
 ].find(existsSync);
 const helperStampSource = path.join(root, 'src-tauri', 'generated', 'playstuntsdx-prepare.sha256');
-const helperStampRelease = path.join(releaseDir, '.asset-helper.sha256');
+const helperStampRelease = path.join(cacheDir, '.asset-helper.sha256');
+const cachedStateFiles = [
+  '.asset-helper.sha256',
+  '.playstuntsdx-custom-cars.state',
+  '.playstuntsdx-custom-tracks.state',
+];
 
 function iniEntries(content) {
   const entries = [];
@@ -64,6 +70,14 @@ function setIniValue(content, section, key, value) {
   return lines.join(newline);
 }
 
+function migrateCacheFile(name) {
+  const legacy = path.join(releaseDir, name);
+  if (!existsSync(legacy)) return;
+  const target = path.join(cacheDir, name);
+  if (!existsSync(target)) copyFileSync(legacy, target);
+  rmSync(legacy, { force: true });
+}
+
 if (process.platform !== 'win32') {
   throw new Error('The PlayStunts DX portable package must be assembled on Windows.');
 }
@@ -72,6 +86,10 @@ if (!executable) {
 }
 
 mkdirSync(releaseDir, { recursive: true });
+mkdirSync(cacheDir, { recursive: true });
+for (const name of cachedStateFiles) migrateCacheFile(name);
+rmSync(path.join(releaseDir, 'prepare-runtime.log'), { force: true });
+rmSync(path.join(cacheDir, 'prepare-runtime.log'), { force: true });
 
 // Runtime generation is expensive. Keep it across ordinary code rebuilds and
 // invalidate it only when the embedded asset-preparation helper changed.
@@ -83,7 +101,6 @@ if (!helperStamp || helperStamp !== packagedStamp) {
 } else if (existsSync(path.join(releaseDir, 'Runtime'))) {
   console.log('Asset preparation unchanged; keeping existing Runtime.');
 }
-rmSync(path.join(releaseDir, 'prepare-runtime.log'), { force: true });
 copyFileSync(executable, path.join(releaseDir, 'PlayStunts DX.exe'));
 if (helperStamp) writeFileSync(helperStampRelease, `${helperStamp}\n`);
 
