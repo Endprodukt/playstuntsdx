@@ -172,7 +172,7 @@ Custom Tracks\
 
 Tracks must use the original Stunts `.TRK` format and be **1,802 bytes**. If two tracks have the same filename, only one can be loaded.
 
-Custom cars and tracks are included when the runtime assets are generated. If you add or change them after a `Runtime` folder has already been created, delete the `Runtime` folder once and restart PlayStunts DX so it can be rebuilt with the new content.
+High-resolution textures, custom cars and custom tracks are copied into the generated runtime. If you add or change any of them after a `Runtime` folder has already been created, delete the `Runtime` folder once and restart PlayStunts DX so it can be rebuilt with the new content.
 
 ## Other folders
 
