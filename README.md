@@ -88,9 +88,13 @@ config.ini
 Gamedata\
 Custom Cars\
 Custom Tracks\
-High Res\
+hires\
+  menu\
+  backgrounds\
+  intro\
   cockpit\
 mt32\
+Runtime\
 ```
 
 Put your compatible original **Stunts / 4D Sports Driving** files in `Gamedata` before launching the game.
@@ -99,32 +103,51 @@ The supported original game data is based on the **Mindscape 4D Sports Driving 1
 
 ## High-resolution textures
 
-High-resolution replacements belong in `High Res`. Missing replacements simply use the normal game artwork, so you only need to add the files you actually want to replace.
+All user-editable high-resolution artwork lives in the external `hires` folder next to the game. The normal extracted runtime artwork remains in `Runtime` as the fallback and is not overwritten by custom high-resolution files.
 
-The main menu replacement goes directly in the folder:
+The portable build fills missing standard files in `hires` automatically. Existing files are never overwritten, so replacing a PNG is enough to create a permanent texture mod.
+
+The main menu is:
 
 ```text
-High Res\
-  main-menu.png
+hires\
+  menu\
+    main-menu.png
 ```
 
-Cockpit artwork mirrors the original game asset structure and uses the four-character car ID as a subfolder:
+Track backgrounds and overview artwork are kept in:
 
 ```text
-High Res\
+hires\
+  backgrounds\
+    desert.png
+    tropical.png
+    city.png
+    country.png
+    alpine-scen.png
+    ...
+```
+
+Cockpit artwork uses the four-character car ID as a subfolder:
+
+```text
+hires\
   cockpit\
     COUN\
       dashboard.png
       whl1.png
       whl2.png
       whl3.png
+      ...
 ```
 
-`COUN` is only an example. Use the actual four-character ID of the car. Custom cars use their own ID in exactly the same way.
+`COUN` is only an example. PlayStunts DX automatically copies missing cockpit PNGs from the generated runtime into `hires/cockpit/<car-id>`, including newly added custom cars. That gives every car a visible template with the exact filenames that can be replaced. Existing customized files are left untouched.
 
-Replacement files must keep the same filename and aspect ratio as the original asset. Their pixel resolution may be higher. Additional cockpit images can be replaced as long as their filename matches the corresponding original cockpit file.
+Replacement files should keep the same filename and intended aspect ratio as the original asset. Their pixel resolution may be higher.
 
-Enable **Enhanced Textures** in PlayStunts DX to use the replacements.
+Enable **Enhanced Textures** in PlayStunts DX to use the replacements. If a high-resolution replacement is unavailable, the normal runtime artwork remains available as the fallback.
+
+Older builds used a folder named `High Res`. When possible, PlayStunts DX migrates that folder to `hires` without overwriting newer files.
 
 ## Custom cars
 
@@ -172,13 +195,14 @@ Custom Tracks\
 
 Tracks must use the original Stunts `.TRK` format and be **1,802 bytes**. If two tracks have the same filename, only one can be loaded.
 
-PlayStunts DX checks `Gamedata`, `Custom Cars`, `Custom Tracks` and `High Res` when it starts. If anything has been added, removed or changed, the generated `Runtime` is rebuilt automatically. You do not need to delete `Runtime` yourself.
+PlayStunts DX checks `Gamedata`, `Custom Cars` and `Custom Tracks` when it starts. Changes to game or custom content rebuild the generated `Runtime` automatically. Editing files in `hires` does not require a Runtime rebuild.
 
 ## Other folders
 
+- `hires` — user-editable high-resolution PNG replacements
 - `mt32` — optional user-supplied MT-32 ROMs
 - `config.ini` — desktop, controller, display and force-feedback settings
-- `Runtime` — generated game assets; normally leave this folder alone
+- `Runtime` — generated normal game assets and data; normally leave this folder alone
 
 ## Credits
 
