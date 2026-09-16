@@ -2,6 +2,7 @@ export const ENHANCED_TEXTURES_KEY='playstunts-dx-enhanced-textures';
 export const ENHANCED_TEXTURES_EVENT='playstunts-dx-enhanced-textures-changed';
 
 let upgradedRaceModule:Promise<unknown>|undefined;
+const desktopTextureUrls=new Map<string,string>();
 
 function isDesktopDx(){
  return typeof window!=='undefined'&&typeof document!=='undefined'&&!!document.querySelector('.desktop-game-shell');
@@ -40,4 +41,23 @@ export function setEnhancedTexturesEnabled(enabled:boolean){
 export function enhancedTextureUrl(original:string){
  const prefix='/game/';
  return original.startsWith(prefix)?`/game/hires/${original.slice(prefix.length)}`:original;
+}
+
+/** Desktop runtime assets are served through the Tauri fetch bridge rather
+ * than as normal web URLs. Convert a successfully fetched texture to a blob URL
+ * so <img> elements can use High Res files from the portable Runtime folder.
+ */
+export async function loadEnhancedTexturePath(url:string){
+ if(!isDesktopDx())return url;
+ const cached=desktopTextureUrls.get(url);
+ if(cached)return cached;
+ const response=await fetch(url);
+ if(!response.ok)throw Error(`High-resolution texture could not load: ${url}`);
+ const objectUrl=URL.createObjectURL(await response.blob());
+ desktopTextureUrls.set(url,objectUrl);
+ return objectUrl;
+}
+
+export function loadEnhancedTextureUrl(original:string){
+ return loadEnhancedTexturePath(enhancedTextureUrl(original));
 }
