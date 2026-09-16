@@ -7,10 +7,14 @@ export type DesktopWheelInputState={
  steering:number;
  throttle:number;
  brake:number;
+ hatUp:boolean;
+ hatDown:boolean;
+ hatLeft:boolean;
+ hatRight:boolean;
 };
 
 const inputDeviceKey='playstunts-dx-input-device';
-const neutralWheelInput:DesktopWheelInputState={configured:false,connected:false,steering:0,throttle:0,brake:0};
+const neutralWheelInput:DesktopWheelInputState={configured:false,connected:false,steering:0,throttle:0,brake:0,hatUp:false,hatDown:false,hatLeft:false,hatRight:false};
 let wheelInput:DesktopWheelInputState={...neutralWheelInput};
 
 export function desktopShellActive(){
