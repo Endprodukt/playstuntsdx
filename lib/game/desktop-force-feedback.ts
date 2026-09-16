@@ -92,7 +92,7 @@ async function reloadForceFeedbackConfig() {
     configLoaded = true;
     configPath = file.path;
     configCreated = file.created;
-    resampleAndSend(true, true);
+    resampleAndSend(true);
   } catch (reason) {
     configError = reason instanceof Error ? reason.message : String(reason);
     console.warn('[FFB] Could not load config.ini:', reason);
@@ -110,7 +110,7 @@ function installFocusRecovery() {
   if (focusRecoveryInstalled || typeof window === 'undefined' || typeof document === 'undefined') return;
   focusRecoveryInstalled = true;
   const recover = () => {
-    if (enabled()) resampleAndSend(true, !forceFeedbackDrivingActive());
+    if (enabled()) resampleAndSend(true);
   };
   window.addEventListener('focus', recover);
   document.addEventListener('visibilitychange', () => {
@@ -172,14 +172,14 @@ function installSettingsUi() {
 
   checkbox.addEventListener('change', () => {
     window.localStorage.setItem(enabledKey, String(checkbox.checked));
-    if (checkbox.checked) resampleAndSend(true, true);
+    if (checkbox.checked) resampleAndSend(true);
     else void sendForce(0, true);
     updateStatus();
   });
   slider.addEventListener('input', () => {
     window.localStorage.setItem(strengthKey, slider.value);
     value.textContent = `${slider.value}%`;
-    resampleAndSend(true, true);
+    resampleAndSend(true);
   });
   reloadButton.addEventListener('click', () => {
     configCreated = false;
@@ -217,8 +217,10 @@ async function sendForce(force: number, immediate = false) {
   }
 }
 
-function resampleAndSend(immediate = false, allowIdle = false) {
-  latestForce = enabled() && (ffbActive || allowIdle)
+function resampleAndSend(immediate = false) {
+  // Never let stale driving physics leak into menus or setup screens.
+  // The hardware receives a literal zero as soon as the driving tick is gone.
+  latestForce = enabled() && ffbActive && forceFeedbackDrivingActive()
     ? -sampleForceFeedback(latestSteering) * strength()
     : 0;
   void sendForce(latestForce, immediate);
