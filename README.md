@@ -10,19 +10,31 @@ The original **Stunts / 4D Sports Driving** game was developed by **Distinctive 
 
 ## Requirements
 
-- Windows 10/11 64-bit
-- Git
-- Node.js 24+
-- Python 3.11+
-- Rust stable with the MSVC target
-- Visual Studio 2022 Build Tools with **Desktop development with C++** and a Windows SDK
-- Tauri CLI 2
-- Microsoft Edge WebView2 Runtime
+PlayStunts DX currently targets **64-bit Windows 10/11**.
 
-Install Tauri if needed:
+Most build requirements can be installed directly from PowerShell:
 
 ```powershell
+winget install -e --id Git.Git
+winget install -e --id OpenJS.NodeJS.LTS
+winget install -e --id Python.Python.3.12
+winget install -e --id Rustlang.Rustup
+winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+winget install -e --id Microsoft.EdgeWebView2Runtime
+```
+
+After installation, close and reopen PowerShell, then run:
+
+```powershell
+rustup default stable-x86_64-pc-windows-msvc
+rustup update
 cargo install tauri-cli --version "^2.0.0" --locked
+```
+
+Node.js **24 or newer** is required. Check with:
+
+```powershell
+node --version
 ```
 
 ## Clone and build
@@ -93,11 +105,17 @@ The supported original game data is based on the **Mindscape 4D Sports Driving 1
 
 ## Credits
 
-**Original PlayStunts reconstruction:** Sven / [@ACatWithEbola](https://github.com/ACatWithEbola)
+PlayStunts DX would not exist without the work that came before it.
 
-**PlayStunts DX:** Windows desktop, input, force-feedback, graphics and packaging extensions developed in this fork.
+A huge thank you goes to **Sven / [@ACatWithEbola](https://github.com/ACatWithEbola)** for creating the original **PlayStunts** reconstruction and making it possible to experience Stunts in a completely new way.
 
-**Original game:** Stunts / 4D Sports Driving by Distinctive Software.
+And of course, respect to **Distinctive Software**, the original developers of **Stunts / 4D Sports Driving**.
+
+For me, this game is more than an old racing game. **Stunts accompanied me throughout my childhood. In the 1990s it seemed to be on every school PC I could get my hands on, and I spent countless hours building tracks, crashing cars and trying things the game was probably never meant to do.**
+
+PlayStunts DX is my way of keeping that memory alive while pushing the game a little further — with modern Windows support, wheels, force feedback, higher-resolution graphics and all the other things I always wished it could have had back then.
+
+Thanks to everyone who has worked on Stunts, preserved it, documented it, reconstructed it, modded it or simply kept playing it all these years.
 
 ## License
 
