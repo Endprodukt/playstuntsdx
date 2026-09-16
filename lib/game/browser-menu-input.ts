@@ -38,6 +38,10 @@ export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joysti
  const wait=async()=>{await new Promise<void>((resolve,reject)=>{if(disposed){reject(new DOMException('Native menu closed','AbortError'));return;}rejectWait=reject;request=requestAnimationFrame(()=>{rejectWait=undefined;resolve();});});await options.onPoll?.();};
  const keyboard=(event:KeyboardEvent)=>{
   if(disposed)return;
+  // Escape is a state transition, not a navigation key. Browser auto-repeat
+  // used to send the same physical press through several consecutive menus.
+  // Keep normal key repeat for arrows/text, but emit Escape only on its edge.
+  if(event.code==='Escape'&&event.repeat){event.preventDefault();return;}
   if(active){const raw=originalBrowserKey(event.key,event.shiftKey);if(raw)pendingTextKey=raw;}
   const mapped=desktopControlKeyboardTarget(event),scan=scanCodes[event.code];
   if(mapped){
