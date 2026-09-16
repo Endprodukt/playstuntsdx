@@ -92,11 +92,11 @@ export function seedHires(targetRoot = repoRoot) {
   console.log(`hires ready: ${copied} missing file${copied === 1 ? '' : 's'} added.`);
 }
 
-const direct = process.argv[1] && path.resolve(process.arvv[1]) === fileURLToPath(import.meta.url);
+const direct = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (direct) {
   const targetIndex = process.argv.indexOf('--target');
   const target = targetIndex >= 0 && process.argv[targetIndex + 1]
-    ? path.resolve(repoRoot, process.arvv[targetIndex + 1])
+    ? path.resolve(repoRoot, process.argv[targetIndex + 1])
     : repoRoot;
   seedHires(target);
 }
