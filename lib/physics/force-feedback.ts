@@ -31,6 +31,11 @@ type ForceFeedbackConfig = {
   grassStrength: number;
   grassFrequencyMin: number;
   grassFrequencyMax: number;
+  rampMinPitchDelta: number;
+  rampMaxPitchDelta: number;
+  rampMinStrength: number;
+  rampMaxStrength: number;
+  rampDurationMs: number;
   landingMinFallSpeed: number;
   landingMaxFallSpeed: number;
   landingMinStrength: number;
@@ -48,9 +53,6 @@ type ForceFeedbackConfig = {
   crashReboundStrength: number;
   crashMainDurationMs: number;
   crashTotalDurationMs: number;
-  menuStrength: number;
-  menuDurationMs: number;
-  menuRepeatMs: number;
 };
 
 const defaultConfig: ForceFeedbackConfig = {
@@ -64,6 +66,11 @@ const defaultConfig: ForceFeedbackConfig = {
   grassStrength: 0.13,
   grassFrequencyMin: 15,
   grassFrequencyMax: 33,
+  rampMinPitchDelta: 2,
+  rampMaxPitchDelta: 24,
+  rampMinStrength: 0.16,
+  rampMaxStrength: 0.48,
+  rampDurationMs: 90,
   landingMinFallSpeed: 190,
   landingMaxFallSpeed: 593,
   landingMinStrength: 0.28,
@@ -81,22 +88,21 @@ const defaultConfig: ForceFeedbackConfig = {
   crashReboundStrength: 0.32,
   crashMainDurationMs: 150,
   crashTotalDurationMs: 240,
-  menuStrength: 0.24,
-  menuDurationMs: 90,
-  menuRepeatMs: 190,
 };
 
 let config: ForceFeedbackConfig = { ...defaultConfig };
 let telemetry: (ForceFeedbackTelemetry & { updatedAt: number }) | undefined;
 let engineTelemetry: EngineForceFeedbackTelemetry | undefined;
 let smoothedForce = 0;
+let rampPulseStrength = 0;
+let rampPulseStartedAt = 0;
+let rampTransitionActive = false;
 let impactPulseStrength = 0;
 let impactPulseStartedAt = 0;
 let crashPulseStrength = 0;
 let crashPulseDirection = 1;
 let crashPulseStartedAt = 0;
 let shiftPulseStartedAt = 0;
-let menuPulseStartedAt = 0;
 let enginePhase = 0;
 let enginePhaseUpdatedAt = 0;
 
@@ -135,7 +141,7 @@ function iniNumber(
 }
 
 /**
- * Applies the human-readable ffb.ini. Percent values in the file are converted
+ * Applies the human-readable config.ini. Percent values in the file are converted
  * to normalized DirectInput force here, while every setting is clamped to its
  * documented safe range. Missing or malformed values fall back independently.
  */
@@ -155,6 +161,11 @@ export function applyForceFeedbackIni(content: string) {
     grassStrength: percent('Grass', 'Strength', defaultConfig.grassStrength),
     grassFrequencyMin: iniNumber(values, 'Grass', 'FrequencyMin', defaultConfig.grassFrequencyMin, 1, 30),
     grassFrequencyMax: iniNumber(values, 'Grass', 'FrequencyMax', defaultConfig.grassFrequencyMax, 1, 40),
+    rampMinPitchDelta: iniNumber(values, 'Ramp', 'MinPitchDelta', defaultConfig.rampMinPitchDelta, 0, 128),
+    rampMaxPitchDelta: iniNumber(values, 'Ramp', 'MaxPitchDelta', defaultConfig.rampMaxPitchDelta, 1, 256),
+    rampMinStrength: percent('Ramp', 'MinStrength', defaultConfig.rampMinStrength),
+    rampMaxStrength: percent('Ramp', 'MaxStrength', defaultConfig.rampMaxStrength),
+    rampDurationMs: iniNumber(values, 'Ramp', 'DurationMs', defaultConfig.rampDurationMs, 30, 250),
     landingMinFallSpeed: iniNumber(values, 'Landing', 'MinFallSpeed', defaultConfig.landingMinFallSpeed, 0, 1000),
     landingMaxFallSpeed: iniNumber(values, 'Landing', 'MaxFallSpeed', defaultConfig.landingMaxFallSpeed, 1, 2000),
     landingMinStrength: percent('Landing', 'MinStrength', defaultConfig.landingMinStrength),
@@ -172,12 +183,11 @@ export function applyForceFeedbackIni(content: string) {
     crashReboundStrength: percent('Crash', 'ReboundStrength', defaultConfig.crashReboundStrength),
     crashMainDurationMs: iniNumber(values, 'Crash', 'MainDurationMs', defaultConfig.crashMainDurationMs, 30, 300),
     crashTotalDurationMs: iniNumber(values, 'Crash', 'TotalDurationMs', defaultConfig.crashTotalDurationMs, 60, 500),
-    menuStrength: percent('Menu', 'DetentStrength', defaultConfig.menuStrength),
-    menuDurationMs: iniNumber(values, 'Menu', 'DetentDurationMs', defaultConfig.menuDurationMs, 20, 200),
-    menuRepeatMs: iniNumber(values, 'Menu', 'RepeatMs', defaultConfig.menuRepeatMs, 80, 500),
   };
 
   next.grassFrequencyMax = Math.max(next.grassFrequencyMin, next.grassFrequencyMax);
+  next.rampMaxPitchDelta = Math.max(next.rampMinPitchDelta + 1, next.rampMaxPitchDelta);
+  next.rampMaxStrength = Math.max(next.rampMinStrength, next.rampMaxStrength);
   next.landingMaxFallSpeed = Math.max(next.landingMinFallSpeed + 1, next.landingMaxFallSpeed);
   next.landingMaxStrength = Math.max(next.landingMinStrength, next.landingMaxStrength);
   next.engineMaxStrength = Math.max(next.engineMinStrength, next.engineMaxStrength);
@@ -185,14 +195,6 @@ export function applyForceFeedbackIni(content: string) {
   next.crashMaxStrength = Math.max(next.crashMinStrength, next.crashMaxStrength);
   next.crashTotalDurationMs = Math.max(next.crashMainDurationMs + 20, next.crashTotalDurationMs);
   config = next;
-}
-
-export function forceFeedbackMenuDurationMs() {
-  return config.menuDurationMs;
-}
-
-export function forceFeedbackMenuRepeatMs() {
-  return config.menuRepeatMs;
 }
 
 /**
@@ -238,6 +240,8 @@ export function updateForceFeedbackEngine(
  * Replaces only the wheel-contact part of the latest player sample after the
  * real track-contact pass. This keeps transient grip/slip data from stepGrip,
  * while surface rumble uses the wheel surfaces produced by the same physics tick.
+ * Ramp feedback is driven only by a grounded chassis pitch change supplied by
+ * the real player physics; no track-element names or synthetic ramp flags exist.
  * A crash speed is supplied only for a newly accepted original crash impact.
  */
 export function updateForceFeedbackContact(
@@ -245,6 +249,7 @@ export function updateForceFeedbackContact(
   allContact: number,
   impactSpeed = 0,
   crashSpeed?: number,
+  rampPitchDelta = 0,
 ) {
   if (!telemetry) return;
   const now = Date.now();
@@ -254,6 +259,22 @@ export function updateForceFeedbackContact(
     allContact,
     updatedAt: now,
   };
+
+  if (rampPitchDelta > config.rampMinPitchDelta) {
+    const span = config.rampMaxPitchDelta - config.rampMinPitchDelta;
+    const amount = clamp((rampPitchDelta - config.rampMinPitchDelta) / span, 0, 1);
+    const strength =
+      config.rampMinStrength + amount * (config.rampMaxStrength - config.rampMinStrength);
+    if (!rampTransitionActive) {
+      rampPulseStrength = strength;
+      rampPulseStartedAt = now;
+    } else {
+      rampPulseStrength = Math.max(rampPulseStrength, strength);
+    }
+    rampTransitionActive = true;
+  } else {
+    rampTransitionActive = false;
+  }
 
   if (impactSpeed > config.landingMinFallSpeed) {
     const span = config.landingMaxFallSpeed - config.landingMinFallSpeed;
@@ -275,21 +296,19 @@ export function updateForceFeedbackContact(
   }
 }
 
-export function triggerForceFeedbackMenuPulse() {
-  menuPulseStartedAt = Date.now();
-}
-
 export function clearForceFeedbackTelemetry() {
   telemetry = undefined;
   engineTelemetry = undefined;
   smoothedForce = 0;
+  rampPulseStrength = 0;
+  rampPulseStartedAt = 0;
+  rampTransitionActive = false;
   impactPulseStrength = 0;
   impactPulseStartedAt = 0;
   crashPulseStrength = 0;
   crashPulseDirection = 1;
   crashPulseStartedAt = 0;
   shiftPulseStartedAt = 0;
-  menuPulseStartedAt = 0;
   enginePhase = 0;
   enginePhaseUpdatedAt = 0;
 }
@@ -318,13 +337,6 @@ function sampleEngineForce(now: number) {
 /** Returns normalized DirectInput force in the range -1..1. */
 export function sampleForceFeedback(physicalSteering: number) {
   const now = Date.now();
-  const menuAge = now - menuPulseStartedAt;
-  const menuForce =
-    menuPulseStartedAt > 0 && menuAge >= 0 && menuAge < config.menuDurationMs
-      ? Math.sin((menuAge / config.menuDurationMs) * Math.PI * 2) *
-        (1 - menuAge / config.menuDurationMs) * config.menuStrength
-      : 0;
-
   const shiftAge = now - shiftPulseStartedAt;
   const shiftForce =
     shiftPulseStartedAt > 0 && shiftAge >= 0 && shiftAge < config.shiftDurationMs
@@ -337,7 +349,7 @@ export function sampleForceFeedback(physicalSteering: number) {
   if (!state || now - state.updatedAt > 250) {
     smoothedForce *= 0.55;
     if (Math.abs(smoothedForce) < 0.002) smoothedForce = 0;
-    return clamp(smoothedForce + menuForce + shiftForce + engineForce, -config.maxForce, config.maxForce);
+    return clamp(smoothedForce + shiftForce + engineForce, -config.maxForce, config.maxForce);
   }
 
   // Stunts stores speed with 8 fractional bits. Preserve those fractional bits
@@ -372,6 +384,13 @@ export function sampleForceFeedback(physicalSteering: number) {
   );
   smoothedForce = smoothedForce * 0.58 + target * 0.42;
 
+  const rampAge = now - rampPulseStartedAt;
+  const rampForce =
+    rampPulseStartedAt > 0 && rampAge >= 0 && rampAge < config.rampDurationMs
+      ? Math.sin((rampAge / config.rampDurationMs) * Math.PI * 2) *
+        (1 - rampAge / config.rampDurationMs) * rampPulseStrength
+      : 0;
+
   const impactAge = now - impactPulseStartedAt;
   const impactForce =
     impactPulseStartedAt > 0 && impactAge >= 0 && impactAge < config.landingDurationMs
@@ -395,7 +414,7 @@ export function sampleForceFeedback(physicalSteering: number) {
   }
 
   return clamp(
-    smoothedForce + impactForce + crashForce + shiftForce + engineForce + menuForce,
+    smoothedForce + rampForce + impactForce + crashForce + shiftForce + engineForce,
     -config.maxForce,
     config.maxForce,
   );
