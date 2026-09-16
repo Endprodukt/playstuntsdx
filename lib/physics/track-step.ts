@@ -75,6 +75,21 @@ export function stepTrack(
   const crashSpeed = moved.crashImpacts.length
     ? Math.max(Math.abs(before.engine.roadSpeed), Math.abs(engineRoadSpeed))
     : undefined;
+  // A ramp edge changes the reconstructed chassis pitch while the wheels remain
+  // grounded. Derive the bump from that real pose change instead of identifying
+  // particular track pieces. Airborne landings and crashes keep their own effects.
+  const beforeGrounded = before.grip.surfaces.length === 4 &&
+    before.grip.surfaces.every(surface => surface !== 0);
+  const afterGrounded = moved.grip.surfaces.length === 4 &&
+    moved.grip.surfaces.every(surface => surface !== 0);
+  const rampPitchDelta =
+    impactSpeed === 0 &&
+    crashSpeed === undefined &&
+    beforeGrounded &&
+    afterGrounded &&
+    Math.abs(engineRoadSpeed) >= 4 * 256
+      ? Math.abs(i16(moved.pose.rotation[1] - before.pose.rotation[1]))
+      : 0;
   // stepGrip captures the player's transient signed slip before it is cleared.
   // Refresh its contact fields here, after the real wheel-contact pass, so FFB
   // uses this tick's surfaces rather than the previous tick's contact history.
@@ -83,6 +98,7 @@ export function stepTrack(
     moved.grip.allContact,
     impactSpeed,
     crashSpeed,
+    rampPitchDelta,
   );
   return moved;
 }
