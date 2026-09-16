@@ -52,15 +52,18 @@ function desktopRuntimeAdaptation(): Plugin {
         const importLine = "import showroomMaterials from '../../public/game/track-materials.json';\n";
         const showroomCall = 'createUpgradedCarMenu(palette,showroomMaterials.indices)';
         const hiresMenuError = 'highResMainMenu.onerror=()=>{highResMainMenuReady=false;};';
-        if (![importLine, showroomCall, hiresMenuError].every(value => source.includes(value))) {
+        const hiresMenuSource = 'highResMainMenu.src=HIRES_MAIN_MENU;';
+        if (![importLine, showroomCall, hiresMenuError, hiresMenuSource].every(value => source.includes(value))) {
           throw new Error('Desktop runtime adaptation is out of date for browser-native-menus.ts');
         }
         const upstreamMenuFallback = "let upstreamMainMenuFallback=false;highResMainMenu.onerror=()=>{highResMainMenuReady=false;if(!upstreamMainMenuFallback){upstreamMainMenuFallback=true;highResMainMenu.src='/site/enhanced-artwork/SDMSEL-scrn-menu-v1.png';}};";
+        const runtimeHiresMenu = "void fetch(HIRES_MAIN_MENU).then(response=>{if(!response.ok)throw Error('High-resolution main menu could not load');return response.blob();}).then(blob=>{highResMainMenu.src=URL.createObjectURL(blob);}).catch(()=>{highResMainMenu.src=HIRES_MAIN_MENU;});";
         return source
           .replace(importLine, '')
           .replace("json<{palette:number[]}>('track-materials')", "json<{palette:number[];indices:number[]}>('track-materials')")
           .replace(showroomCall, 'createUpgradedCarMenu(palette,materials.indices)')
-          .replace(hiresMenuError, upstreamMenuFallback);
+          .replace(hiresMenuError, upstreamMenuFallback)
+          .replace(hiresMenuSource, runtimeHiresMenu);
       }
 
       if (normalized.endsWith('/lib/game/browser-mt32-output.ts')) {
