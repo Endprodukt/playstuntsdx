@@ -39,7 +39,9 @@ export async function runNativeMainMenuSelection(host:NativeMainMenuHost){
   if(input.keyboardKey||input.mouseActive)wheelOwns=false;
   if(wheelChanged||throttlePress)wheelOwns=selection!==undefined;
   const syntheticWheelDirection=selection!==undefined&&!input.keyboardKey&&(input.key===0x4b00||input.key===0x4d00||input.key===0x4800||input.key===0x5000);
-  const key=throttlePress?13:syntheticWheelDirection?0:input.key;
+  // Desktop Escape means Back only below the main menu. At the top level the
+  // explicit EXIT item owns application exit, so ESC must be inert here.
+  const key=throttlePress?13:syntheticWheelDirection||input.key===27?0:input.key;
   const result=menu.accept({delta,key,x:input.x,y:input.y,mouseEnabled:input.mouseActive,selection:wheelOwns?selection:undefined});
   if(result.result!==undefined)return {selection:result.result,idleExpired:result.state.idleExpired};
  }
