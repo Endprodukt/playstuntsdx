@@ -1,125 +1,207 @@
-# Play Stunts
+# PlayStunts DX
 
-A native browser reconstruction of **Stunts / 4D Sports Driving**, developed by Sven with assistance from OpenAI Codex. [Play the hosted version](https://playstunts.com).
+**PlayStunts DX** is a native Windows desktop version and extension of the reconstructed **Stunts / 4D Sports Driving** runtime from [PlayStunts](https://github.com/ACatWithEbola/playstunts).
 
-You can build and run the game from this checkout using your own compatible DOS game files. The preparation tool generates the required images, catalogs, sound states and fresh native startup resources locally. **No original game files, Roland ROMs or captured original sessions are distributed here.**
+The DX version keeps the reconstructed game logic but adds a dedicated Windows/Tauri frontend and native desktop features such as gamepad and steering-wheel support, native Windows force feedback, desktop configuration, high-resolution asset overrides, custom car and track folders, and a portable release layout.
 
-## What you need
+> The current integrated Windows desktop version is on the **`master`** branch. The repository default branch may still open on `main`, so switch to `master` before building the DX version.
 
-- **Node.js 24 or newer**, with npm.
-- **Python 3.11 or newer** and the packages in `tools/requirements.txt` (Pillow and Unicorn).
-- Your own **complete extracted PC installation of Mindscape's 4D Sports Driving 1.1, finalized 13 December 1990** (identified as **MS 1990** in the [Stunts community version table](https://wiki.stunts.hu/wiki/Game_versions)). This is not Brøderbund Stunts 1.0, Brøderbund Stunts 1.1, or the February 1991 Mindscape release; those versions are not automatically compatible. A ZIP, a single executable or a `.TRK` file is insufficient. Keep all installation files together. [Resource checksums](docs/original-file-checksums.json) and [direct-input checksums](docs/direct-asset-recipes.json) identify the supported files.
-- For **Roland MT-32 sound**, your own compatible control and PCM ROMs, described below. Without them, select another sound device in Setup before starting the game.
-- A desktop browser with WebAssembly, Web Audio and WebGL support, and a keyboard. The preparation procedure has been verified on macOS.
+**No original Stunts game files or Roland MT-32 ROMs are distributed in this repository.** You must supply your own compatible game data.
 
-## Install and run
+## Windows requirements
 
-```sh
-git clone https://github.com/ACatWithEbola/playstunts.git
-cd playstunts
-npm ci
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r tools/requirements.txt
-python tools/prepare_assets.py --original "/path/to/your/Stunts" --output public
-python tools/check_assets.py
-node tools/smoke_runtime.ts
-npm run dev -- --host 127.0.0.1 --port 3000
+PlayStunts DX currently targets **64-bit Windows 10/11**.
+
+Install the following before building:
+
+- **Git**
+- **Node.js 24 or newer** with npm
+- **Python 3.11 or newer**, 64-bit recommended
+- **Rust stable** with the `x86_64-pc-windows-msvc` target
+- **Microsoft Visual Studio 2022 Build Tools** or Visual Studio 2022 with the **Desktop development with C++** workload
+  - MSVC x64 build tools
+  - Windows 10 or Windows 11 SDK
+- **Tauri CLI 2**
+- **Microsoft Edge WebView2 Runtime** (normally already installed on current Windows 10/11 systems)
+
+Install/update Rust and Tauri from PowerShell:
+
+```powershell
+rustup default stable-x86_64-pc-windows-msvc
+rustup update
+cargo install tauri-cli --version "^2.0.0" --locked
 ```
 
-Replace the quoted path with the directory containing your DOS files. Open **http://localhost:3000**. Click **Open Setup**, choose a sound device you have installed, and select **Exit** to save. Then click **PLAY STUNTS**. Saving changed settings restarts the main game automatically. Audio starts after a user click, as required by browsers.
+## Clone the DX version
 
-The tool reads your originals without modifying them. It refuses to overwrite an existing output directory. To regenerate, move your existing `public` directory aside first, or choose a new output directory, check it, and then move it to `public`. Do not merge partial outputs into a working installation. `preparation-report.json` records completion and installed options; `asset-inventory.json` records the generated file hashes.
-
-No game files or ROMs are downloaded by preparation. `npm ci` and pip download software dependencies. You do **not** need private development captures, an asset download from playstunts.com, a ChatGPT account, or a Sites account to run locally.
-
-### Roland MT-32
-
-The default sound choice is MT-32. For that option, put these two files in a separate directory and include `--roms` when preparing:
-
-```sh
-python tools/prepare_assets.py --original "/path/to/your/Stunts" --roms "/path/to/your/MT32-ROMs" --output public
+```powershell
+git clone https://github.com/Endprodukt/playstuntsdx.git
+cd playstuntsdx
+git switch master
+npm.cmd ci
 ```
 
-| Filename | SHA-256 |
+Using `npm.cmd` avoids the common PowerShell execution-policy problem with `npm.ps1`. If normal `npm` commands already work on your system, you can use them instead.
+
+## Run the development build
+
+```powershell
+git pull
+npm.cmd run desktop:dev
+```
+
+This starts the Vite desktop frontend and launches the game through Tauri in a normal Windows application window.
+
+The desktop development build does not use the browser/Cloudflare frontend.
+
+## Compile PlayStunts DX
+
+### Raw release executable
+
+For a normal optimized Tauri release build:
+
+```powershell
+npm.cmd run desktop:build
+```
+
+This command:
+
+1. builds the embedded Windows asset-preparation helper,
+2. builds the desktop Vite frontend,
+3. compiles the Rust/Tauri application in release mode.
+
+The executable is produced in:
+
+```text
+src-tauri\target\release\playstuntsdx.exe
+```
+
+The first build can take longer because Rust crates, Python packages and the custom PyInstaller helper must be built locally.
+
+### Recommended portable build
+
+To create the complete folder that can be copied to another Windows PC, run:
+
+```powershell
+npm.cmd run desktop:portable
+```
+
+This performs the complete release process and assembles the result here:
+
+```text
+release\PlayStunts DX\
+```
+
+The folder contains:
+
+```text
+PlayStunts DX.exe
+config.ini
+Cache\
+Custom Cars\
+Custom Tracks\
+Gamedata\
+High Res\
+mt32\
+```
+
+Put your original supported Stunts / 4D Sports Driving files in **`Gamedata`** before starting the portable build.
+
+Optional content can be placed in the matching folders:
+
+- `Custom Cars` — custom car files; nested folders are supported
+- `Custom Tracks` — custom tracks; nested folders are supported
+- `High Res` — high-resolution replacement assets
+- `mt32` — user-supplied compatible MT-32 ROMs
+
+Desktop, controller and force-feedback settings are stored in `config.ini`.
+
+`desktop:portable` also downloads the enhanced artwork/music files used by the DX presentation from `playstunts.com`, so an internet connection is required when those files are not already present locally.
+
+## Original game data
+
+PlayStunts DX does not download or redistribute the original game.
+
+The reconstruction expects a compatible complete installation of **Mindscape's 4D Sports Driving 1.1, finalized 13 December 1990** (MS 1990). Other Stunts releases are not automatically interchangeable.
+
+For development asset preparation you can still use the original PlayStunts tooling:
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r tools\requirements.txt
+python tools\prepare_assets.py --original "C:\Games\Stunts" --output public
+python tools\check_assets.py
+```
+
+The portable DX release normally handles runtime asset preparation from the files placed in `Gamedata` through its embedded helper.
+
+## Useful build commands
+
+| Command | Purpose |
 | --- | --- |
-| `ctrl_mt32_1_07.rom` | `a73a06c23ed38370e58a11fb1b86f7ea4c547061a60d7aa62bae446235fd2dff` |
-| `pcm_mt32.rom` | `d9164063f293410cf33f2f64cdcea6893b44723fe41938e07ec9aef58b406238` |
+| `npm.cmd run desktop:dev` | Run the Windows DX version from source |
+| `npm.cmd run desktop:web:build` | Build only the desktop frontend |
+| `npm.cmd run desktop:build` | Build the optimized Windows executable |
+| `npm.cmd run desktop:portable` | Build the complete portable release folder |
+| `npm.cmd run typecheck` | Run TypeScript type checking |
+| `npm.cmd run lint` | Run the source linter |
 
-Supply these legally yourself. Renaming a different ROM does not make it compatible. The Munt synthesizer and its corresponding source are included; the ROMs are not. PC speaker, AdLib/Sound Blaster and Tandy sound do not require Roland ROMs.
+## Common build problems
 
-The controls below the MT-32 provide power, reverb on/off, reverb amount, left/right channel swap, and master tuning. Reverb amount adjusts the synthesizer’s reverb output level. Tuning is shown in Hz. The controls scale together on smaller screens and remain on one row. Power cycling restores the device defaults; these adjustments are not saved across reloads.
+### `cargo tauri` is not found
 
-### Optional website artwork
+Install the Tauri CLI:
 
-The game works without the hosted site's decorative artwork. The checkout uses a text wordmark and the original game's decoded title screen as fallbacks; the decorative red car, interactive box scans and idle Setup preview are omitted when their optional files are unavailable. These are website presentation differences, not missing game assets.
-
-To reproduce the additional website artwork, supply your own permitted images in a directory with these names and add `--site-art "/path/to/art"` to preparation:
-
-- `manual-cover-spread.png`: image used by the masthead wordmark.
-- `manual-red-car.png`: decorative red-car crop.
-- `setup-menu.png`: idle Setup preview.
-
-The front-page 3D box can additionally use six permitted scans in a `stunts-box` subdirectory named `Stunts-front.jpg`, `Stunts-back.jpg`, `Stunts-left.jpg`, `Stunts-right.jpg`, `Stunts-top.jpg` and `Stunts-bottom.jpg`. Optional enhanced scenery belongs in an `enhanced-backgrounds` subdirectory. Both subdirectories are copied when present but remain excluded from Git because they contain artwork rather than reconstruction source.
-
-See `app/StuntsBrand.tsx` and the `.stunts-` rules in `app/globals.css` for the crop/layout. The generated favicon is a simple S fallback. Optional scans and ROMs remain local and ignored by Git.
-
-## Checks and production build
-
-```sh
-python -m unittest discover -s tools -p "test_*.py"
-python tools/check_assets.py
-node tools/smoke_runtime.ts
-npm run typecheck
-npm run build
-npm run start
+```powershell
+cargo install tauri-cli --version "^2.0.0" --locked
 ```
 
-`npm run start` serves the production build through Wrangler; use the address it prints. Build output is in `dist/`. A hosted installation needs the generated assets as well as the compiled application. The repository's build configuration targets Cloudflare Workers through Vinext; no private hosting credentials are included. Deploying original assets publicly is a separate distribution decision—this repository does not grant rights to them.
+Then open a new terminal if Cargo's `bin` directory was only just added to `PATH`.
 
-The file checker verifies the required runtime files and your installation's hashes. The smoke check initializes a fresh Countach race and renders 30 frames. Browser checks cover Setup, the opening/menu and a normal race using generated assets. These checks establish an installable game, not perfect equivalence in every race. `--reference` on the file checker optionally compares the extended reference inventory, which includes unused research fixtures and therefore reports expected differences.
+### `cl.exe`, linker or Windows SDK errors
 
-## Playing and saves
+Open **Visual Studio Installer** and make sure **Desktop development with C++** is installed, including the x64 MSVC tools and a current Windows SDK.
 
-- Arrow keys: accelerate/brake and steer.
-- **A / Z**: shift up/down with manual gears; Space / Enter also work.
-- Escape: game menu. C or F1–F4: camera views. T: view the opponent’s car. D: show or hide the dashboard.
-- With enhanced graphics enabled, **F** shows or hides the driving/replay performance display: current FPS, session average and 1% low. **V** cycles the current Stunts camera → close → standard → far → the current Stunts camera; C, F1–F4 or a replay camera-button selection returns immediately to the selected original camera. Both enhanced overlays are inactive outside driving and replay playback.
-- The close, standard and far chase views keep the camera above the car, preserve a stable distant horizon over jumps and uneven ground, hide the dashboard while driving, and retain the original replay camera as the authoritative view when leaving enhanced chase mode. Enhanced replay rendering also preserves the source crash, fireball and debris states.
-- In replays, Ctrl + arrow keys adjusts the camera, + / − zooms, arrow keys select a replay control, and Enter or Space activates it. Shift + F1 opens the terrain editor.
-- Setup selects MCGA, EGA, CGA, Tandy or Hercules for original graphics. Enhanced graphics is a separate website renderer with full colour, source signs and clouds, detailed vehicles, and live steering and suspension movement. Only the website graphics control switches between enhanced graphics and the selected original display mode; in-game menus preserve that selection.
-- Alpine, Tropical, Desert, City and Country panoramas are presentation-only replacements selected from the same terrain metadata as the original backgrounds. Enhanced track previews use the same panoramas.
-- Enhanced cars preserve their five source colours and original geometry while adding clear-coat lighting, palette-matched materials, inset lamp details and filtered grounding shadows.
-- **3D CARS** opens the interactive showroom in the front page’s game area. It uses the same decoded models and enhanced materials as the game for all eleven cars; drag to rotate, scroll to zoom and select each car’s available colours.
-- Import original **`.TRK`** files using **Tracks, replays and save backups**. Supported track files are 1,802 bytes.
-- Import original **`.RPL`** recordings with **Upload replay (.RPL)** beside the track upload. Upload before starting the game, then load the file from the in-game replay menu. Names must use 1–8 letters, numbers, underscores or hyphens. Existing files are kept. Recordings must use the supported original format and contain 1–12,000 frames.
-- Export individual files through **Tracks, replays and save backups → Download tracks & replays**. Downloads preserve the binary bytes and DOS filename (`.TRK` or `.RPL`) for use with the original game. The list includes bundled files and files saved or imported in the browser; a browser-local file with the same DOS path and name takes precedence over its bundled counterpart.
-- Saves are browser-local and tied to the hostname/port. Export a backup before changing browser or address. A Git checkout does not contain your hosted-game saves.
+The embedded asset helper also deliberately locates the Visual Studio x64 developer environment during the portable/release build.
 
-## How it works
+### PowerShell blocks `npm.ps1`
 
-The main game runs reconstructed TypeScript, not the DOS executable. Preparation decodes the original resources, unpacks the original display binaries to recover initialized tables, and runs bounded sound-initialization routines locally. Startup memory is built by the native initialization code, without importing a captured game session.
+Use the Windows command shim instead:
 
-[Reconstruction process](docs/RECONSTRUCTION.md) · [Setup and troubleshooting](docs/SETUP.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+```powershell
+npm.cmd ci
+npm.cmd run desktop:dev
+```
 
-- `app/`: website and browser orchestration.
-- `lib/game/`, `lib/physics/`: reconstructed systems and rendering.
-- `tools/`: complete local preparation and installation checks.
-- `vendor/`: redistributable synthesizer runtimes, corresponding source and font licenses.
-- `docs/`: input identification, setup and process documentation.
+### WebView2 is missing
 
-The `NativeDrive` prototype and private original-data regression fixtures are reference material, not runtime requirements. Captured prototype seeds are deliberately not distributed. `/work/reference` provides the original DOS comparison using a bundle generated from your own installation.
+Install the current Microsoft Edge WebView2 Runtime. Tauri uses WebView2 to render the desktop UI, but the finished DX build runs as a normal Windows application and does not require a browser window or localhost server.
 
-## Issues and rights
+## Project layout
 
-This is an unofficial reconstruction and may contain visual, audio or simulation discrepancies. Report the browser, car, track/replay, sound/display settings and reproduction steps. Do not attach ROMs, game archives or credentials.
+- `desktop/` — Windows desktop React entry point and desktop UI
+- `src-tauri/` — native Rust/Tauri shell, configuration and Windows FFB bridge
+- `lib/game/` — reconstructed game/runtime code
+- `lib/physics/` — reconstructed physics and force-feedback calculations
+- `tools/` — asset preparation, build helper and portable packaging tools
+- `public/` — generated/runtime assets used by the frontend
+- `release/PlayStunts DX/` — assembled portable release output
 
-## License
+The browser/Cloudflare version inherited from the original PlayStunts project remains in the repository, but the DX Windows build uses the separate Vite + Tauri desktop path.
 
-Unless a file carries a separate third-party notice, the original source code contributed to this project is licensed under the **GNU General Public License, version 3 only (GPL-3.0-only)**. See [LICENSE](LICENSE).
+For additional desktop notes see [docs/WINDOWS_DESKTOP.md](docs/WINDOWS_DESKTOP.md).
 
-Third-party code, synthesizers and fonts retain their existing licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the notices in `vendor/`. This license grant does **not** cover the original Stunts executables, artwork, game data, Roland ROMs, or data extracted from those files. Those materials remain subject to their respective rights holders’ terms and are not included in this repository.
+## Credits
 
-### Social sharing image
+PlayStunts DX is based on the PlayStunts reconstruction of **Stunts / 4D Sports Driving**. The original reconstruction and the original game remain the work of their respective authors and rights holders.
 
-The live site uses a branded 1731 × 909 PNG sharing card (approximately 1.91:1). Original-art-derived promotional imagery is not redistributed in this source repository. To supply your own card, place it at `public/og.png` before building and update its dimensions, image URL and site URL in `app/layout.tsx` for your deployment. By default the metadata references the publicly hosted playstunts.com card; remove the image metadata if your deployment will not use a sharing image. The live card was generated using the original cover as a reference, with the yellow Stunts wordmark, red car, “PLAY IN YOUR BROWSER” and “playstunts.com” on black.
+This DX fork contains additional Windows desktop, input, force-feedback, presentation and packaging work developed in this repository.
+
+## License and original-game rights
+
+Unless a file carries a separate third-party notice, source code contributed to this project is licensed under the **GNU General Public License, version 3 only (GPL-3.0-only)**. See [LICENSE](LICENSE).
+
+Third-party components retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and notices in `vendor/` where applicable.
+
+The GPL license for this repository does **not** grant rights to the original Stunts executables, artwork, game data, Roland ROMs or other copyrighted original-game material. Those files are not included and must be supplied legally by the user.
