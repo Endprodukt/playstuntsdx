@@ -4,6 +4,12 @@ export const ENHANCED_TEXTURES_EVENT='playstunts-dx-enhanced-textures-changed';
 let upgradedRaceModule:Promise<unknown>|undefined;
 const desktopTextureUrls=new Map<string,string>();
 
+declare global {
+ interface Window {
+  __PLAYSTUNTS_DX_HIRES_URL__?:(relative:string)=>string;
+ }
+}
+
 function isDesktopDx(){
  return typeof window!=='undefined'&&typeof document!=='undefined'&&!!document.querySelector('.desktop-game-shell');
 }
@@ -34,6 +40,16 @@ export function setEnhancedTexturesEnabled(enabled:boolean){
  window.dispatchEvent(new Event(ENHANCED_TEXTURES_EVENT));
 }
 
+/** Return a file URL for an editable texture beside the executable. */
+export function hiresTextureUrl(relative:string){
+ const clean=relative.replace(/^[\\/]+/,'').split(/[\\/]+/).filter(part=>part&&part!=='.'&&part!=='..').join('/');
+ if(typeof window!=='undefined'){
+  const external=window.__PLAYSTUNTS_DX_HIRES_URL__?.(clean);
+  if(external)return external;
+ }
+ return `/game/hires/${clean}`;
+}
+
 /** Mirror /game/... beneath /game/hires/... while preserving the complete
  * relative path and filename. Example:
  * /game/cockpit/COUN/dashboard.png -> /game/hires/cockpit/COUN/dashboard.png
@@ -43,9 +59,17 @@ export function enhancedTextureUrl(original:string){
  return original.startsWith(prefix)?`/game/hires/${original.slice(prefix.length)}`:original;
 }
 
+/** Resolve a /game/... texture straight to the external hires directory.
+ * This avoids depending on a global HTMLImageElement.src interception.
+ */
+export function enhancedTextureImageUrl(original:string){
+ const enhanced=enhancedTextureUrl(original),prefix='/game/hires/';
+ return enhanced.startsWith(prefix)?hiresTextureUrl(enhanced.slice(prefix.length)):enhanced;
+}
+
 /** Desktop runtime assets are served through the Tauri fetch bridge rather
  * than as normal web URLs. Convert a successfully fetched texture to a blob URL
- * so <img> elements can use High Res files from the portable Runtime folder.
+ * so consumers that require fetch() can still use enhanced files.
  */
 export async function loadEnhancedTexturePath(url:string){
  if(!isDesktopDx())return url;
