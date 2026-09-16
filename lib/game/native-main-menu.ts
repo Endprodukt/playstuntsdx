@@ -6,6 +6,15 @@ export interface NativeMainMenuHost extends MainMenuPresentation {
  input():Promise<NativeMenuInput&{keyboardKey?:number}>;
 }
 
+type TauriCore={invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>};
+const requestDesktopExit=()=>{
+ if(typeof document==='undefined'||!document.querySelector('.desktop-game-shell'))return false;
+ const core=(window as typeof window&{__TAURI__?:{core?:TauriCore}}).__TAURI__?.core;
+ if(core)void core.invoke<void>('exit_game').catch(reason=>console.error('PlayStunts DX exit failed:',reason));
+ else window.close();
+ return true;
+};
+
 const wheelMenuSelection=()=>{
  if(desktopInputDevice()!=='wheel')return undefined;
  const wheel=getDesktopWheelInput();
@@ -31,6 +40,7 @@ export async function runNativeMainMenuSelection(host:NativeMainMenuHost){
   const now=host.counter(),delta=(now-time)&65535;time=now;
   menu.frame(delta);
   const input=await host.input(),selection=wheelMenuSelection(),throttle=wheelThrottlePressed(),throttlePress=throttle&&!throttleHeld;
+  if(input.key===27&&requestDesktopExit())continue;
   const wheelChanged=selection!==lastWheelSelection;
   throttleHeld=throttle;lastWheelSelection=selection;
   // Wheel, keyboard and mouse are all valid main-menu inputs. The most recent
@@ -39,9 +49,7 @@ export async function runNativeMainMenuSelection(host:NativeMainMenuHost){
   if(input.keyboardKey||input.mouseActive)wheelOwns=false;
   if(wheelChanged||throttlePress)wheelOwns=selection!==undefined;
   const syntheticWheelDirection=selection!==undefined&&!input.keyboardKey&&(input.key===0x4b00||input.key===0x4d00||input.key===0x4800||input.key===0x5000);
-  // Desktop Escape means Back only below the main menu. At the top level the
-  // explicit EXIT item owns application exit, so ESC must be inert here.
-  const key=throttlePress?13:syntheticWheelDirection||input.key===27?0:input.key;
+  const key=throttlePress?13:syntheticWheelDirection?0:input.key;
   const result=menu.accept({delta,key,x:input.x,y:input.y,mouseEnabled:input.mouseActive,selection:wheelOwns?selection:undefined});
   if(result.result!==undefined)return {selection:result.result,idleExpired:result.state.idleExpired};
  }
