@@ -3,15 +3,16 @@ import {loadOptionalNativeCgaTandyPvsBank,loadOptionalNativeCompressedCgaTandyPv
 import {acquireCachedResource} from './acquire-cached-resource.ts';
 import {selectOriginalBitmapFile} from './select-bitmap-file.ts';
 import {loadNativePvsBank} from './load-pvs-bank.ts';
+import {loadNativeRawResource} from './load-raw-resource.ts';
 import {packNativeResidentBitmapBank} from './pack-resident-bitmap-bank.ts';
 export interface NativePvsFileHost {
  memory():Uint8Array;writeMemory(memory:Uint8Array):void;
  exists(nameOffset:number):Promise<boolean>;
  read(nameOffset:number):Promise<Uint8Array>;
 }
-/** Original filename/cache selection joined to the supplied PVS loading path.
+/** Original filename/cache selection joined to the supplied PVS/VSH loading path.
  * The frame pointer belongs to2c432, including when nested inside2c734.
- * Other historical bitmap formats require their own loaders. */
+ * Packed PVS banks are decoded while community VSH banks are mounted raw. */
 export async function loadSelectedNativePvsBank(host:NativePvsFileHost,d:number,nameOffset:number,framePointer:number,packedBitmap:boolean,mode:'mcga'|'cga'|'tandy'|'ega'='mcga'){
  const pointer=await (mode==='mcga'?loadOptionalNativePvsBank(host,d,nameOffset,framePointer,packedBitmap):mode==='ega'?(packedBitmap?loadOptionalNativePackedEgaPvsBank(host,d,nameOffset,framePointer):loadOptionalNativeEgaPvsBank(host,d,nameOffset,framePointer)):(packedBitmap?loadOptionalNativeCompressedCgaTandyPvsBank(host,d,mode,nameOffset,framePointer):loadOptionalNativeCgaTandyPvsBank(host,d,mode,nameOffset,framePointer)));
  if(!pointer)throw Error('Original bitmap resource is unavailable');return pointer;
@@ -28,11 +29,16 @@ export async function loadOptionalNativePvsBank(host:NativeOptionalPvsFileHost,d
  let source=selected.cached;
  if(!source){
   let extension='';for(let i=0;i<65536;i++){const value=host.memory()[d+((selected.extension+i)&65535)];if(!value)break;extension+=String.fromCharCode(value);}
-  const bytes=await host.read(selected.filename);if(!bytes||bytes.length===0)return null;
-  if(extension!=='.PVS')throw Error('Original bitmap format requires its own loader: '+extension);
-  const loaded=loadNativePvsBank(host.memory(),d,selected.filename,layout.scratchNameOffset,bytes);host.writeMemory(loaded.memory);
-  if(loaded.error||!loaded.resource)throw Error('Original PVS allocation failed: '+loaded.error);
-  source={offset:0,segment:loaded.segment};
+  if(extension==='.VSH'){
+   source=await loadNativeRawResource({memory:()=>host.memory(),writeMemory:memory=>host.writeMemory(memory),readFile:at=>host.read(at)},d,selected.filename,false)??undefined;
+   if(!source)return null;
+  }else{
+   const bytes=await host.read(selected.filename);if(!bytes||bytes.length===0)return null;
+   if(extension!=='.PVS')throw Error('Original bitmap format requires its own loader: '+extension);
+   const loaded=loadNativePvsBank(host.memory(),d,selected.filename,layout.scratchNameOffset,bytes);host.writeMemory(loaded.memory);
+   if(loaded.error||!loaded.resource)throw Error('Original PVS allocation failed: '+loaded.error);
+   source={offset:0,segment:loaded.segment};
+  }
  }
  if(!packedBitmap)return source;
  const m=host.memory(),descriptor=new DataView(m.buffer,m.byteOffset,m.byteLength).getUint16(d+0x4b14,true);
