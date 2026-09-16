@@ -1,10 +1,11 @@
 """Prepare the portable PlayStunts DX runtime, including optional custom content.
 
 Custom cars may live directly in ``Custom Cars`` next to the application or in
-arbitrarily nested subdirectories. A CARxxxx.RES file defines a car and its
-STxxxx.P3S, STDAxxxx.PVS and STDBxxxx.PVS companions must live in the same
-folder. Custom ``.TRK`` files may likewise live directly in ``Custom Tracks``
-or in nested folders. Original Stunts files are never modified.
+arbitrarily nested subdirectories. A CARxxxx.RES file defines a car; its
+STxxxx.P3S, STDAxxxx.PVS and STDBxxxx.PVS companions are resolved recursively
+from the same package first and then, when unique, from the full Custom Cars
+tree. Custom ``.TRK`` files may likewise live directly in ``Custom Tracks`` or
+in nested folders. Original Stunts files are never modified.
 """
 from __future__ import annotations
 
@@ -94,16 +95,55 @@ def custom_track_candidates(root: Path) -> list[Path]:
     )
 
 
-def directory_files(directory: Path) -> dict[str, Path]:
-    result: dict[str, Path] = {}
-    for path in directory.iterdir():
-        if not path.is_file():
-            continue
-        key = path.name.upper()
-        if key in result:
-            raise ValueError(f"Duplicate case-insensitive filename in {directory}: {key}")
-        result[key] = path
+def recursive_file_index(root: Path) -> dict[str, list[Path]]:
+    """Index custom content by DOS-style case-insensitive basename."""
+    result: dict[str, list[Path]] = {}
+    if not root.is_dir():
+        return result
+    for path in root.rglob("*"):
+        if path.is_file():
+            result.setdefault(path.name.upper(), []).append(path)
+    for paths in result.values():
+        paths.sort(key=lambda path: str(path.relative_to(root)).casefold())
     return result
+
+
+def is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def resolve_custom_car_files(car_file: Path, custom_root: Path, index: dict[str, list[Path]]) -> dict[str, Path]:
+    """Resolve one car pack without requiring every file to be a direct sibling.
+
+    A companion inside the CAR file's package subtree wins. If a pack keeps its
+    companion files elsewhere in Custom Cars, a unique basename is accepted.
+    Ambiguous duplicates are rejected instead of silently mixing two car packs.
+    """
+    car_id = car_file.stem[3:].upper()
+    car_name = f"CAR{car_id}.RES"
+    required = [car_name, f"ST{car_id}.P3S", f"STDA{car_id}.PVS", f"STDB{car_id}.PVS"]
+    files: dict[str, Path] = {car_name: car_file}
+    missing: list[str] = []
+
+    for name in required[1:]:
+        matches = index.get(name, [])
+        if not matches:
+            missing.append(name)
+            continue
+        local = [path for path in matches if is_within(path, car_file.parent)]
+        candidates = local or matches
+        if len(candidates) != 1:
+            locations = ", ".join(str(path.relative_to(custom_root)) for path in candidates)
+            raise ValueError(f"ambiguous {name}: {locations}")
+        files[name] = candidates[0]
+
+    if missing:
+        raise ValueError("missing " + ", ".join(missing))
+    return files
 
 
 def validate_custom_car(car_id: str, files: dict[str, Path]) -> None:
@@ -111,10 +151,6 @@ def validate_custom_car(car_id: str, files: dict[str, Path]) -> None:
     model_name = f"ST{car_id}.P3S"
     dash_name = f"STDA{car_id}.PVS"
     gear_name = f"STDB{car_id}.PVS"
-    required = [car_name, model_name, dash_name, gear_name]
-    missing = [name for name in required if name not in files]
-    if missing:
-        raise ValueError("missing " + ", ".join(missing))
 
     car = resources(files[car_name].read_bytes())
     if not all(name in car for name in ["simd", "gnam", "edes"]):
@@ -142,6 +178,8 @@ def merge_custom_cars(original: Path, custom_root: Path, merged: Path) -> dict[s
     for name, path in original_files.items():
         shutil.copyfile(path, merged / name)
 
+    candidates = custom_car_candidates(custom_root)
+    index = recursive_file_index(custom_root)
     original_ids = {
         name[3:-4]
         for name in original_files
@@ -151,7 +189,7 @@ def merge_custom_cars(original: Path, custom_root: Path, merged: Path) -> dict[s
     loaded: list[dict[str, str]] = []
     skipped: list[dict[str, str]] = []
 
-    for car_file in custom_car_candidates(custom_root):
+    for car_file in candidates:
         car_id = car_file.stem[3:].upper()
         relative = str(car_file.relative_to(custom_root))
         if car_id in used_ids:
@@ -162,7 +200,7 @@ def merge_custom_cars(original: Path, custom_root: Path, merged: Path) -> dict[s
             continue
 
         try:
-            files = directory_files(car_file.parent)
+            files = resolve_custom_car_files(car_file, custom_root, index)
             validate_custom_car(car_id, files)
         except Exception as error:
             skipped.append({"id": car_id, "file": relative, "reason": str(error)})
@@ -176,7 +214,7 @@ def merge_custom_cars(original: Path, custom_root: Path, merged: Path) -> dict[s
     return {
         "limit": MAX_CARS,
         "original": len(original_ids),
-        "discovered": len(custom_car_candidates(custom_root)),
+        "discovered": len(candidates),
         "loaded": loaded,
         "skipped": skipped,
     }
