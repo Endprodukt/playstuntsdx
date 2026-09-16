@@ -109,8 +109,13 @@ fn checked_runtime_path(path: &str) -> Result<PathBuf, String> {
 
 #[cfg(not(debug_assertions))]
 fn build_runtime(gamedata: &Path) -> Result<(), String> {
+    let root = application_root()?;
     let runtime = runtime_root()?;
-    let log_path = application_root()?.join("prepare-runtime.log");
+    let cache = root.join("Cache");
+    fs::create_dir_all(&cache)
+        .map_err(|error| format!("Could not create {}: {error}", cache.display()))?;
+    let log_path = cache.join("prepare-runtime.log");
+    let _ = fs::remove_file(root.join("prepare-runtime.log"));
     if runtime.exists() {
         fs::remove_dir_all(&runtime)
             .map_err(|error| format!("Could not replace {}: {error}", runtime.display()))?;
@@ -128,7 +133,7 @@ fn build_runtime(gamedata: &Path) -> Result<(), String> {
         .arg("--original")
         .arg(gamedata)
         .arg("--custom-cars")
-        .arg(application_root()?.join("Custom Cars"))
+        .arg(root.join("Custom Cars"))
         .arg("--output")
         .arg(&runtime);
     #[cfg(target_os = "windows")]
