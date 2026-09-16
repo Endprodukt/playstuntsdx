@@ -1,5 +1,6 @@
 import {
   applyForceFeedbackIni,
+  clearForceFeedbackTelemetry,
   forceFeedbackDrivingActive,
   sampleForceFeedback,
 } from '../physics/force-feedback';
@@ -246,6 +247,7 @@ export function updateDesktopForceFeedback(input: DesktopWheelInputState) {
 }
 
 export function stopDesktopForceFeedback() {
+  clearForceFeedbackTelemetry();
   latestForce = 0;
   ffbActive = false;
   const core = tauriCore();
