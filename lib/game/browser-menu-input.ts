@@ -105,7 +105,7 @@ export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joysti
   // actions for their next screen. Physical mouse holds survive handover too.
   // Capture ownership moves to the next adapter on this same canvas; closing
   // the inactive adapter must not release the new screen's capture.
-  setActive(value:boolean){active=value;pendingKey=0;pendingTextKey=0;pointerEdges.length=0;last=counter();if(!value){capturedPointer=undefined;element.style.cursor='';}},
+  setActive(value:boolean){active=value;if(value)stopDesktopForceFeedback();pendingKey=0;pendingTextKey=0;pointerEdges.length=0;last=counter();if(!value){capturedPointer=undefined;element.style.cursor='';}},
   async readMemory(memory:()=>Uint8Array,dataSegment:number,deltaOverride?:number|(()=>number)){const sample=await read(deltaOverride);return writeOriginalMenuDeviceSample(memory(),dataSegment,sample);},
   async waitTicks(ticks:number){const end=counter()+ticks;while(counter()<end)await wait();},
   counters:()=>({input:counter()>>>0,game:Math.floor(counter()/ORIGINAL_GAME_TIMER_DIVIDER)>>>0}),
