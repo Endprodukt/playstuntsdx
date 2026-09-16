@@ -8,6 +8,7 @@ import {desktopInputDevice,setDesktopInputDevice,type DesktopInputDevice} from '
 type DesktopSoundDevice='off'|'pc-speaker'|'tandy'|'adlib'|'sound-blaster'|'mt32';
 type TauriGlobal={core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}};
 const soundKey='playstunts-dx-sound-device';
+const graphicsKey='playstunts-dx-enhanced-graphics';
 const soundDevices:ReadonlyArray<{id:DesktopSoundDevice;label:string}>=[
  {id:'off',label:'SOUND OFF'},
  {id:'pc-speaker',label:'PC SPEAKER'},
@@ -25,6 +26,12 @@ const exitGameDialog=bytes('EXIT GAME?][NO][YES]');
 function desktopEnhancedGraphicsButton(){
  if(typeof document==='undefined')return null;
  return document.querySelector<HTMLButtonElement>('.desktop-game-shell .game-toolbar button[aria-pressed]');
+}
+
+function desktopEnhancedGraphicsEnabled(toggle:HTMLButtonElement){
+ const saved=window.localStorage.getItem(graphicsKey)?.trim().toLowerCase();
+ if(saved!==undefined&&saved!==null&&saved!=='')return !['0','false','no','off'].includes(saved);
+ return toggle.getAttribute('aria-pressed')==='true';
 }
 
 function desktopSoundDevice():DesktopSoundDevice|null{
@@ -107,7 +114,7 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
    const toggle=desktopEnhancedGraphicsButton(),sound=desktopSoundDevice();
    if(!toggle||!sound)result=await dialogs.dialog('emop',2,0,4);
    else{
-    const enhanced=toggle.getAttribute('aria-pressed')==='true',textures=enhancedTexturesEnabled();
+    const enhanced=desktopEnhancedGraphicsEnabled(toggle),textures=enhancedTexturesEnabled();
     host.resources.edxo=optionsWithDxChoices(host.resources.emop,enhanced,textures,sound);
     const selected=await dialogs.dialog('edxo',2,0,4);
     if(selected===3){
@@ -125,7 +132,12 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
     }else if(selected===4)result=3; // shifted original Load Replay
     else if(selected===5)result=4; // shifted original Graphics
     else if(selected===6){
-     toggle.click();
+     const next=!enhanced;
+     // config.ini is bridged through localStorage. Persist the requested state
+     // directly instead of relying on a MutationObserver of the hidden toolbar.
+     window.localStorage.setItem(graphicsKey,String(next));
+     if((toggle.getAttribute('aria-pressed')==='true')!==next)toggle.click();
+     await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
      result=-2;
     }else if(selected===7){
      setEnhancedTexturesEnabled(!textures);
