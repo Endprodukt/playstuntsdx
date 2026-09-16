@@ -9,6 +9,7 @@ type DesktopSoundDevice='off'|'pc-speaker'|'tandy'|'adlib'|'sound-blaster'|'mt32
 type TauriGlobal={core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}};
 const soundKey='playstunts-dx-sound-device';
 const graphicsKey='playstunts-dx-enhanced-graphics';
+const audioUpdateKey='playstunts-dx-audio-update';
 const soundDevices:ReadonlyArray<{id:DesktopSoundDevice;label:string}>=[
  {id:'off',label:'SOUND OFF'},
  {id:'pc-speaker',label:'PC SPEAKER'},
@@ -23,44 +24,37 @@ const soundDialog=bytes('PLAYSTUNTS DX SOUND]'+soundDevices.map(device=>`[${devi
 const missingMt32Dialog=bytes('ROLAND MT-32 ROMS NOT FOUND]PUT THE CONTROL AND PCM ROMS]IN THE MT32 FOLDER][OK]');
 const exitGameDialog=bytes('EXIT GAME?][NO][YES]');
 
+function enabledSetting(key:string,defaultValue=true){
+ const saved=window.localStorage.getItem(key)?.trim().toLowerCase();
+ if(saved===undefined||saved===null||saved==='')return defaultValue;
+ return !['0','false','no','off'].includes(saved);
+}
 function desktopEnhancedGraphicsButton(){
  if(typeof document==='undefined')return null;
  return document.querySelector<HTMLButtonElement>('.desktop-game-shell .game-toolbar button[aria-pressed]');
 }
-
 function desktopEnhancedGraphicsEnabled(toggle:HTMLButtonElement){
  const saved=window.localStorage.getItem(graphicsKey)?.trim().toLowerCase();
  if(saved!==undefined&&saved!==null&&saved!=='')return !['0','false','no','off'].includes(saved);
  return toggle.getAttribute('aria-pressed')==='true';
 }
-
 function desktopSoundDevice():DesktopSoundDevice|null{
  if(typeof window==='undefined'||typeof document==='undefined'||!document.querySelector('.desktop-game-shell'))return null;
  const saved=window.localStorage.getItem(soundKey);
  return soundDevices.some(device=>device.id===saved)?saved as DesktopSoundDevice:'sound-blaster';
 }
-
-function desktopSoundLabel(device:DesktopSoundDevice){
- return soundDevices.find(candidate=>candidate.id===device)?.label??'SOUND BLASTER';
-}
-
+function desktopSoundLabel(device:DesktopSoundDevice){return soundDevices.find(candidate=>candidate.id===device)?.label??'SOUND BLASTER';}
 async function desktopMt32Ready(){
  const tauri=(window as typeof window&{__TAURI__?:TauriGlobal}).__TAURI__;
  if(!tauri?.core)return true;
  try{await tauri.core.invoke<void>('check_mt32_roms');return true;}catch{return false;}
 }
-
 function selectDesktopSound(device:DesktopSoundDevice){
  window.localStorage.setItem(soundKey,device);
- // The current menu/music objects own one audio backend for their full lifetime.
- // Restart the desktop session after a card change instead of mixing two backends.
  window.setTimeout(()=>window.location.reload(),0);
 }
-
 function choice(text:string){return [91,...Array.from(text,character=>character.charCodeAt(0)),93];}
-function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,textures:boolean,sound:DesktopSoundDevice){
- // Preserve the supplied options resource, add DX choices, and only rename the
- // desktop-specific exit entry. Original choice 3 is Load Replay; choice 5 is Exit to DOS.
+function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,textures:boolean,sound:DesktopSoundDevice,audioUpdate:boolean){
  const result:number[]=[];let originalChoice=0;
  for(let i=0;i<original.length;i++){
   const value=original[i]&255;
@@ -69,6 +63,7 @@ function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,te
    if(originalChoice===5){
     result.push(...choice(`ENHANCED GRAPHICS: ${enhanced?'ON':'OFF'}`));
     result.push(...choice(`ENHANCED TEXTURES: ${textures?'ON':'OFF'}`));
+    result.push(...choice(`AUDIO UPDATE: ${audioUpdate?'ON':'OFF'}`));
     result.push(...choice('EXIT GAME'));
     while(i+1<original.length&&(original[i+1]&255)!==93)i++;
     if(i+1<original.length)i++;
@@ -81,7 +76,6 @@ function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,te
  }
  return result;
 }
-
 function inputDeviceWithWheel(original:ReadonlyArray<number>){
  const result=Array.from(original,value=>value&255),end=result.indexOf(0),insertAt=end<0?result.length:end;
  result.splice(insertAt,0,...choice('Wheel'));
@@ -101,9 +95,6 @@ export interface NativeOptionsPresentation {
  background():void;
  capture():{restore():void;close():void};
 }
-/** Connect the verified original options dispatcher and action lifecycles to
- * native dialogs and file selection. The embedding game handles final replay
- * entry or exit after this routine returns. */
 export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOptionsPresentation):Promise<'menu'|'replay'|'exit'>{
  const dialogs=display?.dialogs??createNativeDialogRuntime(host),flow=originalOptionsFlow(host.settings);
  if(display)display.background();else drawOriginalOptionsBackground(host.pixels,host.font,host.resources);host.present();
@@ -114,8 +105,8 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
    const toggle=desktopEnhancedGraphicsButton(),sound=desktopSoundDevice();
    if(!toggle||!sound)result=await dialogs.dialog('emop',2,0,4);
    else{
-    const enhanced=desktopEnhancedGraphicsEnabled(toggle),textures=enhancedTexturesEnabled();
-    host.resources.edxo=optionsWithDxChoices(host.resources.emop,enhanced,textures,sound);
+    const enhanced=desktopEnhancedGraphicsEnabled(toggle),textures=enhancedTexturesEnabled(),audioUpdate=enabledSetting(audioUpdateKey,true);
+    host.resources.edxo=optionsWithDxChoices(host.resources.emop,enhanced,textures,sound,audioUpdate);
     const selected=await dialogs.dialog('edxo',2,0,4);
     if(selected===3){
      host.resources.edxs=soundDialog;
@@ -129,12 +120,10 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
       }else if(requested!==sound)selectDesktopSound(requested);
      }
      result=-2;
-    }else if(selected===4)result=3; // shifted original Load Replay
-    else if(selected===5)result=4; // shifted original Graphics
+    }else if(selected===4)result=3;
+    else if(selected===5)result=4;
     else if(selected===6){
      const next=!enhanced;
-     // config.ini is bridged through localStorage. Persist the requested state
-     // directly instead of relying on a MutationObserver of the hidden toolbar.
      window.localStorage.setItem(graphicsKey,String(next));
      if((toggle.getAttribute('aria-pressed')==='true')!==next)toggle.click();
      await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
@@ -142,8 +131,12 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
     }else if(selected===7){
      setEnhancedTexturesEnabled(!textures);
      result=-2;
-    }else if(selected===8)result=5; // shifted desktop Exit Game
-    else if(selected===9)result=6; // shifted original Return
+    }else if(selected===8){
+     window.localStorage.setItem(audioUpdateKey,String(!audioUpdate));
+     window.setTimeout(()=>window.location.reload(),120);
+     result=-2;
+    }else if(selected===9)result=5;
+    else if(selected===10)result=6;
     else result=selected;
    }
   }
@@ -153,11 +146,7 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
     host.resources.edxi=inputDeviceWithWheel(host.resources.emid);
     const selected=await dialogs.dialog('edxi',2,desktopInputDevice()==='wheel'?3:request.selected,1);
     if(selected===3){
-     setDesktopInputDevice('wheel');
-     // The original simulation's analog steering path is the joystick path.
-     // Wheel input supplies that path directly; it does not synthesize keys.
-     host.settings.mouse=false;
-     host.settings.joystick=true;
+     setDesktopInputDevice('wheel');host.settings.mouse=false;host.settings.joystick=true;
     }else if(selected>=0&&selected<=2)setDesktopInputDevice(inputDevices[selected]);
     result=selected;
    }
