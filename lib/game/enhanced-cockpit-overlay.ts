@@ -1,6 +1,6 @@
 import {cockpitMarker} from './cockpit-marker';
 import {cockpitWheel} from './cockpit-wheel';
-import {ENHANCED_TEXTURES_EVENT,enhancedTextureImageUrl,enhancedTexturesEnabled} from './enhanced-textures';
+import {ENHANCED_TEXTURES_EVENT,enhancedTexturesEnabled,loadEnhancedTextureUrl} from './enhanced-textures';
 import {composeCockpitPanel,type CockpitPanelLayer} from './cockpit-panel';
 
 type SpriteFrame={file:string;x:number;y:number;width:number;height:number};
@@ -75,9 +75,10 @@ function image(url:string){
 }
 
 async function preferredImage(original:string):Promise<LoadedImage>{
- const enhanced=enhancedTextureImageUrl(original);
- try{return {image:await image(enhanced),enhanced:true};}
- catch{return {image:await image(original),enhanced:false};}
+ try{
+  const enhanced=await loadEnhancedTextureUrl(original);
+  return {image:await image(enhanced),enhanced:true};
+ }catch{return {image:await image(original),enhanced:false};}
 }
 
 const sharedLoads=new Map<string,Promise<LoadedCarAssets|undefined>>();
