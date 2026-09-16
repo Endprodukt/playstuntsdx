@@ -56,6 +56,7 @@ type InputDevice = {
   source: DeviceSource;
   axes: number[];
   buttons: number[];
+  pov?: number | null;
 };
 
 type DeviceSnapshot = {
@@ -70,6 +71,7 @@ type NativeJoystick = {
   name: string;
   axes: number[];
   buttons: number[];
+  pov?: number | null;
 };
 
 type SetupUi = {
@@ -109,6 +111,7 @@ function browserDevices(): InputDevice[] {
       source: 'WebView2' as const,
       axes: [...gamepad.axes],
       buttons: gamepad.buttons.map(button => button.value),
+      pov: null,
     }));
 }
 
@@ -148,6 +151,22 @@ function bindingName(binding: AnyBinding | undefined) {
   const device = resolveDevice(binding);
   const deviceName = device?.name || binding.deviceId || `Device ${binding.deviceIndex}`;
   return `${deviceName} — ${binding.kind === 'axis' ? `Axis ${binding.index}` : `Button ${binding.index}`}`;
+}
+
+function deviceHat(device: InputDevice | undefined) {
+  let up = (device?.buttons[12] ?? 0) > 0.5;
+  let down = (device?.buttons[13] ?? 0) > 0.5;
+  let left = (device?.buttons[14] ?? 0) > 0.5;
+  let right = (device?.buttons[15] ?? 0) > 0.5;
+  const pov = device?.pov;
+  if (pov !== undefined && pov !== null && pov !== 0xffff && pov >= 0) {
+    const sector = Math.round((pov % 36000) / 4500) % 8;
+    up ||= sector === 7 || sector === 0 || sector === 1;
+    right ||= sector === 1 || sector === 2 || sector === 3;
+    down ||= sector === 3 || sector === 4 || sector === 5;
+    left ||= sector === 5 || sector === 6 || sector === 7;
+  }
+  return {up, down, left, right};
 }
 
 function createSetupUi(
@@ -247,6 +266,7 @@ export function installDesktopDriveControls() {
         source: 'Windows',
         axes: device.axes,
         buttons: device.buttons,
+        pov: device.pov,
       }));
     } catch (reason) {
       console.warn('[Controls] Native joystick scan failed:', reason);
@@ -398,7 +418,10 @@ export function installDesktopDriveControls() {
         .map((value, index) => value > 0.05 ? `B${index}=${value.toFixed(2)}` : '')
         .filter(Boolean)
         .join('  ') || 'none';
-      return `[${device.source}] ${device.name}\n  ${axes}\n  active buttons: ${pressed}`;
+      const pov = device.pov !== undefined && device.pov !== null && device.pov !== 0xffff
+        ? `  POV=${device.pov}`
+        : '';
+      return `[${device.source}] ${device.name}\n  ${axes}\n  active buttons: ${pressed}${pov}`;
     }).join('\n\n');
   }
 
@@ -561,15 +584,20 @@ export function installDesktopDriveControls() {
       && !!resolveDevice(bindings.throttle)
       && !!resolveDevice(bindings.brake);
     if (!configured || !connected || setupOpen) {
-      setDesktopWheelInput({ configured, connected, steering: 0, throttle: 0, brake: 0 });
+      setDesktopWheelInput({configured,connected,steering:0,throttle:0,brake:0,hatUp:false,hatDown:false,hatLeft:false,hatRight:false});
       return;
     }
+    const hat = deviceHat(resolveDevice(bindings.steering));
     setDesktopWheelInput({
       configured: true,
       connected: true,
       steering: steeringAmount(bindings.steering),
       throttle: inputAmount(bindings.throttle),
       brake: inputAmount(bindings.brake),
+      hatUp: hat.up,
+      hatDown: hat.down,
+      hatLeft: hat.left,
+      hatRight: hat.right,
     });
   }
 
