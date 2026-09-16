@@ -421,10 +421,26 @@ def extract_instrument_panel(source: Path, target: Path, car: str) -> None:
     target.write_text(json.dumps(data, separators=(",", ":")))
 
 
+def copy_high_res_assets(source: Path, output: Path) -> dict[str, object]:
+    """Mirror user-supplied High Res files beneath /game/hires in the runtime."""
+    copied: list[str] = []
+    if not source.is_dir():
+        return {"files": copied}
+    target_root = output / "game" / "hires"
+    for path in sorted((item for item in source.rglob("*") if item.is_file()), key=lambda item: str(item.relative_to(source)).casefold()):
+        relative = path.relative_to(source)
+        target = target_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, target)
+        copied.append(relative.as_posix())
+    return {"files": copied}
+
+
 def prepare(original: Path, custom_root: Path, output: Path) -> dict[str, object]:
     original = original.resolve()
     custom_root = custom_root.resolve()
     custom_tracks_root = custom_root.parent / "Custom Tracks"
+    high_res_root = custom_root.parent / "High Res"
     if not original.is_dir():
         raise ValueError(f"Gamedata directory does not exist: {original}")
 
@@ -444,6 +460,7 @@ def prepare(original: Path, custom_root: Path, output: Path) -> dict[str, object
 
     report["customCars"] = custom_car_report
     report["customTracks"] = custom_track_report
+    report["highRes"] = copy_high_res_assets(high_res_root, output)
     manifest = output / "desktop-preparation.json"
     manifest.write_text(json.dumps(report, indent=2) + "\n")
     return report
@@ -476,9 +493,11 @@ def main() -> int:
 
     custom_root = args.custom_cars or args.original.resolve().parent / "Custom Cars"
     custom_tracks_root = custom_root.parent / "Custom Tracks"
+    high_res_root = custom_root.parent / "High Res"
     try:
         custom_root.mkdir(parents=True, exist_ok=True)
         custom_tracks_root.mkdir(parents=True, exist_ok=True)
+        (high_res_root / "cockpit").mkdir(parents=True, exist_ok=True)
         report = prepare(args.original, custom_root, args.output)
         print(json.dumps(report, separators=(",", ":")))
         return 0
