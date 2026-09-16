@@ -138,11 +138,13 @@ fn hash_content_tree(root: &Path, directory: &Path, hasher: &mut DefaultHasher) 
     Ok(())
 }
 
-fn runtime_content_state() -> Result<String, String> {
+fn runtime_content_state(gamedata: &Path) -> Result<String, String> {
     let root = application_root()?;
     let mut hasher = DefaultHasher::new();
     "playstuntsdx-runtime-content-v1".hash(&mut hasher);
-    for name in ["Gamedata", "Custom Cars", "Custom Tracks", "High Res"] {
+    "Gamedata".hash(&mut hasher);
+    hash_content_tree(gamedata, gamedata, &mut hasher)?;
+    for name in ["Custom Cars", "Custom Tracks", "High Res"] {
         name.hash(&mut hasher);
         hash_content_tree(&root.join(name), &root.join(name), &mut hasher)?;
     }
@@ -153,7 +155,7 @@ fn runtime_state_path() -> Result<PathBuf, String> {
     Ok(application_root()?.join("Cache").join(".playstuntsdx-content.state"))
 }
 
-fn runtime_is_current() -> Result<bool, String> {
+fn runtime_is_current(gamedata: &Path) -> Result<bool, String> {
     if !runtime_files_ready()? {
         return Ok(false);
     }
@@ -162,7 +164,7 @@ fn runtime_is_current() -> Result<bool, String> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
         Err(error) => return Err(format!("Could not read runtime content state: {error}")),
     };
-    Ok(stored == runtime_content_state()?)
+    Ok(stored == runtime_content_state(gamedata)?)
 }
 
 fn checked_runtime_path(path: &str) -> Result<PathBuf, String> {
@@ -268,7 +270,7 @@ fn build_runtime(gamedata: &Path) -> Result<(), String> {
         return Err(format!("{message}\nDetails: {}", log_path.display()));
     }
 
-    fs::write(runtime_state_path()?, runtime_content_state()?)
+    fs::write(runtime_state_path()?, runtime_content_state(gamedata)?)
         .map_err(|error| format!("Could not save runtime content state: {error}"))?;
     let _ = fs::remove_file(&log_path);
     Ok(())
@@ -280,7 +282,7 @@ fn ensure_runtime(gamedata: &Path) -> Result<(), String> {
     }
     #[cfg(not(debug_assertions))]
     {
-        if runtime_is_current()? {
+        if runtime_is_current(gamedata)? {
             return Ok(());
         }
         build_runtime(gamedata)?;
