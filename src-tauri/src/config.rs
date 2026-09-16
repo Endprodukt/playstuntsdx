@@ -25,6 +25,28 @@ fn application_root() -> Result<PathBuf, String> {
         .ok_or_else(|| "Could not locate PlayStunts DX executable directory".to_string())
 }
 
+fn cache_root(root: &Path) -> Result<PathBuf, String> {
+    let cache = root.join("Cache");
+    fs::create_dir_all(&cache)
+        .map_err(|error| format!("Could not create {}: {error}", cache.display()))?;
+    Ok(cache)
+}
+
+fn migrate_legacy_cache_file(root: &Path, cache: &Path, name: &str) -> Result<(), String> {
+    let legacy = root.join(name);
+    if !legacy.is_file() {
+        return Ok(());
+    }
+    let target = cache.join(name);
+    if !target.exists() {
+        fs::copy(&legacy, &target).map_err(|error| {
+            format!("Could not move cache file {} to {}: {error}", legacy.display(), target.display())
+        })?;
+    }
+    fs::remove_file(&legacy)
+        .map_err(|error| format!("Could not remove old cache file {}: {error}", legacy.display()))
+}
+
 fn collect_external_state(root: &Path, directory: &Path, rows: &mut Vec<String>) -> Result<(), String> {
     if !directory.is_dir() {
         return Ok(());
@@ -62,7 +84,9 @@ fn collect_external_state(root: &Path, directory: &Path, rows: &mut Vec<String>)
 
 fn external_state_changed(root: &Path, folder: &str, state_name: &str) -> Result<bool, String> {
     let source = root.join(folder);
-    let state_path = root.join(state_name);
+    let cache = cache_root(root)?;
+    migrate_legacy_cache_file(root, &cache, state_name)?;
+    let state_path = cache.join(state_name);
     let mut rows = Vec::new();
     collect_external_state(&source, &source, &mut rows)?;
     rows.sort_by_key(|row| row.to_ascii_lowercase());
