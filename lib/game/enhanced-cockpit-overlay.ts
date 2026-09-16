@@ -1,6 +1,6 @@
 import {cockpitMarker} from './cockpit-marker';
 import {cockpitWheel} from './cockpit-wheel';
-import {ENHANCED_TEXTURES_EVENT,enhancedTextureUrl,enhancedTexturesEnabled} from './enhanced-textures';
+import {ENHANCED_TEXTURES_EVENT,enhancedTextureImageUrl,enhancedTexturesEnabled} from './enhanced-textures';
 import {composeCockpitPanel,type CockpitPanelLayer} from './cockpit-panel';
 
 type SpriteFrame={file:string;x:number;y:number;width:number;height:number};
@@ -49,8 +49,6 @@ void fetch('/game/replay-bar-art.json').then(async response=>{
   rects.push({x:left,y:top,width:right-left,height:bottom-top});
  };
  for(const frame of frames)add(frame.x,frame.y,frame.width,frame.height,1);
- // Native replay progress bar and both clock strings are raster operations,
- // not sprites, so retain their authored screen regions as well.
  add(152,176,120,9,1);add(150,185,120,15,1);
  replayOverlay={background:frames[0],rects};
 }).catch(()=>{});
@@ -63,8 +61,6 @@ function replayControlsVisible(data:ReplayOverlay,pixels:Uint8Array){
   const px=frame.x+x,py=frame.y+y;if(px<0||px>=320||py<0||py>=200)continue;
   checked++;if(pixels[py*320+px]===frame.pixels[y*frame.width+x])matched++;
  }
- // The replay buttons and selection outline overwrite part of the background,
- // so require only a clear majority of the immutable backing sprite to match.
  return checked>=16&&matched/checked>=0.6;
 }
 
@@ -79,7 +75,7 @@ function image(url:string){
 }
 
 async function preferredImage(original:string):Promise<LoadedImage>{
- const enhanced=enhancedTextureUrl(original);
+ const enhanced=enhancedTextureImageUrl(original);
  try{return {image:await image(enhanced),enhanced:true};}
  catch{return {image:await image(original),enhanced:false};}
 }
@@ -130,15 +126,8 @@ function composeMaskedSprite(art:LoadedImage,mask:LoadedImage):MaskedSprite{
  return {canvas,enhanced:art.enhanced||mask.enhanced};
 }
 
-// The upgraded race module is warmed while the user is still in the menu.
-// Start decoding cockpit art at the same time so a prepared car can be drawn
-// in high resolution on the very first visible race frame.
 warmEnhancedCockpits();
 
-/** High-resolution cockpit presentation layered over the original native race.
- * The native framebuffer remains authoritative for live gauge pixels; only the
- * authored cockpit artwork is replaced. Missing hires files fall back per-file.
- */
 export function createEnhancedCockpitOverlay(){
  let enabled=enhancedTexturesEnabled(),closed=false;
  const sync=()=>{enabled=enhancedTexturesEnabled();if(enabled)warmEnhancedCockpits();};
@@ -226,9 +215,6 @@ export function createEnhancedCockpitOverlay(){
     if(sprite){const position=cockpitMarker(marker.points,wheel.scaled);draw(sprite.canvas,sprite.enhanced,position.x-marker.art.anchorX,position.y-marker.art.anchorY,marker.art.width,marker.art.height);}
    }
 
-   // Replay controls are authored as an opaque native UI over the cockpit.
-   // Restore only their real sprite/text/progress regions after the enhanced
-   // cockpit so wheel/dashboard artwork can never cover the Escape replay menu.
    if(activeReplay&&replaySnapshot){
     context.imageSmoothingEnabled=false;
     for(const rect of activeReplay.rects){
