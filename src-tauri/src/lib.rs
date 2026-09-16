@@ -2,7 +2,10 @@ mod config;
 
 use serde::Serialize;
 use std::{
+    collections::hash_map::DefaultHasher,
     fs,
+    hash::{Hash, Hasher},
+    io::Read,
     path::{Component, Path, PathBuf},
     process::Command,
 };
@@ -82,10 +85,84 @@ fn runtime_game_root() -> Result<PathBuf, String> {
     Ok(runtime_root()?.join("game"))
 }
 
-fn runtime_is_ready() -> Result<bool, String> {
+fn runtime_files_ready() -> Result<bool, String> {
     let root = runtime_root()?;
     Ok(root.join("desktop-preparation.json").is_file()
         && root.join("game").join("assets.json").is_file())
+}
+
+fn hash_content_tree(root: &Path, directory: &Path, hasher: &mut DefaultHasher) -> Result<(), String> {
+    if !directory.is_dir() {
+        "<missing>".hash(hasher);
+        return Ok(());
+    }
+
+    let mut entries = fs::read_dir(directory)
+        .map_err(|error| format!("Could not scan {}: {error}", directory.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not scan {}: {error}", directory.display()))?;
+    entries.sort_by_key(|entry| entry.file_name().to_string_lossy().to_lowercase());
+
+    for entry in entries {
+        let path = entry.path();
+        let relative = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/")
+            .to_lowercase();
+        relative.hash(hasher);
+
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("Could not inspect {}: {error}", path.display()))?;
+        if file_type.is_dir() {
+            0u8.hash(hasher);
+            hash_content_tree(root, &path, hasher)?;
+        } else if file_type.is_file() {
+            1u8.hash(hasher);
+            let mut file = fs::File::open(&path)
+                .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
+            let mut buffer = [0u8; 64 * 1024];
+            loop {
+                let count = file
+                    .read(&mut buffer)
+                    .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
+                if count == 0 {
+                    break;
+                }
+                hasher.write(&buffer[..count]);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn runtime_content_state() -> Result<String, String> {
+    let root = application_root()?;
+    let mut hasher = DefaultHasher::new();
+    "playstuntsdx-runtime-content-v1".hash(&mut hasher);
+    for name in ["Gamedata", "Custom Cars", "Custom Tracks", "High Res"] {
+        name.hash(&mut hasher);
+        hash_content_tree(&root.join(name), &root.join(name), &mut hasher)?;
+    }
+    Ok(format!("{:016x}\n", hasher.finish()))
+}
+
+fn runtime_state_path() -> Result<PathBuf, String> {
+    Ok(application_root()?.join("Cache").join(".playstuntsdx-content.state"))
+}
+
+fn runtime_is_current() -> Result<bool, String> {
+    if !runtime_files_ready()? {
+        return Ok(false);
+    }
+    let stored = match fs::read_to_string(runtime_state_path()?) {
+        Ok(value) => value,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(format!("Could not read runtime content state: {error}")),
+    };
+    Ok(stored == runtime_content_state()?)
 }
 
 fn checked_runtime_path(path: &str) -> Result<PathBuf, String> {
@@ -184,23 +261,28 @@ fn build_runtime(gamedata: &Path) -> Result<(), String> {
             ),
         });
     }
-    if !runtime_is_ready()? {
+    if !runtime_files_ready()? {
         let message = "The original Stunts files were prepared incompletely.";
         let _ = fs::write(&log_path, format!("{diagnostic}\n{message}\n"));
         let _ = fs::remove_dir_all(&runtime);
         return Err(format!("{message}\nDetails: {}", log_path.display()));
     }
 
+    fs::write(runtime_state_path()?, runtime_content_state()?)
+        .map_err(|error| format!("Could not save runtime content state: {error}"))?;
     let _ = fs::remove_file(&log_path);
     Ok(())
 }
 
 fn ensure_runtime(gamedata: &Path) -> Result<(), String> {
-    if cfg!(debug_assertions) || runtime_is_ready()? {
+    if cfg!(debug_assertions) {
         return Ok(());
     }
     #[cfg(not(debug_assertions))]
     {
+        if runtime_is_current()? {
+            return Ok(());
+        }
         build_runtime(gamedata)?;
     }
     Ok(())
