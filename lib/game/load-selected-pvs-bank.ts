@@ -30,8 +30,8 @@ export async function loadOptionalNativePvsBank(host:NativeOptionalPvsFileHost,d
  if(!source){
   let extension='';for(let i=0;i<65536;i++){const value=host.memory()[d+((selected.extension+i)&65535)];if(!value)break;extension+=String.fromCharCode(value);}
   if(extension==='.VSH'){
-   source=await loadNativeRawResource({memory:()=>host.memory(),writeMemory:memory=>host.writeMemory(memory),readFile:at=>host.read(at)},d,selected.filename,false)??undefined;
-   if(!source)return null;
+   const raw=await loadNativeRawResource({memory:()=>host.memory(),writeMemory:memory=>host.writeMemory(memory),readFile:at=>host.read(at)},d,selected.filename,false);
+   if(!raw)return null;source=raw;
   }else{
    const bytes=await host.read(selected.filename);if(!bytes||bytes.length===0)return null;
    if(extension!=='.PVS')throw Error('Original bitmap format requires its own loader: '+extension);
