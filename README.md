@@ -42,7 +42,6 @@ node --version
 ```powershell
 git clone https://github.com/Endprodukt/playstuntsdx.git
 cd playstuntsdx
-git switch master
 npm.cmd ci
 ```
 
@@ -90,18 +89,96 @@ Gamedata\
 Custom Cars\
 Custom Tracks\
 High Res\
+  cockpit\
 mt32\
 ```
 
 Put your compatible original **Stunts / 4D Sports Driving** files in `Gamedata` before launching the game.
 
-- `Custom Cars` — custom car files
-- `Custom Tracks` — custom tracks
-- `High Res` — high-resolution replacement assets
-- `mt32` — optional user-supplied MT-32 ROMs
-- `config.ini` — desktop, controller and force-feedback settings
-
 The supported original game data is based on the **Mindscape 4D Sports Driving 1.1 release from 13 December 1990**.
+
+## High-resolution textures
+
+High-resolution replacements belong in `High Res`. Missing replacements simply use the normal game artwork, so you only need to add the files you actually want to replace.
+
+The main menu replacement goes directly in the folder:
+
+```text
+High Res\
+  main-menu.png
+```
+
+Cockpit artwork mirrors the original game asset structure and uses the four-character car ID as a subfolder:
+
+```text
+High Res\
+  cockpit\
+    COUN\
+      dashboard.png
+      whl1.png
+      whl2.png
+      whl3.png
+```
+
+`COUN` is only an example. Use the actual four-character ID of the car. Custom cars use their own ID in exactly the same way.
+
+Replacement files must keep the same filename and aspect ratio as the original asset. Their pixel resolution may be higher. Additional cockpit images can be replaced as long as their filename matches the corresponding original cockpit file.
+
+Enable **Enhanced Textures** in PlayStunts DX to use the replacements.
+
+## Custom cars
+
+Put custom Stunts cars in `Custom Cars`. Cars may be stored directly in the folder, in their own subfolders, or as ZIP archives.
+
+A normal car package uses one four-character ID. For an example ID of `ABCD`, the required files are:
+
+```text
+CARABCD.RES
+STABCD.P3S   (or STABCD.3SH)
+STDAABCD.PVS (or STDAABCD.VSH)
+STDBABCD.PVS (or STDBABCD.VSH)
+```
+
+A convenient layout is:
+
+```text
+Custom Cars\
+  My Car\
+    CARABCD.RES
+    STABCD.P3S
+    STDAABCD.PVS
+    STDBABCD.PVS
+```
+
+PlayStunts DX supports up to **32 cars in total**, including the original cars. A custom car must use a unique four-character ID; it cannot replace an original or another loaded car with the same ID.
+
+## Custom tracks
+
+Put original-format `.TRK` files in `Custom Tracks`:
+
+```text
+Custom Tracks\
+  MYTRACK.TRK
+```
+
+Subfolders are supported, so larger collections can be organized however you like:
+
+```text
+Custom Tracks\
+  Favorites\
+    LOOP.TRK
+    JUMPS.TRK
+```
+
+Tracks must use the original Stunts `.TRK` format and be **1,802 bytes**. If two tracks have the same filename, only one can be loaded.
+
+Custom cars and tracks are included when the runtime assets are generated. If you add or change them after a `Runtime` folder has already been created, delete the `Runtime` folder once and restart PlayStunts DX so it can be rebuilt with the new content.
+
+## Other folders
+
+- `mt32` — optional user-supplied MT-32 ROMs
+- `config.ini` — desktop, controller, display and force-feedback settings
+- `Runtime` — generated game assets; normally leave this folder alone
 
 ## Credits
 
