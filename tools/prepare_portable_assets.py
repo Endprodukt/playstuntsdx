@@ -193,13 +193,18 @@ def validate_custom_car(car_id: str, files: dict[str, Path]) -> None:
     if not all(name in model for name in model_required):
         raise ValueError(f"{files['model'].name} is not a complete Stunts car model bank")
 
+    # STDA contains the static dashboard, instrument reference and gear-stick
+    # base. The left/right uncovered instrument overlays are optional in the
+    # Stunts format and are not present in every custom dashboard.
     dash = graphics_resources(files["dash"])
-    dash_required = ["dash", "ins2", "inm1", "ins1", "inm3", "ins3"]
+    dash_required = ["dash", "ins2", "gbox"]
     if not all(name in dash for name in dash_required):
         raise ValueError(f"{files['dash'].name} is missing required cockpit resources")
 
+    # STDB contains moving dashboard parts. gbox deliberately is not checked
+    # here: it belongs to STDA, while gnob/gnab and dot/dota live in STDB.
     gear = graphics_resources(files["gear"])
-    gear_required = ["gbox", "gnab", "gnob", "dota", "dot "]
+    gear_required = ["gnab", "gnob", "dota", "dot "]
     if not all(name in gear for name in gear_required):
         raise ValueError(f"{files['gear'].name} is missing required cockpit resources")
 
@@ -380,13 +385,26 @@ def extract_instrument_panel(source: Path, target: Path, car: str) -> None:
             raise ValueError(f"Invalid cockpit layer {car}/{name}")
         return {"x": x, "y": y, "width": width, "height": height, "anchorX": anchor_x, "anchorY": anchor_y, "pixels": list(shape_pixels(blob))}
 
+    def optional_layer(name: str) -> dict[str, object]:
+        if name in frames:
+            return layer(name)
+        # Missing side overlays are legal in Stunts. A zero-sized layer is a
+        # true no-op for the palette AND/OR compositor used by the runtime.
+        return {"x": 0, "y": 0, "width": 0, "height": 0, "anchorX": 0, "anchorY": 0, "pixels": []}
+
     data: dict[str, object] = {
         "source": dash_path.name,
         "sha256": desktop.digest(raw),
         "paletteSource": "SDMAIN.PVS",
         "paletteSHA256": desktop.digest(palette_raw),
         "palette": [min(255, value * 4) for value in resources(unpack(palette_raw))["!pal"][16:]],
-        "layers": {name: layer(name) for name in ["ins2", "inm1", "ins1", "inm3", "ins3"]},
+        "layers": {
+            "ins2": layer("ins2"),
+            "inm1": optional_layer("inm1"),
+            "ins1": optional_layer("ins1"),
+            "inm3": optional_layer("inm3"),
+            "ins3": optional_layer("ins3"),
+        },
     }
     gear_path = car_graphics_path(source, f"STDB{car}", "PVS", "VSH")
     gear_raw = gear_path.read_bytes()
@@ -395,9 +413,9 @@ def extract_instrument_panel(source: Path, target: Path, car: str) -> None:
     car_raw = (source / f"CAR{car}.RES").read_bytes()
     simulation = resources(car_raw)["simd"]
     data["marker"] = {"source": f"CAR{car}.RES", "sha256": desktop.digest(car_raw), "points": [list(simulation[i:i + 2]) for i in range(234, 296, 2)], "mask": layer("dota", gear), "art": layer("dot ", gear)}
-    if "dast" in frames:
+    if "dast" in frames and "dasm" in frames:
         data["extension"] = {"mask": layer("dasm"), "art": layer("dast")}
-    if "dig0" in gear:
+    if all(f"dig{i}" in gear for i in range(10)):
         data["digits"] = [layer(f"dig{i}", gear) for i in range(10)]
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(data, separators=(",", ":")))
