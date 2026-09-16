@@ -18,25 +18,30 @@ function desktopRuntimeAdaptation(): Plugin {
     enforce: 'pre',
     transform(code, id) {
       const normalized = id.replaceAll('\\', '/');
-      // Git may check source files out with CRLF on Windows. Keep all matching
-      // independent of local line-ending configuration and return one stable
-      // representation to the rest of Vite/Rolldown.
       const source = code.replace(/\r\n?/g, '\n');
 
       if (normalized.endsWith('/app/OpeningSequence.tsx')) {
         const importLine = "import introMaterials from '@/public/game/track-materials.json';\n";
+        const musicImport = "import {createNativeMusic} from '@/lib/game/native-music';";
+        const musicDeclaration = 'let music:Awaited<ReturnType<typeof createNativeMusic>>|undefined;';
+        const musicBackend = "if(soundDevice==='mt32'){roland=await createBrowserNativeMt32Music(runAudio,demoAbort.signal,rolandPower);music=roland.music;}else music=await (soundDevice==='tandy'?createNativeTandyMusic(runAudio):soundDevice==='pc-speaker'?createNativePcSpeakerMusic(runAudio):createNativeMusic(runAudio));if(disposed){music.close();roland?.output.close();return;}";
         const introCall = 'createUpgradedIntro(renderer.memory,introMaterials)';
         const audioSetup = 'applyNativeStartupAudio(initiallyMuted,music.control);';
         const menuSetup = "menus=await createBrowserNativeMenus({settings:{mouse:false,joystick:false,graphics:0},graphics:graphics.current";
-        if (![importLine, introCall, audioSetup, menuSetup].every(value => source.includes(value))) {
+        if (![importLine, musicImport, musicDeclaration, musicBackend, introCall, audioSetup, menuSetup].every(value => source.includes(value))) {
           throw new Error('Desktop runtime adaptation is out of date for OpeningSequence.tsx');
         }
 
+        const remixImport = `${musicImport}\nimport {createSynchronizedRemixedMusic,decodeRemixedMusic} from '@/lib/game/remixed-music';`;
+        const desktopMusicBackend = "const originalMusic=soundDevice==='mt32'?(roland=await createBrowserNativeMt32Music(runAudio,demoAbort.signal,rolandPower)).music:await (soundDevice==='tandy'?createNativeTandyMusic(runAudio):soundDevice==='pc-speaker'?createNativePcSpeakerMusic(runAudio):createNativeMusic(runAudio));const remixSetting=(window.localStorage.getItem('playstunts-dx-audio-update')??'true').trim().toLowerCase();const remixEnabled=!['0','false','no','off'].includes(remixSetting);music=createSynchronizedRemixedMusic(runAudio,originalMusic,await decodeRemixedMusic(runAudio),remixEnabled);if(disposed){music.close();roland?.output.close();return;}";
         const persistentAudio = `${audioSetup}\n   if(!initiallyMuted){\n    const disabled=(value:string|null)=>value!==null&&['0','false','off','no'].includes(value.toLowerCase());\n    if(disabled(window.localStorage.getItem('playstunts-dx-music-enabled')))music.control('toggle-music');\n    if(disabled(window.localStorage.getItem('playstunts-dx-sound-enabled')))music.control('toggle-sound');\n   }`;
         const persistentMenu = `const configuredInput=window.localStorage.getItem('playstunts-dx-input-device');\n   const configuredGraphics=Number(window.localStorage.getItem('playstunts-dx-original-graphics-level')??'0');\n   const desktopMenuSettings={\n    mouse:configuredInput==='mouse',\n    joystick:configuredInput==='joystick'||configuredInput==='wheel',\n    graphics:Number.isInteger(configuredGraphics)&&configuredGraphics>=0&&configuredGraphics<=2?configuredGraphics:0,\n   };\n   menus=await createBrowserNativeMenus({settings:desktopMenuSettings,graphics:graphics.current`;
 
         return source
           .replace(importLine, '')
+          .replace(musicImport, remixImport)
+          .replace(musicDeclaration, 'let music:ReturnType<typeof createSynchronizedRemixedMusic>|undefined;')
+          .replace(musicBackend, desktopMusicBackend)
           .replace("json<{palette:number[]}>('track-materials')", "json<{palette:number[];indices:number[]}>('track-materials')")
           .replace(introCall, 'createUpgradedIntro(renderer.memory,materials)')
           .replace(audioSetup, persistentAudio)
@@ -90,13 +95,6 @@ function desktopRuntimeAdaptation(): Plugin {
   };
 }
 
-/**
- * Original Stunts-derived files under public/game are development inputs and
- * must never be shipped in the portable application. The Munt WebAssembly
- * runtime is application code, however, so copy that runtime to its own static
- * namespace first. Roland ROMs are deliberately excluded and continue to be
- * read from the user's external mt32 folder through Tauri.
- */
 function prepareDesktopStaticAssets(): Plugin {
   return {
     name: 'playstunts-dx-prepare-desktop-static-assets',
@@ -143,8 +141,6 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
     watch: {
-      // Visual Studio keeps its search/index database locked while the IDE is
-      // running. Vite must never try to watch those files on Windows.
       ignored: [
         '**/.vs/**',
         '**/.git/**',
