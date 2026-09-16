@@ -48,13 +48,13 @@ function desktopRuntimeAdaptation(): Plugin {
           .replace(menuSetup, persistentMenu);
       }
 
-      if (normalized.endsWith('/lib/game/browser-native-menus.ts')) {
+      if (normalized.endsWith('/lib/game/browser-native-menus-core.ts')) {
         const importLine = "import showroomMaterials from '../../public/game/track-materials.json';\n";
         const showroomCall = 'createUpgradedCarMenu(palette,showroomMaterials.indices)';
         const hiresMenuError = 'highResMainMenu.onerror=()=>{highResMainMenuReady=false;};';
         const hiresMenuSource = 'highResMainMenu.src=HIRES_MAIN_MENU;';
         if (![importLine, showroomCall, hiresMenuError, hiresMenuSource].every(value => source.includes(value))) {
-          throw new Error('Desktop runtime adaptation is out of date for browser-native-menus.ts');
+          throw new Error('Desktop runtime adaptation is out of date for browser-native-menus-core.ts');
         }
         const upstreamMenuFallback = "let upstreamMainMenuFallback=false;highResMainMenu.onerror=()=>{highResMainMenuReady=false;if(!upstreamMainMenuFallback){upstreamMainMenuFallback=true;highResMainMenu.src='/site/enhanced-artwork/SDMSEL-scrn-menu-v1.png';}};";
         const runtimeHiresMenu = "void fetch(HIRES_MAIN_MENU).then(response=>{if(!response.ok)throw Error('High-resolution main menu could not load');return response.blob();}).then(blob=>{highResMainMenu.src=URL.createObjectURL(blob);}).catch(()=>{highResMainMenu.src=HIRES_MAIN_MENU;});";
