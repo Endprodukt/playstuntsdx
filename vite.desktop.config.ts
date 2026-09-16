@@ -46,13 +46,16 @@ function desktopRuntimeAdaptation(): Plugin {
       if (normalized.endsWith('/lib/game/browser-native-menus.ts')) {
         const importLine = "import showroomMaterials from '../../public/game/track-materials.json';\n";
         const showroomCall = 'createUpgradedCarMenu(palette,showroomMaterials.indices)';
-        if (!source.includes(importLine) || !source.includes(showroomCall)) {
+        const hiresMenuError = 'highResMainMenu.onerror=()=>{highResMainMenuReady=false;};';
+        if (![importLine, showroomCall, hiresMenuError].every(value => source.includes(value))) {
           throw new Error('Desktop runtime adaptation is out of date for browser-native-menus.ts');
         }
+        const upstreamMenuFallback = "let upstreamMainMenuFallback=false;highResMainMenu.onerror=()=>{highResMainMenuReady=false;if(!upstreamMainMenuFallback){upstreamMainMenuFallback=true;highResMainMenu.src='/site/enhanced-artwork/SDMSEL-scrn-menu-v1.png';}};";
         return source
           .replace(importLine, '')
           .replace("json<{palette:number[]}>('track-materials')", "json<{palette:number[];indices:number[]}>('track-materials')")
-          .replace(showroomCall, 'createUpgradedCarMenu(palette,materials.indices)');
+          .replace(showroomCall, 'createUpgradedCarMenu(palette,materials.indices)')
+          .replace(hiresMenuError, upstreamMenuFallback);
       }
 
       if (normalized.endsWith('/lib/game/browser-mt32-output.ts')) {
