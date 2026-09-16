@@ -67,15 +67,17 @@ export function enhancedTextureImageUrl(original:string){
  return enhanced.startsWith(prefix)?hiresTextureUrl(enhanced.slice(prefix.length)):enhanced;
 }
 
-/** Desktop runtime assets are served through the Tauri fetch bridge rather
- * than as normal web URLs. Convert a successfully fetched texture to a blob URL
- * so consumers that require fetch() can still use enhanced files.
+/** Desktop runtime assets are served from the editable hires directory beside
+ * the executable. Resolve /game/hires/... through Tauri before fetching it so
+ * cockpit images do not depend on the HTML fetch interception path.
  */
 export async function loadEnhancedTexturePath(url:string){
  if(!isDesktopDx())return url;
  const cached=desktopTextureUrls.get(url);
  if(cached)return cached;
- const response=await fetch(url);
+ const prefix='/game/hires/';
+ const resolved=url.startsWith(prefix)?hiresTextureUrl(url.slice(prefix.length)):url;
+ const response=await fetch(resolved);
  if(!response.ok)throw Error(`High-resolution texture could not load: ${url}`);
  const objectUrl=URL.createObjectURL(await response.blob());
  desktopTextureUrls.set(url,objectUrl);
