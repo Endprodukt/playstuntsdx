@@ -139,8 +139,14 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
  const carIds=[0x8fc2,0x8fc9].map(at=>String.fromCharCode(...m.subarray(d+at,d+at+4)));
  const carPaints=[m[d+0x8fc6],m[d+0x8fcd]];
  const cars=carIds.map((id,i)=>{
-  carGrounding[i]=upgradedCarGroundingOffset(assets.shapes['ST'+id]?.car1);
-  return [1,2].map(detail=>{const shape=assets.shapes['ST'+id]?.['car'+detail];if(!shape)return undefined;
+  const carShapes=assets.shapes['ST'+id];
+  // Custom cars commonly ship only the showroom body (car0) and omit the
+  // separate car1/car2 race detail levels the original 11 cars include.
+  // Fall back to car0 so such cars still appear in the race instead of
+  // silently vanishing; original cars always have car1/car2 and never
+  // take this fallback, so their rendering is unchanged.
+  carGrounding[i]=upgradedCarGroundingOffset(carShapes?.car1??carShapes?.car0);
+  return [1,2].map(detail=>{const shape=carShapes?.['car'+detail]??carShapes?.car0;if(!shape)return undefined;
    const model=createCarModel(shape,0xffffff,{...sourceMaterials,paint:m[d+(i?0x8fcd:0x8fc6)]});
    applyUpgradedCarMaterials(model,shape);
    if(detail===1)wheelMotion[i]=createUpgradedCarWheelMotion(shape,model);
