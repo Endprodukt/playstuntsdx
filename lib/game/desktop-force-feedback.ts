@@ -1,9 +1,7 @@
 import {
   applyForceFeedbackIni,
   forceFeedbackDrivingActive,
-  forceFeedbackMenuDurationMs,
   sampleForceFeedback,
-  triggerForceFeedbackMenuPulse,
 } from '../physics/force-feedback';
 import type { DesktopWheelInputState } from './desktop-wheel-input';
 
@@ -24,7 +22,6 @@ const strengthKey = 'playstunts-dx-force-feedback-strength';
 const sendIntervalMs = 15;
 
 let uiInstalled = false;
-let menuFeedbackInstalled = false;
 let focusRecoveryInstalled = false;
 let pending = false;
 let resendAfterPending = false;
@@ -33,9 +30,6 @@ let latestForce = 0;
 let latestSteering = 0;
 let ffbActive = false;
 let lastStatus = 0;
-let lastMenuPulseRequest = 0;
-let menuPulseInterval: number | undefined;
-let lastMenuNavigation = 0;
 let statusElement: HTMLSpanElement | undefined;
 let configPathElement: HTMLDivElement | undefined;
 let configLoaded = false;
@@ -124,114 +118,8 @@ function installFocusRecovery() {
   });
 }
 
-function pulseMenuFeedback() {
-  if (!enabled() || typeof window === 'undefined') return;
-  const now = performance.now();
-  if (now - lastMenuPulseRequest < 55) return;
-  lastMenuPulseRequest = now;
-  triggerForceFeedbackMenuPulse();
-
-  if (menuPulseInterval !== undefined) window.clearInterval(menuPulseInterval);
-  const startedAt = performance.now();
-  const pump = () => {
-    if (performance.now() - startedAt >= forceFeedbackMenuDurationMs() + 25) {
-      if (menuPulseInterval !== undefined) window.clearInterval(menuPulseInterval);
-      menuPulseInterval = undefined;
-      resampleAndSend(true, true);
-      return;
-    }
-    resampleAndSend(true, true);
-  };
-  pump();
-  menuPulseInterval = window.setInterval(pump, 16);
-}
-
-function installMenuFeedback() {
-  if (menuFeedbackInstalled || typeof document === 'undefined') return;
-  menuFeedbackInstalled = true;
-
-  const selector =
-    'button,select,[role="menu"],[role="menuitem"],[role="listbox"],[role="option"],[tabindex]:not([tabindex="-1"]),input[type="range"],input[type="radio"],input[type="checkbox"]';
-  const isNativeMenuCanvas = (target: EventTarget | null) =>
-    target instanceof HTMLCanvasElement && !forceFeedbackDrivingActive();
-  const isMenuControl = (target: EventTarget | null) =>
-    (target instanceof Element && !!target.closest(selector)) || isNativeMenuCanvas(target);
-  const eventIsOnMenuControl = (target: EventTarget | null) =>
-    isMenuControl(target) || isMenuControl(document.activeElement);
-
-  document.addEventListener(
-    'keydown',
-    (event) => {
-      if (
-        enabled() &&
-        !event.repeat &&
-        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code) &&
-        eventIsOnMenuControl(event.target)
-      ) {
-        pulseMenuFeedback();
-      }
-    },
-    true,
-  );
-  document.addEventListener(
-    'pointerdown',
-    (event) => {
-      if (enabled() && isNativeMenuCanvas(event.target)) pulseMenuFeedback();
-    },
-    true,
-  );
-  document.addEventListener(
-    'focusin',
-    (event) => {
-      if (enabled() && isMenuControl(event.target)) pulseMenuFeedback();
-    },
-    true,
-  );
-  document.addEventListener(
-    'input',
-    (event) => {
-      if (enabled() && isMenuControl(event.target)) pulseMenuFeedback();
-    },
-    true,
-  );
-  document.addEventListener(
-    'change',
-    (event) => {
-      if (enabled() && isMenuControl(event.target)) pulseMenuFeedback();
-    },
-    true,
-  );
-}
-
-function updateWheelMenuFeedback(input: DesktopWheelInputState) {
-  if (
-    !enabled() ||
-    !input.configured ||
-    !input.connected ||
-    forceFeedbackDrivingActive()
-  ) {
-    lastMenuNavigation = 0;
-    return;
-  }
-
-  const horizontal = input.steering < -0.18 ? -1 : input.steering > 0.18 ? 1 : 0;
-  const vertical = input.throttle > 0.12 ? 2 : input.brake > 0.12 ? -2 : 0;
-  const navigation = vertical || horizontal;
-
-  if (!navigation) {
-    lastMenuNavigation = 0;
-    return;
-  }
-
-  // A menu detent belongs to the transition into a new direction, not to the
-  // amount of time that direction is held. Returning to centre arms the next tick.
-  if (navigation !== lastMenuNavigation) pulseMenuFeedback();
-  lastMenuNavigation = navigation;
-}
-
 function installSettingsUi() {
   if (uiInstalled || typeof document === 'undefined') return;
-  installMenuFeedback();
   const toggle = Array.from(document.querySelectorAll('button'))
     .find(button => button.textContent?.includes('Wheel Setup [F8]'));
   const panel = toggle?.parentElement?.querySelector<HTMLDivElement>('div');
@@ -268,7 +156,7 @@ function installSettingsUi() {
   strengthRow.append(strengthLabel, slider, value);
 
   const note = document.createElement('div');
-  note.textContent = 'Physics FFB: steering, slide counter-steer, grass, landings, crashes, gear shifts and RPM engine vibration.';
+  note.textContent = 'Physics FFB: steering, slide counter-steer, grass, ramps, landings, crashes, gear shifts and RPM engine vibration.';
   note.style.cssText = 'margin-top:8px;color:#aaa;font-size:12px;';
 
   const configRow = document.createElement('div');
@@ -341,7 +229,6 @@ export function updateDesktopForceFeedback(input: DesktopWheelInputState) {
   ensureForceFeedbackConfig();
   installSettingsUi();
   installFocusRecovery();
-  updateWheelMenuFeedback(input);
 
   if (!unloadInstalled) {
     unloadInstalled = true;
@@ -359,11 +246,6 @@ export function updateDesktopForceFeedback(input: DesktopWheelInputState) {
 export function stopDesktopForceFeedback() {
   latestForce = 0;
   ffbActive = false;
-  lastMenuNavigation = 0;
-  if (menuPulseInterval !== undefined && typeof window !== 'undefined') {
-    window.clearInterval(menuPulseInterval);
-    menuPulseInterval = undefined;
-  }
   const core = tauriCore();
   if (core) void core.invoke<void>('native_stop_force_feedback').catch(() => {});
 }
