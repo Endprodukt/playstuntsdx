@@ -4,6 +4,7 @@ import {
   desktopControlChord,
   desktopControlKeyboardTarget,
   formatDesktopControlChord,
+  queueDesktopControlAction,
   resetDesktopControlAction,
   resetDesktopControlBindings,
   setDesktopControlButton,
@@ -122,8 +123,17 @@ export function installDesktopControlBindings(){
 
  const forwardChaseView=(event:KeyboardEvent)=>{
   if(!event.isTrusted||event.repeat||capture||panelVisible())return;
-  if(desktopControlKeyboardTarget(event)?.action!=='enhanced-chase-view')return;
-  event.preventDefault();event.stopImmediatePropagation();dispatchChaseView();
+  const target=desktopControlKeyboardTarget(event),plainV=event.code==='KeyV'&&!event.ctrlKey&&!event.altKey&&!event.shiftKey&&!event.metaKey;
+  if(target?.action==='enhanced-chase-view'){
+   event.preventDefault();event.stopImmediatePropagation();dispatchChaseView();return;
+  }
+  // Upstream still listens to physical V. Once Change View is rebound, consume
+  // that old default here. If V now belongs to another action, enqueue that
+  // action so the key is genuinely reusable instead of remaining a hidden view key.
+  if(plainV){
+   event.preventDefault();event.stopImmediatePropagation();
+   if(target)queueDesktopControlAction(target.action);
+  }
  };
  window.addEventListener('keydown',forwardChaseView,true);
 
@@ -176,8 +186,6 @@ export function installDesktopControlBindings(){
    const nativeIds=new Set(native.map(device=>device.id));
    const next=[...native,...browser.filter(device=>!nativeIds.has(device.id))];
    devices=next;
-   // While capture is armed this updates the runtime baseline in suspended mode.
-   // The button used for assignment therefore cannot leak through to the game.
    updateDesktopControlDevices(next);detectChaseButton(next);detectButtonCapture(next);
   }catch(reason){if(!disposed)console.warn('[Controls] Control-button scan failed:',reason);}
   finally{polling=false;}
