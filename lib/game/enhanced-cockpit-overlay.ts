@@ -2,6 +2,8 @@ import {cockpitMarker} from './cockpit-marker';
 import {cockpitWheel} from './cockpit-wheel';
 import {ENHANCED_TEXTURES_EVENT,enhancedTexturesEnabled,loadEnhancedTextureUrl} from './enhanced-textures';
 import {composeCockpitPanel,type CockpitPanelLayer} from './cockpit-panel';
+import {COCKPIT_PIXEL_SCALER_EVENT,cockpitPixelScalerMode,type CockpitPixelScalerMode} from './cockpit-pixel-scaler-settings';
+import {scaleCockpitImage,warmCockpitPixelScaler} from './cockpit-pixel-scaler';
 
 type SpriteFrame={file:string;x:number;y:number;width:number;height:number};
 type CockpitLayout={dashboardTop:number;frames:Record<string,SpriteFrame>};
@@ -12,8 +14,8 @@ type PanelData={
  gear:{base:CockpitPanelLayer;mask:AnchoredLayer;art:AnchoredLayer};
  marker:{points:number[][];mask:AnchoredLayer;art:AnchoredLayer};
 };
-type LoadedImage={image:HTMLImageElement;enhanced:boolean};
-type MaskedSprite={canvas:HTMLCanvasElement;enhanced:boolean};
+type LoadedImage={image:HTMLImageElement|HTMLCanvasElement;enhanced:boolean;filtered:boolean};
+type MaskedSprite={canvas:HTMLCanvasElement;enhanced:boolean;filtered:boolean};
 type DynamicSurface={canvas:HTMLCanvasElement;context:CanvasRenderingContext2D;image:ImageData};
 type SnapshotSurface={canvas:HTMLCanvasElement;context:CanvasRenderingContext2D};
 type LoadedCarAssets={layout:CockpitLayout;panel:PanelData;images:Map<string,LoadedImage>};
@@ -74,18 +76,26 @@ function image(url:string){
  });
 }
 
-async function preferredImage(original:string):Promise<LoadedImage>{
- try{
-  const enhanced=await loadEnhancedTextureUrl(original);
-  return {image:await image(enhanced),enhanced:true};
- }catch{return {image:await image(original),enhanced:false};}
+async function preferredImage(original:string,useEnhanced:boolean,mode:CockpitPixelScalerMode):Promise<LoadedImage>{
+ let loaded:HTMLImageElement,enhanced=false;
+ if(useEnhanced){
+  try{
+   const source=await loadEnhancedTextureUrl(original);
+   loaded=await image(source);enhanced=true;
+  }catch{loaded=await image(original);}
+ }else loaded=await image(original);
+ if(mode==='off')return {image:loaded,enhanced,filtered:false};
+ try{return {image:await scaleCockpitImage(loaded,mode),enhanced,filtered:true};}
+ catch{return {image:loaded,enhanced,filtered:false};}
 }
 
 const sharedLoads=new Map<string,Promise<LoadedCarAssets|undefined>>();
 const sharedReady=new Map<string,LoadedCarAssets|undefined>();
+const assetKey=(car:string,useEnhanced:boolean,mode:CockpitPixelScalerMode)=>`${car}|${useEnhanced?'hires':'original'}|${mode}`;
 
-function loadCar(car:string){
- let pending=sharedLoads.get(car);
+function loadCar(car:string,useEnhanced:boolean,mode:CockpitPixelScalerMode){
+ const key=assetKey(car,useEnhanced,mode);
+ let pending=sharedLoads.get(key);
  if(pending)return pending;
  pending=(async()=>{
   try{
@@ -95,24 +105,25 @@ function loadCar(car:string){
    const files=new Set<string>(['dashboard.png','ins2.png','gbox.png','gnob.png','gnab.png','dot.png','dota.png','ins1.png','inm1.png','ins3.png','inm3.png']);
    for(const frame of Object.values(layout.frames))files.add(frame.file);
    const entries=await Promise.all([...files].map(async file=>{
-    try{return [file,await preferredImage(`/game/cockpit/${car}/${file}`)] as const;}
+    try{return [file,await preferredImage(`/game/cockpit/${car}/${file}`,useEnhanced,mode)] as const;}
     catch{return undefined;}
    }));
    const images=new Map<string,LoadedImage>();for(const entry of entries)if(entry)images.set(entry[0],entry[1]);
    return {layout,panel,images};
   }catch{return undefined;}
- })().then(value=>{sharedReady.set(car,value);return value;});
- sharedLoads.set(car,pending);return pending;
+ })().then(value=>{sharedReady.set(key,value);return value;});
+ sharedLoads.set(key,pending);return pending;
 }
 
 function warmEnhancedCockpits(){
- if(!enhancedTexturesEnabled())return;
- void indexPromise.then(index=>{for(const car of Object.keys(index))void loadCar(car);}).catch(()=>{});
+ const mode=cockpitPixelScalerMode();
+ if(!enhancedTexturesEnabled()||mode!=='off')return;
+ void indexPromise.then(index=>{for(const car of Object.keys(index))void loadCar(car,true,'off');}).catch(()=>{});
 }
 
 function composeMaskedSprite(art:LoadedImage,mask:LoadedImage):MaskedSprite{
  const canvas=document.createElement('canvas');
- canvas.width=art.image.naturalWidth;canvas.height=art.image.naturalHeight;
+ canvas.width=art.image instanceof HTMLImageElement?art.image.naturalWidth:art.image.width;canvas.height=art.image instanceof HTMLImageElement?art.image.naturalHeight:art.image.height;
  const context=canvas.getContext('2d')!;
  context.drawImage(art.image,0,0,canvas.width,canvas.height);
  const pixels=context.getImageData(0,0,canvas.width,canvas.height);
@@ -124,30 +135,34 @@ function composeMaskedSprite(art:LoadedImage,mask:LoadedImage):MaskedSprite{
   pixels.data[at+3]=Math.round(pixels.data[at+3]*(255-preserve)/255);
  }
  context.putImageData(pixels,0,0);
- return {canvas,enhanced:art.enhanced||mask.enhanced};
+ return {canvas,enhanced:art.enhanced||mask.enhanced,filtered:art.filtered||mask.filtered};
 }
 
 warmEnhancedCockpits();
 
 export function createEnhancedCockpitOverlay(){
- let enabled=enhancedTexturesEnabled(),closed=false;
- const sync=()=>{enabled=enhancedTexturesEnabled();if(enabled)warmEnhancedCockpits();};
- window.addEventListener(ENHANCED_TEXTURES_EVENT,sync);
+ let enabled=enhancedTexturesEnabled(),scaler=cockpitPixelScalerMode(),closed=false;
+ warmCockpitPixelScaler(scaler);
 
  const ready=new Map<string,CarAssets|undefined>();
  const materialize=(loaded:LoadedCarAssets|undefined):CarAssets|undefined=>loaded?{...loaded,masked:new Map<string,MaskedSprite>()}:undefined;
  const ensure=(car:string)=>{
-  if(ready.has(car))return ready.get(car);
-  if(sharedReady.has(car)){
-   const assets=materialize(sharedReady.get(car));ready.set(car,assets);return assets;
+  const key=assetKey(car,enabled,scaler);
+  if(ready.has(key))return ready.get(key);
+  if(sharedReady.has(key)){
+   const assets=materialize(sharedReady.get(key));ready.set(key,assets);return assets;
   }
-  void loadCar(car).then(value=>{if(!closed)ready.set(car,materialize(value));});
+  void loadCar(car,enabled,scaler).then(value=>{if(!closed)ready.set(key,materialize(value));});
   return undefined;
  };
+ const syncTextures=()=>{enabled=enhancedTexturesEnabled();ready.clear();if(enabled)warmEnhancedCockpits();};
+ const syncScaler=()=>{scaler=cockpitPixelScalerMode();ready.clear();warmCockpitPixelScaler(scaler);};
+ window.addEventListener(ENHANCED_TEXTURES_EVENT,syncTextures);
+ window.addEventListener(COCKPIT_PIXEL_SCALER_EVENT,syncScaler);
 
  return {
   draw(context:CanvasRenderingContext2D,width:number,height:number,state:DrawState){
-   if(!enabled||closed)return false;
+   if((!enabled&&scaler==='off')||closed)return false;
    const assets=ensure(state.car);if(!assets)return false;
    const {layout,panel,images}=assets,sx=width/320,sy=height/200;
    const activeReplay=replayOverlay&&replayControlsVisible(replayOverlay,state.pixels)?replayOverlay:undefined;
@@ -159,11 +174,11 @@ export function createEnhancedCockpitOverlay(){
     replaySnapshot=assets.replaySnapshot.canvas;
     assets.replaySnapshot.context.setTransform(1,0,0,1,0,0);assets.replaySnapshot.context.clearRect(0,0,width,height);assets.replaySnapshot.context.drawImage(context.canvas,0,0,width,height);
    }
-   const draw=(source:CanvasImageSource,enhanced:boolean,x:number,y:number,w:number,h:number)=>{
-    context.imageSmoothingEnabled=enhanced;
+   const draw=(source:CanvasImageSource,enhanced:boolean,filtered:boolean,x:number,y:number,w:number,h:number)=>{
+    context.imageSmoothingEnabled=filtered?false:enhanced;
     context.drawImage(source,x*sx,y*sy,w*sx,h*sy);
    };
-   const drawFile=(file:string,x:number,y:number,w:number,h:number)=>{const entry=images.get(file);if(entry)draw(entry.image,entry.enhanced,x,y,w,h);};
+   const drawFile=(file:string,x:number,y:number,w:number,h:number)=>{const entry=images.get(file);if(entry)draw(entry.image,entry.enhanced,entry.filtered,x,y,w,h);};
    const masked=(artFile:string,maskFile:string)=>{
     const key=`${artFile}|${maskFile}`,cached=assets.masked.get(key);if(cached)return cached;
     const art=images.get(artFile),mask=images.get(maskFile);if(!art||!mask)return undefined;
@@ -195,11 +210,11 @@ export function createEnhancedCockpitOverlay(){
      if(current===expected[at])continue;
      const color=current*3,out=at*4;dynamic.image.data[out]=panel.palette[color];dynamic.image.data[out+1]=panel.palette[color+1];dynamic.image.data[out+2]=panel.palette[color+2];dynamic.image.data[out+3]=255;
     }
-    dynamic.context.putImageData(dynamic.image,0,0);draw(dynamic.canvas,false,base.x,base.y,base.width,base.height);
+    dynamic.context.putImageData(dynamic.image,0,0);draw(dynamic.canvas,false,false,base.x,base.y,base.width,base.height);
 
     if(wheel.frame!==1){
      const suffix=wheel.frame===0?'1':'3',layer=panel.layers[`ins${suffix}`],sprite=masked(`ins${suffix}.png`,`inm${suffix}.png`);
-     if(layer&&sprite)draw(sprite.canvas,sprite.enhanced,base.x+layer.x,base.y+layer.y,layer.width,layer.height);
+     if(layer&&sprite)draw(sprite.canvas,sprite.enhanced,sprite.filtered,base.x+layer.x,base.y+layer.y,layer.width,layer.height);
     }
    }
 
@@ -207,13 +222,13 @@ export function createEnhancedCockpitOverlay(){
    if(gear?.base){
     drawFile('gbox.png',gear.base.x,gear.base.y,gear.base.width,gear.base.height);
     const sprite=masked('gnob.png','gnab.png');
-    if(sprite)draw(sprite.canvas,sprite.enhanced,gear.base.x+state.knobX-gear.art.anchorX,gear.base.y+state.knobY-gear.art.anchorY,gear.art.width,gear.art.height);
+    if(sprite)draw(sprite.canvas,sprite.enhanced,sprite.filtered,gear.base.x+state.knobX-gear.art.anchorX,gear.base.y+state.knobY-gear.art.anchorY,gear.art.width,gear.art.height);
    }
 
    const marker=panel.marker;
    if(marker?.points?.length){
     const sprite=masked('dot.png','dota.png');
-    if(sprite){const position=cockpitMarker(marker.points,wheel.scaled);draw(sprite.canvas,sprite.enhanced,position.x-marker.art.anchorX,position.y-marker.art.anchorY,marker.art.width,marker.art.height);}
+    if(sprite){const position=cockpitMarker(marker.points,wheel.scaled);draw(sprite.canvas,sprite.enhanced,sprite.filtered,position.x-marker.art.anchorX,position.y-marker.art.anchorY,marker.art.width,marker.art.height);}
    }
 
    if(activeReplay&&replaySnapshot){
@@ -225,6 +240,6 @@ export function createEnhancedCockpitOverlay(){
    }
    return true;
   },
-  close(){closed=true;window.removeEventListener(ENHANCED_TEXTURES_EVENT,sync);ready.clear();},
+  close(){closed=true;window.removeEventListener(ENHANCED_TEXTURES_EVENT,syncTextures);window.removeEventListener(COCKPIT_PIXEL_SCALER_EVENT,syncScaler);ready.clear();},
  };
 }
