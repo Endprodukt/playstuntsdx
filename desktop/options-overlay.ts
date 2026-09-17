@@ -2,7 +2,7 @@ const fpsStorageKey='playstunts-dx-fps-visible';
 
 function storedFpsVisible(){
  const saved=window.localStorage.getItem(fpsStorageKey);
- return saved===null?!0:!['0','false','no','off'].includes(saved.trim().toLowerCase());
+ return saved===null||!['0','false','no','off'].includes(saved.trim().toLowerCase());
 }
 
 function saveFpsVisible(visible:boolean){
@@ -10,6 +10,7 @@ function saveFpsVisible(visible:boolean){
 }
 
 function gameCanvas(){return document.querySelector<HTMLCanvasElement>('.desktop-game-shell canvas');}
+function graphicsEnabled(){return document.querySelector<HTMLButtonElement>('.desktop-game-shell .game-toolbar button[aria-pressed]')?.getAttribute('aria-pressed')==='true';}
 
 function dispatchFpsShortcut(){
  const canvas=gameCanvas();
@@ -24,13 +25,12 @@ function dispatchFpsShortcut(){
  * changing the wheel calibration internals. The FPS preference reuses the
  * existing F shortcut so there remains only one renderer-side toggle path. */
 export function installDesktopOptionsOverlay(){
- let disposed=false,frame=0,section:HTMLDivElement|undefined,appliedInitialFps=false;
+ let disposed=false,frame=0,section:HTMLDivElement|undefined,fpsStateApplied=false;
 
  const applyStoredFps=()=>{
-  if(appliedInitialFps||storedFpsVisible())return;
-  const graphicsToggle=document.querySelector<HTMLButtonElement>('.desktop-game-shell .game-toolbar button[aria-pressed]');
-  if(graphicsToggle?.getAttribute('aria-pressed')!=='true')return;
-  if(dispatchFpsShortcut())appliedInitialFps=true;
+  if(fpsStateApplied||!graphicsEnabled()||!gameCanvas())return;
+  if(storedFpsVisible()){fpsStateApplied=true;return;}
+  if(dispatchFpsShortcut())fpsStateApplied=true;
  };
 
  const renderFpsState=()=>{
@@ -60,19 +60,23 @@ export function installDesktopOptionsOverlay(){
   const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) 84px;gap:8px;align-items:center;';
   const label=document.createElement('div');label.textContent='FPS Counter';label.style.cssText='font-size:12px;color:#ddd;';
   const fps=document.createElement('button');fps.type='button';fps.dataset.fpsToggle='1';fps.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;text-align:center;';
-  fps.addEventListener('click',()=>{const next=!storedFpsVisible();saveFpsVisible(next);dispatchFpsShortcut();renderFpsState();});
+  fps.addEventListener('click',()=>{
+   const next=!storedFpsVisible();saveFpsVisible(next);
+   if(graphicsEnabled()&&dispatchFpsShortcut())fpsStateApplied=true;else fpsStateApplied=false;
+   renderFpsState();
+  });
   row.append(label,fps);section.append(heading,row);panel.insertBefore(section,controlsSection);renderFpsState();applyStoredFps();
  };
  frame=requestAnimationFrame(mount);
 
  const onTrustedF=(event:KeyboardEvent)=>{
-  if(disposed||event.code!=='KeyF'||event.repeat||!event.isTrusted)return;
+  if(disposed||event.code!=='KeyF'||event.repeat||!event.isTrusted||!graphicsEnabled())return;
   const canvas=gameCanvas();if(!canvas||event.target!==canvas)return;
-  saveFpsVisible(!storedFpsVisible());renderFpsState();
+  saveFpsVisible(!storedFpsVisible());fpsStateApplied=true;renderFpsState();
  };
  window.addEventListener('keydown',onTrustedF,true);
 
- const graphicsObserver=new MutationObserver(()=>{if(!storedFpsVisible()){appliedInitialFps=false;requestAnimationFrame(applyStoredFps);}});
+ const graphicsObserver=new MutationObserver(()=>requestAnimationFrame(applyStoredFps));
  const observeGraphics=()=>{
   if(disposed)return;
   const toggle=document.querySelector<HTMLButtonElement>('.desktop-game-shell .game-toolbar button[aria-pressed]');
