@@ -1,4 +1,5 @@
 import {desktopInputDevice,getDesktopWheelInput} from './desktop-wheel-input.ts';
+import {forgetAnalogWheelRaceInput,recordAnalogWheelRaceInput} from './analog-wheel-race-input.ts';
 
 export interface NativeRaceInputHost {
  memory():Uint8Array;pauseAudio():void;crash(cause:1,car:0):void;
@@ -46,7 +47,21 @@ export function selectOriginalRaceInput(host:NativeRaceInputHost,d:number,forced
     target=host.joystickSteering()<<24>>24;
     if(target>0)target=m[d+0x306c+target];else if(target<0)target=-m[d+0x306c-target];
    }
-   m[d+0x5424]=target;input=host.controls()&0x33;
+   m[d+0x5424]=target;
+   const controls=host.controls()&0x33;
+   if(wheelActive){
+    // Wheel calibration is already continuous 0..1. Keep a tiny deadzone for
+    // pedal jitter, then record that amount beside the original one-byte input.
+    // Brake wins if both pedals are pressed, matching the old binary semantics.
+    const throttle=Math.max(0,Math.min(1,wheel.throttle)),brake=Math.max(0,Math.min(1,wheel.brake));
+    const brakeActive=brake>.01,throttleActive=throttle>.01;
+    if(brakeActive||throttleActive){
+     input=(controls&0x30)|(brakeActive?2:1);
+     recordAnalogWheelRaceInput(m,d,{throttle:brakeActive?0:throttle,brake:brakeActive?brake:0});
+    }else{
+     input=controls;forgetAnalogWheelRaceInput(m,d);
+    }
+   }else input=controls;
   }
   m=host.memory();target=m[d+0x5424];
   view=new DataView(m.buffer,m.byteOffset,m.byteLength);const index=view.getUint16(d+0x73b2,true)&63;
