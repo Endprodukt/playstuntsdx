@@ -13,6 +13,7 @@ import {stepSinglePlayerRaceTick} from './single-player-race-tick.ts';
 import {stepPlayerDriving,type PlayerDrivingState} from './player-driving-step.ts';
 import {writePlayerRaceState} from './write-player-race-state.ts';
 import type {RaceCameraState} from '../physics/race-cameras.ts';
+import {analogWheelRaceInput} from './analog-wheel-race-input.ts';
 export interface RecordedPlayerRace {memory:Uint8Array;dataSegment:number;player:PlayerDrivingState;camera:RaceCameraState;done:number;mode:number}
 /** Decode persistent race state after checkpoint restoration. Caller stack/contact scratch remains explicit input to driving. */
 export function readRecordedPlayerRace(memory:Uint8Array,dataSegment:number):RecordedPlayerRace{
@@ -47,7 +48,8 @@ export function stepRecordedSinglePlayerRace(before:RecordedPlayerRace,resources
  };
  let audio:'before-player'|'after-effects'|null=null,effects:ReturnType<typeof stepPlayerDriving>['effects']=[];
  if(prefix.active){
-  const result=stepSinglePlayerRaceTick({player,camera,done,mode:before.mode},resources.trackside,resources.tuning,resources.wheels,prefix.input<<24>>24,track,...resources.navigation);
+  const input=analogWheelRaceInput(prefix.input<<24>>24,memory,before.dataSegment);
+  const result=stepSinglePlayerRaceTick({player,camera,done,mode:before.mode},resources.trackside,resources.tuning,resources.wheels,input,track,...resources.navigation);
   ({player,camera,done}=result);effects=result.player.effects;carUpdated=true;audio='after-effects';
  }else{
   const race=player.driving.race,car=player.driving.car;
