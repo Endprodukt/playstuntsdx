@@ -1,3 +1,5 @@
+import {COCKPIT_PIXEL_SCALER_OPTIONS,cockpitPixelScalerMode,setCockpitPixelScalerMode,type CockpitPixelScalerMode} from '../lib/game/cockpit-pixel-scaler-settings';
+
 const fpsStorageKey='playstunts-dx-fps-visible';
 
 function storedFpsVisible(){
@@ -57,7 +59,7 @@ export function installDesktopOptionsOverlay(){
   section=document.createElement('div');
   section.style.cssText='margin-top:12px;padding:12px;background:#181818;border:1px solid #444;border-radius:6px;';
   const heading=document.createElement('div');heading.textContent='General';heading.style.cssText='font-size:15px;font-weight:700;margin-bottom:8px;';
-  const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) 84px;gap:8px;align-items:center;';
+  const rows=document.createElement('div');rows.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) 120px;gap:8px;align-items:center;';
   const label=document.createElement('div');label.textContent='FPS Counter';label.style.cssText='font-size:12px;color:#ddd;';
   const fps=document.createElement('button');fps.type='button';fps.dataset.fpsToggle='1';fps.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;text-align:center;';
   fps.addEventListener('click',()=>{
@@ -65,7 +67,15 @@ export function installDesktopOptionsOverlay(){
    if(graphicsEnabled()&&dispatchFpsShortcut())fpsStateApplied=true;else fpsStateApplied=false;
    renderFpsState();
   });
-  row.append(label,fps);section.append(heading,row);panel.insertBefore(section,controlsSection);renderFpsState();applyStoredFps();
+  const scalerLabel=document.createElement('div');scalerLabel.textContent='Cockpit Pixel Scaler';scalerLabel.style.cssText='font-size:12px;color:#ddd;';
+  const scaler=document.createElement('select');scaler.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;';
+  for(const option of COCKPIT_PIXEL_SCALER_OPTIONS){
+   const element=document.createElement('option');element.value=option.value;element.textContent=option.label;scaler.append(element);
+  }
+  scaler.value=cockpitPixelScalerMode();
+  scaler.addEventListener('change',()=>setCockpitPixelScalerMode(scaler.value as CockpitPixelScalerMode));
+  rows.append(label,fps,scalerLabel,scaler);
+  section.append(heading,rows);panel.insertBefore(section,controlsSection);renderFpsState();applyStoredFps();
  };
  frame=requestAnimationFrame(mount);
 
