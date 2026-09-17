@@ -11,6 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const categories = ['menu', 'backgrounds', 'intro', 'cockpit'];
 
 function filesBelow(directory) {
   if (!existsSync(directory)) return [];
@@ -28,6 +29,20 @@ function copyMissing(source, target) {
   mkdirSync(path.dirname(target), { recursive: true });
   copyFileSync(source, target);
   return true;
+}
+
+function copyTreeMissing(sourceRoot, targetRoot) {
+  let copied = 0;
+  if (!existsSync(sourceRoot)) return copied;
+  for (const source of filesBelow(sourceRoot)) {
+    const relative = path.relative(sourceRoot, source);
+    if (copyMissing(source, path.join(targetRoot, relative))) copied += 1;
+  }
+  return copied;
+}
+
+function needsSeed(directory) {
+  return !existsSync(directory) || filesBelow(directory).length === 0;
 }
 
 export function migrateLegacyHires(targetRoot) {
@@ -50,8 +65,16 @@ export function removeEmptyLegacyHires(targetRoot) {
 export function seedHires(targetRoot = repoRoot) {
   migrateLegacyHires(targetRoot);
   const hires = path.join(targetRoot, 'hires');
-  for (const directory of ['menu', 'backgrounds', 'intro', 'cockpit']) {
-    mkdirSync(path.join(hires, directory), { recursive: true });
+  const runtimeGame = path.join(targetRoot, 'Runtime', 'game');
+  const seed = Object.fromEntries(categories.map(category => {
+    const directory = path.join(hires, category);
+    return [category, needsSeed(directory)];
+  }));
+
+  // Existing non-empty category folders are user-owned and never overwritten.
+  // A deleted (or empty) category is reconstructed independently.
+  for (const category of categories) {
+    if (seed[category]) mkdirSync(path.join(hires, category), { recursive: true });
   }
 
   const standard = [
@@ -75,21 +98,39 @@ export function seedHires(targetRoot = repoRoot) {
 
   let copied = 0;
   for (const [source, relative] of standard) {
+    const category = relative.split('/')[0];
+    if (!seed[category]) continue;
     if (copyMissing(path.join(repoRoot, source), path.join(hires, relative))) copied += 1;
   }
 
-  const runtimeCockpits = path.join(targetRoot, 'Runtime', 'game', 'cockpit');
-  if (existsSync(runtimeCockpits)) {
-    for (const source of filesBelow(runtimeCockpits).filter(file => file.toLowerCase().endsWith('.png'))) {
-      const relative = path.relative(runtimeCockpits, source);
-      if (copyMissing(source, path.join(hires, 'cockpit', relative))) copied += 1;
+  // Runtime is the fallback source. Cockpit deliberately comes from the final
+  // Runtime/game/cockpit tree, after its nearest-neighbour reference pass.
+  // For menu/intro/backgrounds the bundled enhanced art wins; Runtime only fills
+  // a category if the enhanced seed could not provide anything.
+  for (const category of categories) {
+    if (!seed[category]) continue;
+    const target = path.join(hires, category);
+    const runtime = path.join(runtimeGame, category);
+    if (category === 'cockpit' || filesBelow(target).length === 0) {
+      copied += copyTreeMissing(runtime, target);
+    }
+  }
+
+  // If neither the preferred source nor Runtime existed yet, do not leave an
+  // empty placeholder behind: the next seed pass must try this category again.
+  for (const category of categories) {
+    if (!seed[category]) continue;
+    const directory = path.join(hires, category);
+    if (existsSync(directory) && filesBelow(directory).length === 0) {
+      rmSync(directory, { recursive: true, force: true });
     }
   }
 
   // Old builds mirrored user textures into Runtime. They are external now.
   rmSync(path.join(targetRoot, 'Runtime', 'game', 'hires'), { recursive: true, force: true });
   removeEmptyLegacyHires(targetRoot);
-  console.log(`hires ready: ${copied} missing file${copied === 1 ? '' : 's'} added.`);
+  const rebuilt = categories.filter(category => seed[category] && existsSync(path.join(hires, category)));
+  console.log(`hires ready: ${copied} file${copied === 1 ? '' : 's'} seeded; rebuilt ${rebuilt.join(', ') || 'nothing'}.`);
 }
 
 const direct = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
