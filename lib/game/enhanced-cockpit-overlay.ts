@@ -3,7 +3,7 @@ import {cockpitWheel} from './cockpit-wheel';
 import {ENHANCED_TEXTURES_EVENT,enhancedTexturesEnabled,loadEnhancedTextureUrl} from './enhanced-textures';
 import {composeCockpitPanel,type CockpitPanelLayer} from './cockpit-panel';
 import {COCKPIT_PIXEL_SCALER_EVENT,cockpitPixelScalerMode,type CockpitPixelScalerMode} from './cockpit-pixel-scaler-settings';
-import {scaleCockpitImage,warmCockpitPixelScaler} from './cockpit-pixel-scaler';
+import {scaleCockpitCanvas,scaleCockpitImage,warmCockpitPixelScaler} from './cockpit-pixel-scaler';
 
 type SpriteFrame={file:string;x:number;y:number;width:number;height:number};
 type CockpitLayout={dashboardTop:number;frames:Record<string,SpriteFrame>};
@@ -210,7 +210,7 @@ export function createEnhancedCockpitOverlay(){
      if(current===expected[at])continue;
      const color=current*3,out=at*4;dynamic.image.data[out]=panel.palette[color];dynamic.image.data[out+1]=panel.palette[color+1];dynamic.image.data[out+2]=panel.palette[color+2];dynamic.image.data[out+3]=255;
     }
-    dynamic.context.putImageData(dynamic.image,0,0);draw(dynamic.canvas,false,false,base.x,base.y,base.width,base.height);
+    dynamic.context.putImageData(dynamic.image,0,0);const dynamicSource=scaler==='off'?dynamic.canvas:scaleCockpitCanvas(dynamic.canvas,scaler);draw(dynamicSource,false,scaler!=='off',base.x,base.y,base.width,base.height);
 
     if(wheel.frame!==1){
      const suffix=wheel.frame===0?'1':'3',layer=panel.layers[`ins${suffix}`],sprite=masked(`ins${suffix}.png`,`inm${suffix}.png`);
