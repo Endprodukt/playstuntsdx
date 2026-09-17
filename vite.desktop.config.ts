@@ -20,7 +20,7 @@ function desktopRuntimeAdaptation(): Plugin {
       const normalized = id.replaceAll('\\', '/');
       const source = code.replace(/\r\n?/g, '\n');
 
-      if (normalized.endsWith('/app/OpeningSequence.tsx')) {
+      if (normalized.endsWith('/app/OpeningSequenceRuntime.tsx')) {
         const importLine = "import introMaterials from '@/public/game/track-materials.json';\n";
         const musicImport = "import {createNativeMusic} from '@/lib/game/native-music';";
         const musicDeclaration = 'let music:Awaited<ReturnType<typeof createNativeMusic>>|undefined;';
@@ -29,7 +29,7 @@ function desktopRuntimeAdaptation(): Plugin {
         const audioSetup = 'applyNativeStartupAudio(initiallyMuted,music.control);';
         const menuSetup = "menus=await createBrowserNativeMenus({settings:{mouse:false,joystick:false,graphics:0},graphics:graphics.current";
         if (![importLine, musicImport, musicDeclaration, musicBackend, introCall, audioSetup, menuSetup].every(value => source.includes(value))) {
-          throw new Error('Desktop runtime adaptation is out of date for OpeningSequence.tsx');
+          throw new Error('Desktop runtime adaptation is out of date for OpeningSequenceRuntime.tsx');
         }
 
         const remixImport = `${musicImport}\nimport {createSynchronizedRemixedMusic,decodeRemixedMusic} from '@/lib/game/remixed-music';`;
