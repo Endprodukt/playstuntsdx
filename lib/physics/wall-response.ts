@@ -34,7 +34,14 @@ export function wallResponse(s: WallResponseInput) {
   const reversed = first[2] > second[2];
   if (reversed) [first, second] = [second, first];
   let remaining: number, approach: number;
-  if (first[2] === 0) {
+  if (s.scaledRoadSpeed === 0) {
+    // A stopped wreck can still cross a wall as its suspension/rotation settles.
+    // There is no forward movement to split in that case. The original's
+    // signed divide has a zero divisor here; separate the wreck without
+    // inventing forward travel or halting play.
+    approach = 0;
+    remaining = 0;
+  } else if (first[2] === 0) {
     approach = s.scaledRoadSpeed;
     remaining = 0;
   } else if (second[2] === 0) {
@@ -55,10 +62,13 @@ export function wallResponse(s: WallResponseInput) {
       : (s.wall.orientation + 512) & 1023;
   let side = relative < 256 || relative > 768 ? 768 : -768;
   if (reversed) side = -side;
-  const offset = vecTransform(
-    [side, 0, remaining],
-    rotateZXY(-roll, -pitch, heading),
-  );
+  const offset = s.scaledRoadSpeed === 0
+    ? vecTransform(
+        [0, 0, i16(((reversed ? -12 : 12) -
+          local(s.origins[s.wheel].map(n => i16(n >> 6)) as Vector)[2]) << 6)],
+        rotateY(s.wall.orientation + 256),
+      )
+    : vecTransform([side, 0, remaining], rotateZXY(-roll, -pitch, heading));
   let impactAngle = (-yaw - heading) & 1023;
   const reverseCrash = impactAngle > 256;
   if (reverseCrash) impactAngle = 1024 - impactAngle;
@@ -69,8 +79,6 @@ export function wallResponse(s: WallResponseInput) {
   const wheelAngle = crash
     ? i16((reverseCrash ? -impactAngle : impactAngle) << 1)
     : s.wheelAngle;
-  if (approach !== 0 && s.scaledRoadSpeed === 0)
-    throw Error('Original wall-response division by zero');
   const proposed = s.proposed.map(
     (p, w) =>
       p.map((n, a) => {
