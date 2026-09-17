@@ -181,11 +181,9 @@ def _upscale_reference_tree(directory: Path, scale: int = REFERENCE_SCALE) -> li
     return changed
 
 
-def _seed_hires_cockpits(_legacy_source: Path, output: Path) -> dict[str, object]:
-    """Preserve the existing cockpit convenience seed without mixing refs/replacements."""
-    root = _legacy_source.parent
-    copied, kept = _copy_missing_tree(output / "game" / "cockpit", root / "hires" / "cockpit")
-    return {"cockpitCopied": copied, "cockpitKept": kept}
+def _defer_hires_seed(_legacy_source: Path, _output: Path) -> dict[str, object]:
+    """External hires seeding runs after Runtime reference post-processing."""
+    return {"deferred": True}
 
 
 def main() -> int:
@@ -194,12 +192,11 @@ def main() -> int:
     output = _argument_path("--output")
     if root is not None:
         _migrate_legacy_hires(root)
-        (root / "hires" / "cockpit").mkdir(parents=True, exist_ok=True)
 
-    # The core calls this after Runtime has been generated. Keep its historical
-    # missing-only cockpit seed, but do not copy Runtime reference art into the
-    # live menu/background/intro replacement directories.
-    portable.copy_high_res_assets = _seed_hires_cockpits
+    # The core callback occurs before the final Runtime reference pass. Do not
+    # seed external hires here; build-portable-hires/seed-hires does that after
+    # Runtime is final, so cockpit receives the exact finished Runtime files.
+    portable.copy_high_res_assets = _defer_hires_seed
     result = portable.main()
 
     # Add clean original reference folders alongside Runtime/game/cockpit.
