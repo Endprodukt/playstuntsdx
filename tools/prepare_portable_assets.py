@@ -18,6 +18,8 @@ from PIL import Image
 import prepare_portable_assets_core as portable
 from extract import resources, shape_pixels, unpack
 
+REFERENCE_SCALE = 4
+
 
 def _argument_path(name: str) -> Path | None:
     try:
@@ -104,7 +106,7 @@ def _palette_from(entries: dict[str, bytes], fallback: list[int]) -> list[int]:
     return [min(255, value * 4) for value in values[:768]]
 
 
-def _save_original_frame(frame: bytes, palette: list[int], target: Path) -> None:
+def _save_original_frame(frame: bytes, palette: list[int], target: Path, scale: int = 1) -> None:
     if len(frame) < 16:
         raise ValueError(f"Invalid original bitmap resource for {target.name}")
     width, height = struct.unpack_from("<HH", frame)
@@ -113,9 +115,11 @@ def _save_original_frame(frame: bytes, palette: list[int], target: Path) -> None
         raise ValueError(f"Invalid original bitmap dimensions for {target.name}")
     image = Image.frombytes("P", (width, height), pixels)
     image.putpalette(palette)
+    if scale > 1:
+        image = image.resize((width * scale, height * scale), resample=Image.Resampling.NEAREST)
     target.parent.mkdir(parents=True, exist_ok=True)
-    # Indexed source pixels go straight into a lossless PNG. There is no canvas,
-    # resize or resampling operation in this path.
+    # Reference scaling is integer-only nearest-neighbour. No new colours are
+    # introduced and every original source pixel becomes an exact scale x scale block.
     image.save(target, format="PNG", optimize=False)
 
 
@@ -135,7 +139,7 @@ def _export_original_references(source: Path, runtime: Path) -> dict[str, list[s
     menu_palette = _palette_from(menu_entries, base_palette)
     if "scrn" in menu_entries:
         target = game / "menu" / "main-menu.png"
-        _save_original_frame(menu_entries["scrn"], menu_palette, target)
+        _save_original_frame(menu_entries["scrn"], menu_palette, target, REFERENCE_SCALE)
         exported["menu"].append(target.name)
 
     title_entries = _pvs_entries(source, "SDTITL.PVS")
@@ -145,7 +149,7 @@ def _export_original_references(source: Path, runtime: Path) -> dict[str, list[s
         if resource_name not in title_entries:
             continue
         target = game / "intro" / filename
-        _save_original_frame(title_entries[resource_name], title_palette, target)
+        _save_original_frame(title_entries[resource_name], title_palette, target, REFERENCE_SCALE)
         exported["intro"].append(target.name)
 
     for environment in ["DESERT", "TROPICAL", "ALPINE", "CITY", "COUNTRY"]:
@@ -160,6 +164,21 @@ def _export_original_references(source: Path, runtime: Path) -> dict[str, list[s
             exported["backgrounds"].append(target.name)
 
     return exported
+
+
+def _upscale_reference_tree(directory: Path, scale: int = REFERENCE_SCALE) -> list[str]:
+    """Nearest-neighbour upscale of generated PNG references, in place."""
+    changed: list[str] = []
+    if scale <= 1 or not directory.is_dir():
+        return changed
+    for path in sorted(directory.rglob("*.png"), key=lambda item: str(item.relative_to(directory)).casefold()):
+        with Image.open(path) as source:
+            width, height = source.size
+            image = source.copy()
+        image = image.resize((width * scale, height * scale), resample=Image.Resampling.NEAREST)
+        image.save(path, format="PNG", optimize=False)
+        changed.append(path.relative_to(directory).as_posix())
+    return changed
 
 
 def _seed_hires_cockpits(_legacy_source: Path, output: Path) -> dict[str, object]:
@@ -184,7 +203,11 @@ def main() -> int:
     result = portable.main()
 
     # Add clean original reference folders alongside Runtime/game/cockpit.
+    # Cockpit, menu and intro are exported as 4x integer-nearest references so
+    # image viewers cannot blur the tiny DOS source art when inspecting it.
+    # Background panoramas stay at their native exported size.
     if result == 0 and original is not None and output is not None and output.is_dir():
+        _upscale_reference_tree(output / "game" / "cockpit")
         _export_original_references(original, output)
 
     # The legacy core still creates High Res/cockpit before preparation. Remove
