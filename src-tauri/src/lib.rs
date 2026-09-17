@@ -91,6 +91,99 @@ fn runtime_files_ready() -> Result<bool, String> {
         && root.join("game").join("assets.json").is_file())
 }
 
+fn directory_has_files(directory: &Path) -> Result<bool, String> {
+    if !directory.is_dir() {
+        return Ok(false);
+    }
+    let mut pending = vec![directory.to_path_buf()];
+    while let Some(current) = pending.pop() {
+        for entry in fs::read_dir(&current)
+            .map_err(|error| format!("Could not scan {}: {error}", current.display()))?
+        {
+            let entry = entry
+                .map_err(|error| format!("Could not scan {}: {error}", current.display()))?;
+            let path = entry.path();
+            let file_type = entry
+                .file_type()
+                .map_err(|error| format!("Could not inspect {}: {error}", path.display()))?;
+            if file_type.is_file() {
+                return Ok(true);
+            }
+            if file_type.is_dir() {
+                pending.push(path);
+            }
+        }
+    }
+    Ok(false)
+}
+
+fn copy_tree_missing(source: &Path, target: &Path) -> Result<usize, String> {
+    if !source.is_dir() {
+        return Ok(0);
+    }
+    let mut copied = 0usize;
+    let mut pending = vec![source.to_path_buf()];
+    while let Some(current) = pending.pop() {
+        for entry in fs::read_dir(&current)
+            .map_err(|error| format!("Could not scan {}: {error}", current.display()))?
+        {
+            let entry = entry
+                .map_err(|error| format!("Could not scan {}: {error}", current.display()))?;
+            let path = entry.path();
+            let relative = path
+                .strip_prefix(source)
+                .map_err(|error| format!("Could not map {}: {error}", path.display()))?;
+            let destination = target.join(relative);
+            let file_type = entry
+                .file_type()
+                .map_err(|error| format!("Could not inspect {}: {error}", path.display()))?;
+            if file_type.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            if !file_type.is_file() || destination.exists() {
+                continue;
+            }
+            if let Some(parent) = destination.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|error| format!("Could not create {}: {error}", parent.display()))?;
+            }
+            fs::copy(&path, &destination).map_err(|error| {
+                format!(
+                    "Could not restore {} from {}: {error}",
+                    destination.display(),
+                    path.display()
+                )
+            })?;
+            copied += 1;
+        }
+    }
+    Ok(copied)
+}
+
+fn ensure_hires_fallbacks() -> Result<(), String> {
+    let root = application_root()?;
+    let hires = root.join("hires");
+    let runtime_game = runtime_game_root()?;
+    for category in ["backgrounds", "intro", "menu", "cockpit"] {
+        let target = hires.join(category);
+        if directory_has_files(&target)? {
+            continue;
+        }
+        let source = runtime_game.join(category);
+        if !source.is_dir() {
+            continue;
+        }
+        fs::create_dir_all(&target)
+            .map_err(|error| format!("Could not create {}: {error}", target.display()))?;
+        copy_tree_missing(&source, &target)?;
+        if !directory_has_files(&target)? {
+            let _ = fs::remove_dir_all(&target);
+        }
+    }
+    Ok(())
+}
+
 fn hash_content_tree(root: &Path, directory: &Path, hasher: &mut DefaultHasher) -> Result<(), String> {
     if !directory.is_dir() {
         "<missing>".hash(hasher);
@@ -295,6 +388,7 @@ fn check_gamedata() -> Result<bool, String> {
     for root in gamedata_roots() {
         if complete_gamedata(&root) {
             ensure_runtime(&root)?;
+            ensure_hires_fallbacks()?;
             return Ok(true);
         }
     }
