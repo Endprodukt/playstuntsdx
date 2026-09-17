@@ -40,13 +40,23 @@ function sourceCanvas(image:HTMLImageElement){
  return canvas;
 }
 
+export function scaleCockpitCanvas(source:HTMLCanvasElement,mode:CockpitPixelScalerMode):HTMLCanvasElement{
+ if(mode==='off')return source;
+ if(mode==='xbrz4x')return xbrz4xCanvas(source);
+ if(!window.hqx){void ensureHqx().catch(()=>{});return source;}
+ const copy=document.createElement('canvas');copy.width=source.width;copy.height=source.height;
+ const context=copy.getContext('2d');if(!context)return source;
+ context.imageSmoothingEnabled=false;context.drawImage(source,0,0);
+ return window.hqx(copy,4);
+}
+
 export async function scaleCockpitImage(image:HTMLImageElement,mode:CockpitPixelScalerMode):Promise<HTMLImageElement|HTMLCanvasElement>{
  if(mode==='off')return image;
  const source=sourceCanvas(image);
  if(mode==='xbrz4x')return xbrz4xCanvas(source);
  await ensureHqx();
  if(!window.hqx)return image;
- return window.hqx(source,4);
+ return scaleCockpitCanvas(source,mode);
 }
 
 export function warmCockpitPixelScaler(mode:CockpitPixelScalerMode){
