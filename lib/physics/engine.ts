@@ -50,7 +50,18 @@ export function stepEngine(before:EngineState,t:EngineTuning,input:number,fps:10
  }else if((input&3)===2){
   s.accelerating=0;s.limiter=0;s.braking=pedals.brake>0?1:0;
   delta=i16(delta-Math.round(t.braking*(opponentSpeedByte===undefined?1:2)*pedals.brake));
- }else if((input&3)!==1||pedals.throttle<=0){s.accelerating=0;s.braking=0}
+ }else if((input&3)!==1||pedals.throttle<=0){
+  s.accelerating=0;s.braking=0;
+  // A released analog throttle is a real coast state, not a latched digital
+  // button. Apply a modest RPM-dependent driveline drag so speed and therefore
+  // coupled engine RPM fall naturally when the driver lifts off the pedal.
+  if(s.rearContact&&!s.shifting&&s.gear>0&&s.rpm>t.idleRPM){
+   const rpmRange=Math.max(1,t.maxRPM-t.idleRPM);
+   const overrun=Math.max(0,Math.min(1,(s.rpm-t.idleRPM)/rpmRange));
+   const engineBrake=Math.round(t.braking*.18*overrun);
+   delta=i16(delta-engineBrake);
+  }
+ }
  else {s.braking=0;s.accelerating=1;
   const throttle=pedals.throttle;
   if(s.shifting){s.limiter=0;s.rpm=i16(s.rpm-(fps===10?80:40))}
