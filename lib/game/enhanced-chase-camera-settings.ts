@@ -2,8 +2,8 @@ export type EnhancedChaseCameraPresetLevel=1|2|3;
 export type EnhancedChaseCameraSetting='distance'|'height';
 
 export const ENHANCED_CHASE_CAMERA_DEFAULTS={
- 1:{distance:210,height:76},
- 2:{distance:310,height:108},
+ 1:{distance:132,height:27},
+ 2:{distance:223,height:79},
  3:{distance:440,height:150},
 } as const;
 
