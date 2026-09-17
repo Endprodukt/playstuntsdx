@@ -21,15 +21,14 @@ export async function createBrowserNativeMenus(...args:Parameters<typeof createC
   const coreClose=presentation.close.bind(presentation);
   const graphics=options.graphics;
   const originalNotice=graphics?.notice;
+  const wrappedNotice=graphics?(message:string)=>{
+   if(message.startsWith('Loading upgraded driving graphics'))holdEnhancedFrame=true;
+   else if(message.startsWith('Upgraded driving graphics')||message.startsWith('Upgraded graphics are unavailable'))holdEnhancedFrame=false;
+   originalNotice?.(message);
+  }:undefined;
   let holdEnhancedFrame=!!graphics?.enabled;
 
-  if(graphics){
-   graphics.notice=(message:string)=>{
-    if(message.startsWith('Loading upgraded driving graphics'))holdEnhancedFrame=true;
-    else if(message.startsWith('Upgraded driving graphics')||message.startsWith('Upgraded graphics are unavailable'))holdEnhancedFrame=false;
-    originalNotice?.(message);
-   };
-  }
+  if(graphics&&wrappedNotice)graphics.notice=wrappedNotice;
 
   const held=document.createElement('canvas');
   held.width=options.canvas.width;held.height=options.canvas.height;
@@ -87,7 +86,7 @@ export async function createBrowserNativeMenus(...args:Parameters<typeof createC
   presentation.presentWorld=presentWorld;
   presentation.close=()=>{
    cockpit.close();
-   if(graphics&&graphics.notice===graphics.notice)graphics.notice=originalNotice;
+   if(graphics&&graphics.notice===wrappedNotice)graphics.notice=originalNotice;
    coreClose();
   };
   if(graphics)graphics.refresh=presentWorld;
