@@ -1,6 +1,7 @@
 import {Vector3} from 'three';
 import {originalExternalCameraClearance} from './external-camera-clearance.ts';
 import {upgradedCameraBasis} from './upgraded-camera-basis.ts';
+import {enhancedChaseCameraPosition} from './enhanced-chase-camera-settings.ts';
 import type {RenderPose} from './render-pose.ts';
 import type {TrackObject} from '../physics/track.ts';
 import type {CollisionPlane} from '../physics/plane.ts';
@@ -10,14 +11,18 @@ export type EnhancedChaseCameraLevel=0|1|2|3;
 
 export const ENHANCED_CHASE_CAMERA_LABELS=['Original','Close','Standard','Far'] as const;
 
-const PRESETS={
- 1:{distance:210,height:76,lookAhead:105,targetHeight:44,fov:58},
- 2:{distance:310,height:108,lookAhead:150,targetHeight:48,fov:60},
- 3:{distance:440,height:150,lookAhead:215,targetHeight:52,fov:62},
+const FIXED_PRESETS={
+ 1:{lookAhead:105,targetHeight:44,fov:58},
+ 2:{lookAhead:150,targetHeight:48,fov:60},
+ 3:{lookAhead:215,targetHeight:52,fov:62},
 } as const;
 const TRANSITION_MS=320;
 type ChaseRig={distance:number;height:number;lookAhead:number;targetHeight:number;fov:number};
 
+const preset=(level:Exclude<EnhancedChaseCameraLevel,0>):ChaseRig=>({
+ ...FIXED_PRESETS[level],
+ ...enhancedChaseCameraPosition(level),
+});
 const copyRig=(rig:ChaseRig):ChaseRig=>({...rig});
 const mixRig=(from:ChaseRig,to:ChaseRig,fraction:number):ChaseRig=>({
  distance:from.distance+(to.distance-from.distance)*fraction,
@@ -42,7 +47,8 @@ export function createEnhancedChaseCamera(track:{raw:number[];objects:TrackObjec
  const position=new Vector3(),target=new Vector3(),forward=new Vector3(),up=new Vector3(),lastCar=new Vector3();
  const desiredPosition=new Vector3(),desiredTarget=new Vector3(),desiredForward=new Vector3();
  let initialized=false,lastAt=0,lastCarIndex=-1,lastFrame=-1,rigLevel:Exclude<EnhancedChaseCameraLevel,0>=1;
- let rig:ChaseRig=copyRig(PRESETS[1]),transitionFrom:ChaseRig=copyRig(PRESETS[1]),transitionTo:ChaseRig=copyRig(PRESETS[1]),transitionAt=0;
+ const initial=preset(1);
+ let rig:ChaseRig=copyRig(initial),transitionFrom:ChaseRig=copyRig(initial),transitionTo:ChaseRig=copyRig(initial),transitionAt=0;
  const clear=(point:Vector,mode:number):Vector=>{
   const source=[Math.round(point[0]),Math.round(point[1]),Math.round(-point[2])] as Vector;
   const result=originalExternalCameraClearance(source,track.raw,track.objects,track.planes,mode);
@@ -50,7 +56,7 @@ export function createEnhancedChaseCamera(track:{raw:number[];objects:TrackObjec
  };
  return {
   sample(pose:RenderPose,level:Exclude<EnhancedChaseCameraLevel,0>,carIndex:number,now:number,frame:number,raceMode:number){
-   const preset=PRESETS[level],car=new Vector3(pose.position[0],pose.position[1],-pose.position[2]);
+   const selectedPreset=preset(level),car=new Vector3(pose.position[0],pose.position[1],-pose.position[2]);
    const interrupted=!initialized||carIndex!==lastCarIndex||now-lastAt>250||frame<lastFrame||car.distanceToSquared(lastCar)>1024*1024;
    const basis=upgradedCameraBasis([pose.rotation[2],pose.rotation[1],pose.rotation[0]]);
    // A modern chase camera follows the car's compass heading, but it does not
@@ -63,11 +69,11 @@ export function createEnhancedChaseCamera(track:{raw:number[];objects:TrackObjec
    if(desiredForward.lengthSq()<1e-6)desiredForward.copy(forward.lengthSq()>0?forward:new Vector3(0,0,-1));
    desiredForward.normalize();
    if(interrupted){
-    rig=copyRig(preset);transitionFrom=copyRig(preset);transitionTo=copyRig(preset);transitionAt=now;rigLevel=level;
+    rig=copyRig(selectedPreset);transitionFrom=copyRig(selectedPreset);transitionTo=copyRig(selectedPreset);transitionAt=now;rigLevel=level;
    }else{
     rig=mixRig(transitionFrom,transitionTo,transitionFraction(now,transitionAt));
-    if(level!==rigLevel){
-     transitionFrom=copyRig(rig);transitionTo=copyRig(preset);transitionAt=now;rigLevel=level;
+    if(level!==rigLevel||selectedPreset.distance!==transitionTo.distance||selectedPreset.height!==transitionTo.height){
+     transitionFrom=copyRig(rig);transitionTo=copyRig(selectedPreset);transitionAt=now;rigLevel=level;
     }
     rig=mixRig(transitionFrom,transitionTo,transitionFraction(now,transitionAt));
    }
