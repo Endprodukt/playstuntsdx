@@ -50,26 +50,33 @@ export function stepEngine(before:EngineState,t:EngineTuning,input:number,fps:10
  }else if((input&3)===2){
   s.accelerating=0;s.limiter=0;s.braking=pedals.brake>0?1:0;
   delta=i16(delta-Math.round(t.braking*(opponentSpeedByte===undefined?1:2)*pedals.brake));
- }else if((input&3)!==1||pedals.throttle<=0){
-  s.accelerating=0;s.braking=0;
-  // A released analog throttle is a real coast state, not a latched digital
-  // button. Apply a modest RPM-dependent driveline drag so speed and therefore
-  // coupled engine RPM fall naturally when the driver lifts off the pedal.
-  if(s.rearContact&&!s.shifting&&s.gear>0&&s.rpm>t.idleRPM){
+ }else {
+  // Wheel-only analog drivetrain. Keyboard/joystick/replays never enter here.
+  const throttle=Math.max(0,Math.min(1,pedals.throttle));
+  s.braking=0;s.accelerating=throttle>0?1:0;
+  if(s.shifting){
+   s.limiter=0;s.rpm=i16(s.rpm-(fps===10?80:40));
+  }else if(!s.rearContact){
+   if(throttle>0&&s.rpm<t.maxRPM&&speed<64000)delta=i16(delta+Math.round(768*Math.pow(throttle,1.35)));
+  }else {
+   const baseDelta=delta;
    const rpmRange=Math.max(1,t.maxRPM-t.idleRPM);
    const overrun=Math.max(0,Math.min(1,(s.rpm-t.idleRPM)/rpmRange));
-   const engineBrake=Math.round(t.braking*.18*overrun);
-   delta=i16(delta-engineBrake);
-  }
- }
- else {s.braking=0;s.accelerating=1;
-  const throttle=pedals.throttle;
-  if(s.shifting){s.limiter=0;s.rpm=i16(s.rpm-(fps===10?80:40))}
-  else if(!s.rearContact){if(s.rpm<t.maxRPM&&speed<64000)delta=i16(delta+Math.round(768*throttle))}
-  else {
-   let torque=(s.gear<=1&&s.rpm<2600)?t.idleTorque:t.torqueCurve[s.rpm>>>7];if(torque===undefined)throw Error('RPM outside original torque table');if(s.limiter&&s.rpm<5000)torque=(t.idleTorque+torque)>>1;
-   const coast=delta;let powered=engineForceDelta(i16(coast+((s.ratioHigh*torque&65535)>>>4)),t.mass);if(opponentSpeedByte!==undefined)powered=opponentEngineForce(powered,opponentSpeedByte);
-   delta=throttle>=1?powered:i16(Math.trunc(coast+(powered-coast)*throttle));if(delta>296)s.limiter=5;
+   const engineBrake=Math.round(t.braking*.22*overrun);
+   const coastDelta=i16(baseDelta-engineBrake);
+   if(throttle<=0){
+    delta=coastDelta;
+   }else {
+    let torque=(s.gear<=1&&s.rpm<2600)?t.idleTorque:t.torqueCurve[s.rpm>>>7];if(torque===undefined)throw Error('RPM outside original torque table');if(s.limiter&&s.rpm<5000)torque=(t.idleTorque+torque)>>1;
+    let powered=engineForceDelta(i16(baseDelta+((s.ratioHigh*torque&65535)>>>4)),t.mass);if(opponentSpeedByte!==undefined)powered=opponentEngineForce(powered,opponentSpeedByte);
+    // Small pedal movements first cancel driveline drag; only larger pedal travel
+    // progressively reaches positive drive torque. This creates a usable partial-
+    // throttle equilibrium instead of making every non-zero pedal position an
+    // endlessly accelerating digital gas button.
+    const drive=Math.pow(throttle,1.55);
+    delta=i16(Math.trunc(coastDelta+(powered-coastDelta)*drive));
+    if(delta>296)s.limiter=5;
+   }
   }
  }
  if(fps===10)delta=i16(delta*2);
