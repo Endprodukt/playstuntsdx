@@ -10,15 +10,7 @@ export type DesktopControlAction=
 export type DesktopControllerBinding={deviceId:string;deviceName?:string;button:number};
 export type DesktopActionBinding={keys:string[];button?:DesktopControllerBinding};
 export type DesktopControlBindings=Record<DesktopControlAction,DesktopActionBinding>;
-export type DesktopControlDefinition={
- id:DesktopControlAction;
- group:'Driving & menus'|'Race'|'Replay & editor';
- label:string;
- help:string;
- targetScans:readonly number[];
- primaryScan:number;
- defaultKeys:readonly string[];
-};
+export type DesktopControlDefinition={id:DesktopControlAction;group:'Driving & menus'|'Race'|'Replay & editor';label:string;help:string;targetScans:readonly number[];primaryScan:number;defaultKeys:readonly string[];};
 
 export const DESKTOP_CONTROL_DEFINITIONS:readonly DesktopControlDefinition[]=[
  {id:'accelerate',group:'Driving & menus',label:'Accelerate / Up',help:'Accelerate; also moves up in original menus and replay controls.',targetScans:[72],primaryScan:72,defaultKeys:['ArrowUp']},
@@ -54,7 +46,6 @@ let deviceStates=new Map<string,ControllerDevice>();
 let queuedButtonActions:DesktopControlAction[]=[];
 let captureSuspended=false;
 let cachedRaw:string|undefined,cachedBindings:DesktopControlBindings|undefined;
-
 function desktopActive(){if(typeof window==='undefined')return false;const tauri=(window as typeof window&{__TAURI__?:unknown}).__TAURI__;return !!tauri||(typeof document!=='undefined'&&!!document.querySelector('.desktop-game-shell'));}
 function defaultBindings():DesktopControlBindings{return Object.fromEntries(DESKTOP_CONTROL_DEFINITIONS.map(definition=>[definition.id,{keys:[...definition.defaultKeys]}])) as DesktopControlBindings;}
 function validButton(value:unknown):DesktopControllerBinding|undefined{if(!value||typeof value!=='object')return undefined;const entry=value as Partial<DesktopControllerBinding>;if(typeof entry.deviceId!=='string'||!entry.deviceId||typeof entry.button!=='number'||!Number.isInteger(entry.button)||entry.button<0)return undefined;return {deviceId:entry.deviceId,deviceName:typeof entry.deviceName==='string'?entry.deviceName:undefined,button:entry.button};}
@@ -73,6 +64,6 @@ export function desktopControlSuppressDefault(event:Pick<KeyboardEvent,'code'|'c
 export function desktopControlActionTarget(action:DesktopControlAction){return definitionById.get(action);}
 export function setDesktopControlCapture(active:boolean){captureSuspended=active;queuedButtonActions=[];}
 export function queueDesktopControlAction(action:DesktopControlAction){if(!captureSuspended)queuedButtonActions.push(action);}
-export function updateDesktopControlDevices(devices:readonly ControllerDevice[]){const before=deviceStates,next=new Map(devices.map(device=>[device.id,{id:device.id,name:device.name,buttons:[...device.buttons]}] as const));deviceStates=next;if(captureSuspended||!desktopActive()){queuedButtonActions=[];return;}const bindings=readBindings();for(const definition of DESKTOP_CONTROL_DEFINITIONS){const binding=bindings[definition.id].button;if(!binding)continue;const previous=before.get(binding.deviceId)?.buttons[binding.button]??0,current=next.get(binding.deviceId)?.buttons[binding.button]??0;if(current>.55&&previous<=.55)queuedButtonActions.push(definition.id);}}
+export function updateDesktopControlDevices(devices:readonly ControllerDevice[]){const before=deviceStates,next=new Map(devices.map(device=>[device.id,{id:device.id,name:device.name,buttons:[...device.buttons]}] as const));deviceStates=next;if(captureSuspended||!desktopActive()){queuedButtonActions=[];return;}const bindings=readBindings();for(const definition of DESKTOP_CONTROL_DEFINITIONS){const binding=bindings[definition.id].button;if(!binding)continue;const previous=before.get(binding.deviceId)?.buttons[binding.button]??0,current=next.get(binding.deviceId)?.buttons[binding.button]??0;if(current>.55&&previous<=.55&&definition.id!=='enhanced-chase-view')queuedButtonActions.push(definition.id);}}
 export function desktopControlButtonScanHeld(scan:number){if(captureSuspended||!desktopActive())return false;const bindings=readBindings();for(const definition of DESKTOP_CONTROL_DEFINITIONS){const binding=bindings[definition.id].button;if(!binding||!definition.targetScans.includes(scan))continue;if((deviceStates.get(binding.deviceId)?.buttons[binding.button]??0)>.55)return true;}return false;}
 export function takeDesktopControlButtonAction():DesktopControlAction|undefined{if(captureSuspended)return undefined;return queuedButtonActions.shift();}
