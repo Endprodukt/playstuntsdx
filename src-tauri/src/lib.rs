@@ -430,6 +430,7 @@ struct NativeJoystick {
     name: String,
     axes: Vec<f64>,
     buttons: Vec<f64>,
+    pov: Option<u32>,
 }
 
 #[cfg(target_os = "windows")]
@@ -440,6 +441,7 @@ mod winmm_joystick {
     const MAX_JOYSTICKOEMVXDNAME: usize = 260;
     const JOYERR_NOERROR: u32 = 0;
     const JOY_RETURNALL: u32 = 0x0000_00ff;
+    const JOY_POVCENTERED: u32 = 0xffff;
 
     #[repr(C)]
     #[allow(non_snake_case)]
@@ -558,6 +560,11 @@ mod winmm_joystick {
                 },
                 axes,
                 buttons,
+                pov: if info.dwPOV == JOY_POVCENTERED || info.dwPOV >= 36000 {
+                    None
+                } else {
+                    Some(info.dwPOV)
+                },
             });
         }
         devices
