@@ -111,7 +111,7 @@ def extract(root,out):
                 s=r['simd'];words=struct.unpack_from('<6H',s,2)
                 cars.append(dict(id=f.stem[3:].upper(),name=r['gnam'].decode('cp437').rstrip('\0'),description=r['edes'].decode('cp437').rstrip('\0').replace(']', '\n'),gears=s[0],mass=words[0],braking=words[1],idleRPM=words[2],downshiftRPM=words[3],upshiftRPM=words[4],maxRPM=words[5],gearRatios=list(struct.unpack_from('<7H',s,14)),gearKnobPoints=[list(struct.unpack_from('<hh',s,28+i*4)) for i in range(7)],aeroResistance=struct.unpack_from('<H',s,56)[0],idleTorque=s[58],torqueCurve=list(s[59:163]),grip=struct.unpack_from('<H',s,164)[0],surfaceGrip=list(struct.unpack_from('<6H',s,180)),rawSimulation=s.hex()))
             texts[f.name]={k:v.decode('cp437').rstrip('\0') for k,v in r.items() if k.startswith('e')}
-        if ext=='.P3S':shapes[f.stem]={k:shape(v) for k,v in resources(b).items()}
+        if ext in ['.P3S','.3SH']:shapes[f.stem]={k:shape(v) for k,v in resources(b).items()}
         if ext=='.TRK':
             if len(b)!=1802:raise ValueError('Unexpected track length')
             tracks.append(dict(name=f.stem,raw=list(b),sha256=hashlib.sha256(b).hexdigest()))

@@ -23,6 +23,7 @@ import {upgradedCompositeShadowShapes,upgradedSceneryCastsShadow,upgradedScenery
 import {upgradedBackgroundView} from './upgraded-background-view';
 import {createEnhancedChaseCamera,type EnhancedChaseCameraLevel} from './enhanced-chase-camera';
 import {createEnhancedCrashEffects} from './enhanced-crash-effects';
+import {createEnhancedCockpitOverlay} from './enhanced-cockpit-overlay';
 import {upgradedTrackSeamShape} from './upgraded-track-seams';
 import {createEnhancedAlpineBackground,createEnhancedPanoramaBackground,enhancedPanoramaHorizon} from './enhanced-alpine-background';
 import {type Vector} from '../physics/math';
@@ -148,6 +149,7 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
  });
  const motion=createLiveGraphicsMotion(),chaseCamera=createEnhancedChaseCamera({raw:track,objects:cameraTrackObjects as TrackObject[],planes:cameraCollisionPlanes as CollisionPlane[]});let fpsAt=performance.now(),fpsFrames=0;
  const crashEffects=createEnhancedCrashEffects({assets,memory:m,materials:sourceMaterials,carIds,paints:carPaints,world,scene});
+ const enhancedCockpit=createEnhancedCockpitOverlay();
  const clouds=new Map<string,THREE.Group>();
  const truck=createStartTruckModel(resources,assets.shapes.GAME2.truk,sourceMaterials);world.add(truck.group);
  const signs=createUpgradedTrackSigns(runtime.session.state.memory,sourceMaterials);world.add(signs.group);
@@ -365,8 +367,13 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    // its own viewpoint through a crash instead of snapping to the cockpit.
    if(orderedScene&&!chase){context.save();context.setTransform(canvas.width/320,0,0,canvas.height/200,0,0);const [left,right,top,bottom]=frame.rectangle;context.beginPath();context.rect(left,top,right-left,bottom-top);context.clip();for(const call of frame.calls)orderedRaster.draw(context,call,frame.rectangle);context.restore();}else context.drawImage(renderer.domElement,0,0,canvas.width,canvas.height);
    context.imageSmoothingEnabled=false;
-   if(!chase)context.drawImage(overlay,0,0,canvas.width,canvas.height);
-   else if(runtime.session.replaying){
+   if(!chase){
+    context.drawImage(overlay,0,0,canvas.width,canvas.height);
+    if(cameraMode===0){
+     const cockpitState=chaseCar?runtime.session.state.opponent.car:runtime.session.state.player.driving.car;
+     enhancedCockpit.draw(context,canvas.width,canvas.height,{car:carIds[chaseCar],pixels:overlaySource,steering:cockpitState.grip.steeringAngle,knobX:cockpitState.engine.knobX,knobY:cockpitState.engine.knobY});
+    }
+   }else if(runtime.session.replaying){
     // Replay controls live outside the original 3D viewport and must remain
     // usable in chase mode. During normal driving no cockpit overlay is drawn,
     // giving the external camera the full window and restoring it automatically
@@ -379,6 +386,6 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    lastChaseLevel=chaseLevel;fpsFrames++;if(now-fpsAt>=1000){canvas.dataset.upgradedFps=String(Math.round(fpsFrames*1000/(now-fpsAt)));fpsFrames=0;fpsAt=now;}
    return true;
   },
-  close(){enhancedBackground?.close();crashEffects.close();retroLighting.dispose();orderedRaster.dispose();const geometries=new Set<THREE.BufferGeometry>(),materials=new Set<THREE.Material>();scene.traverse(node=>{if(node instanceof THREE.Mesh||node instanceof THREE.LineSegments){geometries.add(node.geometry);for(const material of Array.isArray(node.material)?node.material:[node.material])materials.add(material);}});geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());renderer.dispose();renderer.forceContextLoss();}
+  close(){enhancedCockpit.close();enhancedBackground?.close();crashEffects.close();retroLighting.dispose();orderedRaster.dispose();const geometries=new Set<THREE.BufferGeometry>(),materials=new Set<THREE.Material>();scene.traverse(node=>{if(node instanceof THREE.Mesh||node instanceof THREE.LineSegments){geometries.add(node.geometry);for(const material of Array.isArray(node.material)?node.material:[node.material])materials.add(material);}});geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());renderer.dispose();renderer.forceContextLoss();}
  };
 }

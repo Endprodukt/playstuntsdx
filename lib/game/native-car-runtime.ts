@@ -26,7 +26,7 @@ export interface NativeCarMenuPresentation {
 /** Source car menu host. Original model submission and presentation alternate;
  * configuration bytes change in place, while car ID is committed on Done. */
 export async function runNativeCarMenu(host:NativeCarMenuHost,display?:NativeCarMenuPresentation){
- const offset=host.opponent?7:0,paintOffset=offset+4,transmissionOffset=offset+5,list=originalCarMenuList(host.cars.map(c=>c.id),String.fromCharCode(...host.configuration.slice(offset,offset+4)));
+ const initialConfiguration=host.configuration.slice(),offset=host.opponent?7:0,paintOffset=offset+4,transmissionOffset=offset+5,list=originalCarMenuList(host.cars.map(c=>c.id),String.fromCharCode(...host.configuration.slice(offset,offset+4)));
  if(!list.names.length)return;
  let state:OriginalCarMenuState={selected:0,car:list.selected,carCount:list.names.length,paint:host.configuration[paintOffset],transmission:host.configuration[transmissionOffset],ready:false,renderPhase:3,idleExpired:0};
  let previousCar=-1,previousSelected=-1,phase=0,color=0,idle=0,delta=0,angle=0,queuedAngle=0,time=host.counter(),mode=-1,background=host.pixels.slice(),renderer:{paintCount:number;render(target:Uint8Array,angle:number,paint:number):void},buttons:ReturnType<NativeCarMenuPresentation['captureButtons']>|undefined;
@@ -45,6 +45,7 @@ export async function runNativeCarMenu(host:NativeCarMenuHost,display?:NativeCar
   if(flash.color!==color){color=flash.color;if(display)display.outline(state.selected,color);else {const r=originalCarMenuBounds[state.selected];for(let x=r.left;x<=r.right;x++){host.pixels[r.top*320+x]=color;host.pixels[r.bottom*320+x]=color;}for(let y=r.top;y<=r.bottom;y++){host.pixels[y*320+r.left]=color;host.pixels[y*320+r.right]=color;}}host.present(0);}
   idle=(idle+delta)&65535;if((idle<<16>>16)>12000){idle=0;state.idleExpired=(state.idleExpired+1)&255;}
   const input=await host.input(),hover=input.mouseActive?originalCarMenuBounds.findIndex(r=>input.x>=r.left&&input.x<=r.right&&input.y>=r.top&&input.y<=r.bottom):-1,result=advanceOriginalCarMenu(state,input.key,hover);state=result.state;
+  if(result.action==='cancel'){host.configuration.splice(0,host.configuration.length,...initialConfiguration);return;}
   host.configuration[paintOffset]=state.paint;host.configuration[transmissionOffset]=state.transmission;
   if(result.action==='done'){host.configuration.splice(offset,4,...Array.from(list.names[state.car],c=>c.charCodeAt(0)));return;}
   if(result.action==='transmission'){

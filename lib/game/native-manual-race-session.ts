@@ -3,12 +3,22 @@ import {dispatchRaceFrameSounds} from './race-frame-sounds.ts';
 import {prepareNativeAllocatedRace,prepareNativeAllocatedRaceReentry,type NativeSelectedReplay} from './native-allocated-race-preparation.ts';
 import {createNativeRaceSession} from './native-race-session.ts';
 import type {NativeDemoData,NativeDemoMenuState} from './native-demo-runtime.ts';
+import {desktopInputDevice} from './desktop-wheel-input.ts';
+import {resetAnalogWheelRaceInput} from './analog-wheel-race-input.ts';
+
+function applyDesktopRaceInput(memory:Uint8Array,d:number,menu:{mouse?:boolean;joystick?:boolean}){
+ const wheelSelected=desktopInputDevice()==='wheel';
+ memory[d+0x12c]=Number(!wheelSelected&&!!menu.mouse);
+ memory[d+0x4602]=Number(wheelSelected||!!menu.joystick);
+}
+
 /** Fresh race entry with real allocated resources and the original transporter.
  * Uses the opponent route prepared during resource loading, without loading it
  * again after the cockpit/scene banks have changed the allocator state. */
 export async function createNativeManualRaceSession(data:NativeDemoData,menu:NativeDemoMenuState&{mouse?:boolean;joystick?:boolean},host:{resetMouse(mode:number):void},progress:(stage:number)=>void=()=>{}){
+ resetAnalogWheelRaceInput();
  const prepared=await prepareNativeAllocatedRace(data,menu,false,progress),d=0x2d1a0,memory=prepared.memory;
- memory[d+0x12c]=Number(!!menu.mouse);memory[d+0x4602]=Number(!!menu.joystick);
+ applyDesktopRaceInput(memory,d,menu);
  const result=await enterAllocatedManualSession(data,{...prepared,memory},{...host,async key(){throw Error('Fresh race unexpectedly requested replay input');}});
  if(result.entry!=='transporter')throw Error('Fresh race did not enter the original transporter');
  return result;
@@ -16,11 +26,13 @@ export async function createNativeManualRaceSession(data:NativeDemoData,menu:Nat
 /** Options has already selected/read the recording. Seed its original bank
  * before resource loading, then follow13A3E's playback/fast-forward branch. */
 export async function createNativeReplayRaceSession(data:NativeDemoData,menu:NativeDemoMenuState&{mouse?:boolean;joystick?:boolean},recording:NativeSelectedReplay,host:{resetMouse(mode:number):void;key(mode:number):Promise<number>},progress:(stage:number)=>void=()=>{}){
+ resetAnalogWheelRaceInput();
  const prepared=await prepareNativeAllocatedRace(data,menu,false,progress,recording),d=0x2d1a0;
- prepared.memory[d+0x12c]=Number(!!menu.mouse);prepared.memory[d+0x4602]=Number(!!menu.joystick);
+ applyDesktopRaceInput(prepared.memory,d,menu);
  return enterAllocatedManualSession(data,prepared,host);
 }
 export async function reopenNativeManualRaceSession(data:NativeDemoData,before:Uint8Array,entry:'fresh'|'replay'|'resume',host:{resetMouse(mode:number):void;key(mode:number):Promise<number>},progress:(stage:number)=>void=()=>{}){
+ if(entry==='fresh')resetAnalogWheelRaceInput();
  return enterAllocatedManualSession(data,await prepareNativeAllocatedRaceReentry(data,before,entry,progress),host);
 }
 async function enterAllocatedManualSession(data:NativeDemoData,prepared:Awaited<ReturnType<typeof prepareNativeAllocatedRace>>,host:{resetMouse(mode:number):void;key(mode:number):Promise<number>}){
@@ -30,10 +42,18 @@ async function enterAllocatedManualSession(data:NativeDemoData,prepared:Awaited<
 /** Original162F9 initializer after the caller has loaded/analyzed a replay
  * and refreshed its resources. This path does not seek to the recording end. */
 export function createLoadedNativeManualRaceSession(data:NativeDemoData,prepared:Awaited<ReturnType<typeof prepareNativeAllocatedRace>>){
+ resetAnalogWheelRaceInput();
  const result=createAllocatedManualSession(data,prepared);result.session.initializeLoadedReplay();return {...result,entry:'replay' as const};
 }
 function createAllocatedManualSession(data:NativeDemoData,prepared:Awaited<ReturnType<typeof prepareNativeAllocatedRace>>){
- const d=0x2d1a0,memory=prepared.memory,view=new DataView(memory.buffer,memory.byteOffset,memory.byteLength),length=view.getUint16(d+0x8fd8,true),bank=view.getUint16(d+0x9c40,true)+view.getUint16(d+0x9c42,true)*16;
+ const d=0x2d1a0,memory=prepared.memory;
+ // DS:A42A is the original passed_security flag. The DOS loader/cracks or a
+ // successful manual doc-check set it before racing. The reconstructed native
+ // runtime has no copy-protection prompt, so mark the check as passed before
+ // entering the original race logic; otherwise input selection deliberately
+ // crashes the player's car after frame 80 (~4 seconds at the original 20 Hz).
+ memory[d+0xa42a]=1;
+ const view=new DataView(memory.buffer,memory.byteOffset,memory.byteLength),length=view.getUint16(d+0x8fd8,true),bank=view.getUint16(d+0x9c40,true)+view.getUint16(d+0x9c42,true)*16;
  const car=(at:number)=>{
   const id=String.fromCharCode(...memory.slice(d+at,d+at+4)),tuning=data.cars.find(car=>car.id===id);
   if(!tuning)throw Error('Original car simulation is missing: '+id);

@@ -1,5 +1,6 @@
 import {createMt32AudioStream,type Mt32StereoOutput} from './mt32-audio-stream.ts';
 import {audioBufferBatch} from './audio-buffer-batch.ts';
+import {cancelAndHoldAudioParam} from './audio-param-automation.ts';
 /** Keeps one synthesizer and IRQ phase through driving, replay and dialogs.
  * The caller owns initialization, original SysEx pacing and synthesizer disposal. */
 export function createBrowserMt32RaceAudio(context:AudioContext,output:Mt32StereoOutput,initialWrites:number[][],tick:()=>number[][]){
@@ -16,12 +17,9 @@ export function createBrowserMt32RaceAudio(context:AudioContext,output:Mt32Stere
  const unsubscribe=output.onDeviceChange?.(()=>{for(const source of sources)release(source);});
  try{stream.write(initialWrites);}catch(error){unsubscribe?.();gain.disconnect();throw error;}
  return {
-  setVolume(value:number){if(!Number.isFinite(value)||value<0||value>1)throw Error('Invalid playback volume');if(!closed)gain.gain.setValueAtTime(value,context.currentTime);},
+  setVolume(value:number,at=context.currentTime,fade=0){if(!Number.isFinite(value)||value<0||value>1||!Number.isFinite(at)||!Number.isFinite(fade)||fade<0)throw Error('Invalid playback volume');if(!closed){const parameter=gain.gain;cancelAndHoldAudioParam(parameter,at);if(fade>0)parameter.linearRampToValueAtTime(value,at+fade);else parameter.setValueAtTime(value,at);}},
   prepare(writes:number[][]){if(!closed){if(output.prepare)output.prepare(writes);else stream.write(writes);}},
   write(writes:number[][]){if(!closed)stream.write(writes);},
-  // Results music temporarily owns the shared device. Retain this stream's
-  // IRQ phase, but release its queued browser sound and stop rendering it.
-  // The completed race may still advance its global timer without synthesis.
   suspend(clock?:()=>void){if(closed||suspended)return;suspended=true;suspendedClock=clock;suspendedSample=Math.floor(context.currentTime*output.sampleRate);for(const source of sources)release(source);next=0;},
   resume(){if(closed||!suspended)return;advanceSuspendedClock();suspended=false;suspendedClock=undefined;},
   pump(){

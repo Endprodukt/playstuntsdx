@@ -10,6 +10,7 @@ import {readContactFrameScratch,writeContactFrameScratch,writeContactFrameNeighb
 import {produceRaceAudio} from './produce-race-audio.ts';
 import type {RaceCameraState} from '../physics/race-cameras.ts';
 import type {Vector} from '../physics/math.ts';
+import {analogWheelRaceInput} from './analog-wheel-race-input.ts';
 export interface RecordedTwoCarRace extends RecordedPlayerRace {opponent:ReturnType<typeof readOpponentRaceState>;opponentCamera:RaceCameraState}
 export function readRecordedTwoCarRace(memory:Uint8Array,dataSegment:number):RecordedTwoCarRace{
  const player=readRecordedPlayerRace(memory,dataSegment),v=new DataView(memory.buffer,memory.byteOffset,memory.byteLength),d=dataSegment;
@@ -27,7 +28,8 @@ export function stepRecordedTwoCarRace(before:RecordedTwoCarRace,playerResources
  const clock=advanceRaceClock({frame:race.stats[2],counter:race.abortFlag,timer:race.timer,evaluationCause:race.evaluationCause,done:before.done,mode:before.mode,crash:car.grip.crash,roadSpeed:car.engine.roadSpeed});const stats=[...race.stats];stats[2]=clock.frame;
  const player={...before.player,driving:{...before.player.driving,race:{...race,stats,abortFlag:clock.counter,timer:clock.timer},car:{...car,contactWheelAngles:readContactFrameScratch(memory,caller.stackSegment,sp-120),contactEntryRegisters:registers}}};
  const opponent={...before.opponent,car:{...before.opponent.car,contactWheelAngles:readContactFrameScratch(memory,caller.stackSegment,sp-94)}};
- const result=stepTwoCarRaceFrame({player,opponent,cameras:[before.camera,before.opponentCamera]},{audioExiting:memory[d+0x9aca],player:[playerResources.tuning,playerResources.wheels,prefix.input<<24>>24,{...playerResources.track,mode:prefix.active},clock.frame,...playerResources.navigation],trackside:playerResources.trackside,opponent:{...opponentResources,track:{...opponentResources.track,mode:prefix.active},contactCaller:{frameOffset:sp-16,pathOffset:v.getUint16(d+0x7ff4,true),incomingSI:registers[0],incomingDI:registers[1]}}});
+ const input=analogWheelRaceInput(prefix.input<<24>>24,memory,d);
+ const result=stepTwoCarRaceFrame({player,opponent,cameras:[before.camera,before.opponentCamera]},{audioExiting:memory[d+0x9aca],player:[playerResources.tuning,playerResources.wheels,input,{...playerResources.track,mode:prefix.active},clock.frame,...playerResources.navigation],trackside:playerResources.trackside,opponent:{...opponentResources,track:{...opponentResources.track,mode:prefix.active},contactCaller:{frameOffset:sp-16,pathOffset:v.getUint16(d+0x7ff4,true),incomingSI:registers[0],incomingDI:registers[1]}}});
  memory.set(writePlayerRaceState(memory.subarray(d,d+65536),before.player,result.player,result.cameras[0],clock.done),d);
  memory.set(writeOpponentCarState(memory.subarray(d+0x8cf0,d+0x8da8),before.opponent.car,result.opponent.car,result.opponent.route,result.opponent.routeTarget,result.opponent.angle,result.opponent.targetAlternate),d+0x8cf0);
  result.cameras[1].position.forEach((n,i)=>v.setInt16(d+0x8c0c+i*2,n,true));result.cameras[1].previous.forEach((n,i)=>v.setInt16(d+0x8c18+i*2,n,true));memory[d+0x8eae]=result.cameras[1].selected;memory[d+0x8eaf]=result.opponent.routeTarget.side;memory[d+0x8f14]=result.opponent.avoidance;

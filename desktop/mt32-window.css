@@ -1,0 +1,28 @@
+.mt32-desktop-window{
+  position:fixed;
+  inset:0;
+  box-sizing:border-box;
+  overflow:auto;
+  padding:22px 24px 16px;
+  background:linear-gradient(#11161d,#090d12);
+  color:#c8d2dc;
+  font-family:Arial,sans-serif;
+}
+
+.mt32-desktop-window .mt32-panel-viewport,
+.mt32-desktop-window .mt32-effects-viewport{
+  width:100%;
+  max-width:none;
+  margin-left:auto;
+  margin-right:auto;
+}
+
+.mt32-desktop-window .mt32-panel-viewport{margin-top:0;}
+.mt32-desktop-window .mt32-effects-viewport{margin-bottom:8px;}
+
+.mt32-window-status{
+  margin:10px 2px 0;
+  color:#98a6b5;
+  font:12px/1.4 Arial,sans-serif;
+  letter-spacing:.02em;
+}

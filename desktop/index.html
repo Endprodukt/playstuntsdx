@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080c10" />
+    <title>PlayStunts DX</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      (() => {
+        const tauri = window.__TAURI__?.core;
+        const development = location.hostname === '127.0.0.1' && location.port === '1420';
+        if (!tauri) return;
+
+        const hiresRelative = pathname => {
+          if (pathname.startsWith('/game/hires/')) {
+            const relative = pathname.slice('/game/hires/'.length);
+            return relative === 'main-menu.png' ? 'menu/main-menu.png' : relative;
+          }
+          if (pathname.startsWith('/site/enhanced-backgrounds/')) {
+            return `backgrounds/${pathname.slice('/site/enhanced-backgrounds/'.length)}`;
+          }
+          if (pathname === '/site/enhanced-artwork/SDMSEL-scrn-menu-v1.png') return 'menu/main-menu.png';
+          if (pathname === '/site/enhanced-artwork/SDTITL-prod-mindscape-v1.png') return 'intro/mindscape.png';
+          if (pathname === '/site/enhanced-artwork/SDTITL-titl-title-v2.png') return 'intro/title.png';
+          return null;
+        };
+        const externalHiresUrl = pathname => {
+          const relative = hiresRelative(pathname);
+          return relative ? window.__PLAYSTUNTS_DX_HIRES_URL__?.(relative) : undefined;
+        };
+
+        const imageSource = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+        if (imageSource?.get && imageSource.set) {
+          Object.defineProperty(HTMLImageElement.prototype, 'src', {
+            configurable: imageSource.configurable,
+            enumerable: imageSource.enumerable,
+            get: imageSource.get,
+            set(value) {
+              let next = value;
+              try {
+                const url = new URL(String(value), location.href);
+                if (url.origin === location.origin) next = externalHiresUrl(url.pathname) ?? value;
+              } catch {}
+              imageSource.set.call(this, next);
+            },
+          });
+        }
+
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = async (input, init) => {
+          const requestUrl = input instanceof Request ? input.url : String(input);
+          const url = new URL(requestUrl, location.href);
+          if (url.origin === location.origin) {
+            const hiresUrl = externalHiresUrl(url.pathname);
+            if (hiresUrl) return originalFetch(hiresUrl, init);
+          }
+          if (!development && url.origin === location.origin && url.pathname.startsWith('/game/')) {
+            const path = decodeURIComponent(url.pathname.slice('/game/'.length));
+            const bytes = await tauri.invoke('read_runtime_file', { path });
+            const body = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+            return new Response(body, { status: 200 });
+          }
+          return originalFetch(input, init);
+        };
+      })();
+    </script>
+    <script type="module">
+      (async () => {
+        const tauri = window.__TAURI__?.core;
+
+        function parseIni(content) {
+          const values = new Map();
+          let section = '';
+          for (const raw of content.replace(/^\uFEFF/, '').split(/\r?\n/)) {
+            const line = raw.trim();
+            if (!line || line.startsWith(';') || line.startsWith('#')) continue;
+            const sectionMatch = /^\[([^\]]+)\]$/.exec(line);
+            if (sectionMatch) {
+              section = sectionMatch[1].trim().toLowerCase();
+              continue;
+            }
+            const equals = line.indexOf('=');
+            if (equals < 1) continue;
+            const key = line.slice(0, equals).trim().toLowerCase();
+            values.set(`${section}.${key}`, line.slice(equals + 1).trim());
+          }
+          return values;
+        }
+
+        const mappings = new Map([
+          ['playstunts-dx-sound-device', ['Audio', 'Device']],
+          ['playstunts-dx-music-enabled', ['Audio', 'Music']],
+          ['playstunts-dx-sound-enabled', ['Audio', 'Effects']],
+          ['playstunts-dx-audio-update', ['Audio', 'Remix']],
+          ['stunts-native-game-directory', ['Game', 'Directory']],
+          ['playstunts-dx-input-device', ['Controls', 'InputDevice']],
+          ['playstunts-dx-wheel-bindings-v2', ['Controls', 'WheelBindings']],
+          ['playstunts-dx-control-bindings-v1', ['Controls', 'ControlBindings']],
+          ['playstunts-dx-force-feedback-enabled', ['ForceFeedback', 'Enabled']],
+          ['playstunts-dx-force-feedback-strength', ['ForceFeedback', 'Strength']],
+          ['playstunts-dx-enhanced-graphics', ['Display', 'EnhancedGraphics']],
+          ['playstunts-dx-enhanced-textures', ['Display', 'EnhancedTextures']],
+          ['playstunts-dx-original-graphics-level', ['Display', 'OriginalGraphicsLevel']],
+        ]);
+
+        if (tauri) {
+          try {
+            const file = await tauri.invoke('native_config');
+            const configPath = String(file.path ?? '');
+            const applicationRoot = configPath.replace(/[\\/][^\\/]+$/, '');
+            if (applicationRoot && typeof tauri.convertFileSrc === 'function') {
+              const separator = applicationRoot.includes('\\') ? '\\' : '/';
+              window.__PLAYSTUNTS_DX_HIRES_URL__ = relative => {
+                const clean = String(relative)
+                  .replace(/^[\\/]+/, '')
+                  .split(/[\\/]+/)
+                  .filter(part => part && part !== '.' && part !== '..')
+                  .join(separator);
+                return tauri.convertFileSrc(`${applicationRoot}${separator}hires${separator}${clean}`);
+              };
+            }
+
+            const values = parseIni(file.content);
+            const nativeSetItem = Storage.prototype.setItem;
+            const nativeRemoveItem = Storage.prototype.removeItem;
+            const writeTimers = new Map();
+
+            const saveConfigValue = (storageKey, value) => {
+              const target = mappings.get(String(storageKey));
+              if (!target) return;
+              const existing = writeTimers.get(storageKey);
+              if (existing !== undefined) window.clearTimeout(existing);
+              writeTimers.set(storageKey, window.setTimeout(() => {
+                writeTimers.delete(storageKey);
+                void tauri.invoke('native_config_set', {
+                  section: target[0],
+                  key: target[1],
+                  value: String(value),
+                }).catch(reason => console.warn('[Config] Could not save config.ini:', reason));
+              }, 60));
+            };
+
+            for (const [storageKey, [section, key]] of mappings) {
+              const value = values.get(`${section.toLowerCase()}.${key.toLowerCase()}`);
+              if (value === undefined || value === '') nativeRemoveItem.call(localStorage, storageKey);
+              else nativeSetItem.call(localStorage, storageKey, value);
+            }
+
+            Storage.prototype.setItem = function(key, value) {
+              nativeSetItem.call(this, key, value);
+              if (this === localStorage) saveConfigValue(String(key), String(value));
+            };
+
+            Storage.prototype.removeItem = function(key) {
+              nativeRemoveItem.call(this, key);
+              if (this === localStorage) saveConfigValue(String(key), '');
+            };
+
+            const fullscreen = values.get('display.fullscreen')?.toLowerCase();
+            const wantsFullscreen = !['0', 'false', 'no', 'off'].includes(fullscreen ?? 'true');
+            if (!wantsFullscreen && window.__PLAYSTUNTS_DX_WINDOW__ !== 'mt32') {
+              await tauri.invoke('toggle_fullscreen');
+            }
+          } catch (reason) {
+            console.warn('[Config] Could not load config.ini:', reason);
+          }
+        }
+
+        await import('/main.tsx');
+      })();
+    </script>
+  </body>
+</html>

@@ -3,9 +3,17 @@ import type {createBrowserNativeMenus} from './browser-native-menus.ts';
 import type {createBrowserRaceAudio} from './browser-race-audio.ts';
 import {handleNativeRecordingFull} from './native-recording-full.ts';
 import {pushOriginalCursorState,popOriginalCursorState} from './allocated-mouse-selection.ts';
+import {desktopInputDevice,getDesktopWheelInput} from './desktop-wheel-input.ts';
 type Runtime=Awaited<ReturnType<typeof createNativeManualRaceRuntime>>;
 type Menus=Awaited<ReturnType<typeof createBrowserNativeMenus>>;
 type Presentation=Awaited<ReturnType<Menus['allocatedRacePresentation']>>;
+
+const wheelThrottlePressed=()=>{
+ if(desktopInputDevice()!=='wheel')return false;
+ const wheel=getDesktopWheelInput();
+ return wheel.configured&&wheel.connected&&wheel.throttle>.12;
+};
+
 /** Browser boundary for the original manual outer loop. Replay loading can
  * replace the simulation while retaining the same browser audio output. */
 export async function runBrowserAllocatedRaceLoop(runtime:Runtime,menus:Pick<Menus,'replayMenu'|'saveReplay'>,presentation:Presentation,audio:Pick<Awaited<ReturnType<typeof createBrowserRaceAudio>>,'write'>,services:{signal:AbortSignal;showWaiting():void;loadReplay(runtime:Runtime,presentation:Presentation):Promise<{runtime:Runtime;presentation:Presentation}|void>;onFrame?:(frame:number,mode:number,clock:number,blocked:number)=>void}){
@@ -22,6 +30,7 @@ export async function runBrowserAllocatedRaceLoop(runtime:Runtime,menus:Pick<Men
  };
  const replayMenu=()=>menus.replayMenu(runtime.session,{pauseAudio,resetCounter:()=>presentation.releaseInput(),resetMouse:presentation.resetMouse,selectControl:presentation.control,loadReplay:async()=>{const replacement=await services.loadReplay(runtime,presentation);if(replacement){const previous=presentation;runtime=replacement.runtime;presentation=replacement.presentation;previous.close();}},saveReplay,changeGraphics:()=>presentation.changeGraphics(audio.write)},runtime.pixels,{dialog:presentation.dialog,present:presentation.present});
  const replayControls=()=>runtime.replayControls({...presentation,pauseAudio,selectMouse,resetMouse:presentation.resetMouse,menu:replayMenu,waitMessage(){runtime.drawReplayWait();presentation.present();}});
+ let wheelThrottleHeld=wheelThrottlePressed();
  runtime.renderCockpitWorld();presentation.presentWorld();
  for(;;){
   aborted();await presentation.nextFrame();aborted();
@@ -32,7 +41,12 @@ export async function runBrowserAllocatedRaceLoop(runtime:Runtime,menus:Pick<Men
   }
   runtime.renderCockpitWorld();presentation.presentWorld();runtime.finishRenderedFrame();
   const m=memory();services.onFrame?.(new DataView(m.buffer,m.byteOffset,m.byteLength).getUint16(d+0x8c26,true),m[d+0xa3c2],new DataView(m.buffer,m.byteOffset,m.byteLength).getUint32(d+0x407a,true),m[d+0x4090]);
-  const action=await runtime.session.finishIteration({...presentation,pauseAudio,selectMouse,replayControls});
+  const wheelThrottle=wheelThrottlePressed(),wheelThrottlePress=wheelThrottle&&!wheelThrottleHeld;
+  wheelThrottleHeld=wheelThrottle;
+  // The original transporter skip listens for joystick fire buttons. Expose a
+  // fresh Wheel throttle press as that skip button only at this boundary. A
+  // pedal still held from menu confirmation therefore cannot skip immediately.
+  const action=await runtime.session.finishIteration({...presentation,joystickButtons:()=>presentation.joystickButtons()|(wheelThrottlePress?0x20:0),pauseAudio,selectMouse,replayControls});
   if(action==='exit')break;
  }
  aborted();

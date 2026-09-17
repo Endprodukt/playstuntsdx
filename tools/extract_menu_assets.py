@@ -38,6 +38,12 @@ def generate(source,unpacked,output):
     def images(file):return {name:convert_frame(frame) for name,frame in entries(file).items()}
     for name,file in [('car-menu-art','SDCSEL.PVS'),('opponent-menu-art','SDOSEL.PVS')]:
         spec=specs[name];descriptions={k:list(entries(f)[key]) for k,(f,key) in spec['descriptions'].items()}
+        if name=='car-menu-art':
+            for carfile in sorted(source.iterdir()):
+                stem=carfile.stem.upper()
+                if carfile.is_file() and carfile.suffix.upper()=='.RES' and stem.startswith('CAR') and len(stem)==7:
+                    car_entries=resources(carfile.read_bytes())
+                    if 'edes' in car_entries:descriptions[stem[3:]]=list(car_entries['edes'])
         if spec['list']:descriptions=[descriptions[str(i)] for i in range(len(descriptions))]
         save(name,dict(source=file,conversion='Supplied24918 PVS pixel-order conversion',sha256=sha(file),resources=images(file),descriptions=descriptions))
     panoramas=[]
