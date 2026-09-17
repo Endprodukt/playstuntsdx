@@ -4,6 +4,7 @@ import {prepareNativeAllocatedRace,prepareNativeAllocatedRaceReentry,type Native
 import {createNativeRaceSession} from './native-race-session.ts';
 import type {NativeDemoData,NativeDemoMenuState} from './native-demo-runtime.ts';
 import {desktopInputDevice} from './desktop-wheel-input.ts';
+import {resetAnalogWheelRaceInput} from './analog-wheel-race-input.ts';
 
 function applyDesktopRaceInput(memory:Uint8Array,d:number,menu:{mouse?:boolean;joystick?:boolean}){
  const wheelSelected=desktopInputDevice()==='wheel';
@@ -15,6 +16,7 @@ function applyDesktopRaceInput(memory:Uint8Array,d:number,menu:{mouse?:boolean;j
  * Uses the opponent route prepared during resource loading, without loading it
  * again after the cockpit/scene banks have changed the allocator state. */
 export async function createNativeManualRaceSession(data:NativeDemoData,menu:NativeDemoMenuState&{mouse?:boolean;joystick?:boolean},host:{resetMouse(mode:number):void},progress:(stage:number)=>void=()=>{}){
+ resetAnalogWheelRaceInput();
  const prepared=await prepareNativeAllocatedRace(data,menu,false,progress),d=0x2d1a0,memory=prepared.memory;
  applyDesktopRaceInput(memory,d,menu);
  const result=await enterAllocatedManualSession(data,{...prepared,memory},{...host,async key(){throw Error('Fresh race unexpectedly requested replay input');}});
@@ -24,11 +26,13 @@ export async function createNativeManualRaceSession(data:NativeDemoData,menu:Nat
 /** Options has already selected/read the recording. Seed its original bank
  * before resource loading, then follow13A3E's playback/fast-forward branch. */
 export async function createNativeReplayRaceSession(data:NativeDemoData,menu:NativeDemoMenuState&{mouse?:boolean;joystick?:boolean},recording:NativeSelectedReplay,host:{resetMouse(mode:number):void;key(mode:number):Promise<number>},progress:(stage:number)=>void=()=>{}){
+ resetAnalogWheelRaceInput();
  const prepared=await prepareNativeAllocatedRace(data,menu,false,progress,recording),d=0x2d1a0;
  applyDesktopRaceInput(prepared.memory,d,menu);
  return enterAllocatedManualSession(data,prepared,host);
 }
 export async function reopenNativeManualRaceSession(data:NativeDemoData,before:Uint8Array,entry:'fresh'|'replay'|'resume',host:{resetMouse(mode:number):void;key(mode:number):Promise<number>},progress:(stage:number)=>void=()=>{}){
+ if(entry==='fresh')resetAnalogWheelRaceInput();
  return enterAllocatedManualSession(data,await prepareNativeAllocatedRaceReentry(data,before,entry,progress),host);
 }
 async function enterAllocatedManualSession(data:NativeDemoData,prepared:Awaited<ReturnType<typeof prepareNativeAllocatedRace>>,host:{resetMouse(mode:number):void;key(mode:number):Promise<number>}){
@@ -38,6 +42,7 @@ async function enterAllocatedManualSession(data:NativeDemoData,prepared:Awaited<
 /** Original162F9 initializer after the caller has loaded/analyzed a replay
  * and refreshed its resources. This path does not seek to the recording end. */
 export function createLoadedNativeManualRaceSession(data:NativeDemoData,prepared:Awaited<ReturnType<typeof prepareNativeAllocatedRace>>){
+ resetAnalogWheelRaceInput();
  const result=createAllocatedManualSession(data,prepared);result.session.initializeLoadedReplay();return {...result,entry:'replay' as const};
 }
 function createAllocatedManualSession(data:NativeDemoData,prepared:Awaited<ReturnType<typeof prepareNativeAllocatedRace>>){
