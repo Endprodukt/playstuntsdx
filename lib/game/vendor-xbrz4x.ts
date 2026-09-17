@@ -1,93 +1,8 @@
 // @ts-nocheck
 /*
  * Vendored from d2-projects/xbrz (MIT), a JavaScript port of Zenju's xBRZ.
+ * Reduced to the 4x scaler path used by PlayStunts DX.
  */
-const redMask = 0xff0000;
-const greenMask = 0x00ff00;
-const blueMask = 0x0000ff;
-
-function blendComponent(mask, n, m, inPixel, setPixel) {
-    const inChan = inPixel & mask;
-    const setChan = setPixel & mask;
-    const blend = setChan * n + inChan * (m - n);
-    return mask & (blend / m);
-}
-
-function alphaBlend(n, m, dstPtr, col) {
-    // assert n < 256 : "possible overflow of (col & redMask) * N";
-    // assert m < 256 : "possible overflow of (col & redMask) * N + (dst & redMask) * (M - N)";
-    // assert 0 < n && n < m : "0 < N && N < M";
-
-    const dst = dstPtr.get();
-    const redComponent = blendComponent(redMask, n, m, dst, col);
-    const greenComponent = blendComponent(greenMask, n, m, dst, col);
-    const blueComponent = blendComponent(blueMask, n, m, dst, col);
-    const blend = (redComponent | greenComponent | blueComponent);
-    dstPtr.set(blend | 0xff000000);
-}
-
-
-
-import {alphaBlend} from "./Blender.js";
-
-class Scaler4x {
-    constructor() {
-        this.scale = 4;
-    }
-
-    scale() {
-        return this.scale
-    }
-
-    blendLineShallow(col, out) {
-        alphaBlend(1, 4, out.ref(this.scale - 1, 0), col);
-        alphaBlend(1, 4, out.ref(this.scale - 2, 2), col);
-
-        alphaBlend(3, 4, out.ref(this.scale - 1, 1), col);
-        alphaBlend(3, 4, out.ref(this.scale - 2, 3), col);
-
-        out.ref(this.scale - 1, 2).set(col);
-        out.ref(this.scale - 1, 3).set(col);
-    }
-
-    blendLineSteep(col, out) {
-        alphaBlend(1, 4, out.ref(0, this.scale - 1), col);
-        alphaBlend(1, 4, out.ref(2, this.scale - 2), col);
-
-        alphaBlend(3, 4, out.ref(1, this.scale - 1), col);
-        alphaBlend(3, 4, out.ref(3, this.scale - 2), col);
-
-        out.ref(2, this.scale - 1).set(col);
-        out.ref(3, this.scale - 1).set(col);
-    }
-
-    blendLineSteepAndShallow(col, out) {
-        alphaBlend(3, 4, out.ref(3, 1), col);
-        alphaBlend(3, 4, out.ref(1, 3), col);
-        alphaBlend(1, 4, out.ref(3, 0), col);
-        alphaBlend(1, 4, out.ref(0, 3), col);
-
-        alphaBlend(1, 3, out.ref(2, 2), col);
-
-        out.ref(3, 3).set(col);
-        out.ref(3, 2).set(col);
-        out.ref(2, 3).set(col);
-    }
-
-    blendLineDiagonal(col, out) {
-        alphaBlend(1, 2, out.ref(this.scale - 1, this.scale / 2), col);
-        alphaBlend(1, 2, out.ref(this.scale - 2, this.scale / 2 + 1), col);
-        out.ref(this.scale - 1, this.scale - 1).set(col)
-    }
-
-    blendCorner(col, out) {
-        alphaBlend(68, 100, out.ref(3, 3), col);
-        alphaBlend(9, 100, out.ref(3, 2), col);
-        alphaBlend(9, 100, out.ref(2, 3), col);
-    }
-}
-
-import {Scaler6x, Scaler5x, Scaler4x, Scaler3x, Scaler2x} from "./scalers/index.js";
 
 const redMask = 0xff0000;
 const greenMask = 0x00ff00;
@@ -556,7 +471,9 @@ function scaleImage(scaleSize, src, trg, srcWidth, srcHeight, yFirst, yLast) {
             ker3[h] = src[s_p1 + x];
             ker3[i] = src[s_p1 + x_p1];
 
-            const scaler = new Scaler4x();\n\n            scalePixel(scaler, 0, ker3, trg, trgi, trgWidth, blend_xy);
+            const scaler = new Scaler4x();
+
+            scalePixel(scaler, 0, ker3, trg, trgi, trgWidth, blend_xy);
             scalePixel(scaler, 1, ker3, trg, trgi, trgWidth, blend_xy);
             scalePixel(scaler, 2, ker3, trg, trgi, trgWidth, blend_xy);
             scalePixel(scaler, 3, ker3, trg, trgi, trgWidth, blend_xy);
@@ -577,6 +494,85 @@ function scaleImage(scaleSize, src, trg, srcWidth, srcHeight, yFirst, yLast) {
 
 
 
+
+function blendComponent(mask, n, m, inPixel, setPixel) {
+    const inChan = inPixel & mask;
+    const setChan = setPixel & mask;
+    const blend = setChan * n + inChan * (m - n);
+    return mask & (blend / m);
+}
+
+function alphaBlend(n, m, dstPtr, col) {
+    // assert n < 256 : "possible overflow of (col & redMask) * N";
+    // assert m < 256 : "possible overflow of (col & redMask) * N + (dst & redMask) * (M - N)";
+    // assert 0 < n && n < m : "0 < N && N < M";
+
+    const dst = dstPtr.get();
+    const redComponent = blendComponent(redMask, n, m, dst, col);
+    const greenComponent = blendComponent(greenMask, n, m, dst, col);
+    const blueComponent = blendComponent(blueMask, n, m, dst, col);
+    const blend = (redComponent | greenComponent | blueComponent);
+    dstPtr.set(blend | 0xff000000);
+}
+
+
+
+class Scaler4x {
+    constructor() {
+        this.scale = 4;
+    }
+
+    scale() {
+        return this.scale
+    }
+
+    blendLineShallow(col, out) {
+        alphaBlend(1, 4, out.ref(this.scale - 1, 0), col);
+        alphaBlend(1, 4, out.ref(this.scale - 2, 2), col);
+
+        alphaBlend(3, 4, out.ref(this.scale - 1, 1), col);
+        alphaBlend(3, 4, out.ref(this.scale - 2, 3), col);
+
+        out.ref(this.scale - 1, 2).set(col);
+        out.ref(this.scale - 1, 3).set(col);
+    }
+
+    blendLineSteep(col, out) {
+        alphaBlend(1, 4, out.ref(0, this.scale - 1), col);
+        alphaBlend(1, 4, out.ref(2, this.scale - 2), col);
+
+        alphaBlend(3, 4, out.ref(1, this.scale - 1), col);
+        alphaBlend(3, 4, out.ref(3, this.scale - 2), col);
+
+        out.ref(2, this.scale - 1).set(col);
+        out.ref(3, this.scale - 1).set(col);
+    }
+
+    blendLineSteepAndShallow(col, out) {
+        alphaBlend(3, 4, out.ref(3, 1), col);
+        alphaBlend(3, 4, out.ref(1, 3), col);
+        alphaBlend(1, 4, out.ref(3, 0), col);
+        alphaBlend(1, 4, out.ref(0, 3), col);
+
+        alphaBlend(1, 3, out.ref(2, 2), col);
+
+        out.ref(3, 3).set(col);
+        out.ref(3, 2).set(col);
+        out.ref(2, 3).set(col);
+    }
+
+    blendLineDiagonal(col, out) {
+        alphaBlend(1, 2, out.ref(this.scale - 1, this.scale / 2), col);
+        alphaBlend(1, 2, out.ref(this.scale - 2, this.scale / 2 + 1), col);
+        out.ref(this.scale - 1, this.scale - 1).set(col)
+    }
+
+    blendCorner(col, out) {
+        alphaBlend(68, 100, out.ref(3, 3), col);
+        alphaBlend(9, 100, out.ref(3, 2), col);
+        alphaBlend(9, 100, out.ref(2, 3), col);
+    }
+}
 
 
 export function xbrz4xCanvas(source:HTMLCanvasElement):HTMLCanvasElement{
