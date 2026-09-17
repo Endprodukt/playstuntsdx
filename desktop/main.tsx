@@ -8,6 +8,7 @@ import type { Assets } from '../lib/game/types';
 import Mt32Window from './Mt32Window';
 import { installDesktopControlBindings } from './control-bindings';
 import { installDesktopDriveControls } from './gamepad-drive';
+import { installDesktopOptionsOverlay } from './options-overlay';
 import { ensureDesktopRuntimeStartup } from './runtime-startup';
 import {
   MT32_CHANNEL, createMt32Snapshot, createMt32SoundCatalog,
@@ -68,7 +69,9 @@ function DesktopApp() {
   useEffect(() => {
     const removeDriveControls = installDesktopDriveControls();
     const removeControlBindings = installDesktopControlBindings();
+    const removeOptionsOverlay = installDesktopOptionsOverlay();
     return () => {
+      removeOptionsOverlay();
       removeControlBindings();
       removeDriveControls();
     };
