@@ -52,7 +52,10 @@ export function createEnhancedChaseCamera(track:{raw:number[];objects:TrackObjec
  const clear=(point:Vector,mode:number):Vector=>{
   const source=[Math.round(point[0]),Math.round(point[1]),Math.round(-point[2])] as Vector;
   const result=originalExternalCameraClearance(source,track.raw,track.objects,track.planes,mode);
-  return [result[0],result[1],-result[2]];
+  // The integer query decides clearance, not display position. Returning the
+  // rounded query point caused the chase eye to jitter within each world unit.
+  // Preserve the interpolated eye and apply only the clearance correction.
+  return [point[0]+result[0]-source[0],point[1]+result[1]-source[1],point[2]-result[2]+source[2]];
  };
  return {
   sample(pose:RenderPose,level:Exclude<EnhancedChaseCameraLevel,0>,carIndex:number,now:number,frame:number,raceMode:number){
