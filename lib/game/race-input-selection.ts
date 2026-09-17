@@ -59,7 +59,11 @@ export function selectOriginalRaceInput(host:NativeRaceInputHost,d:number,forced
      input=(controls&0x30)|(brakeActive?2:1);
      recordAnalogWheelRaceInput(m,d,{throttle:brakeActive?0:throttle,brake:brakeActive?brake:0});
     }else{
-     input=controls;forgetAnalogWheelRaceInput(m,d);
+     // Analog pedals are positional, not latching buttons. When both return to
+     // rest, explicitly clear the original throttle/brake bits as well as the
+     // DX sidecar so releasing the pedal immediately returns to neutral/coast.
+     input=controls&0x30;
+     forgetAnalogWheelRaceInput(m,d);
     }
    }else input=controls;
   }
