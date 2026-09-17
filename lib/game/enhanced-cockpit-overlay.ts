@@ -3,7 +3,7 @@ import {cockpitWheel} from './cockpit-wheel';
 import {ENHANCED_TEXTURES_EVENT,enhancedTexturesEnabled,loadEnhancedTextureUrl} from './enhanced-textures';
 import {composeCockpitPanel,type CockpitPanelLayer} from './cockpit-panel';
 import {COCKPIT_PIXEL_SCALER_EVENT,cockpitPixelScalerMode,type CockpitPixelScalerMode} from './cockpit-pixel-scaler-settings';
-import {scaleCockpitCanvas,scaleCockpitImage,warmCockpitPixelScaler} from './cockpit-pixel-scaler';
+import {scaleCockpitCanvas,warmCockpitPixelScaler} from './cockpit-pixel-scaler';
 
 type SpriteFrame={file:string;x:number;y:number;width:number;height:number};
 type CockpitLayout={dashboardTop:number;frames:Record<string,SpriteFrame>};
@@ -19,7 +19,7 @@ type MaskedSprite={canvas:HTMLCanvasElement;enhanced:boolean;filtered:boolean};
 type DynamicSurface={canvas:HTMLCanvasElement;context:CanvasRenderingContext2D;image:ImageData};
 type SnapshotSurface={canvas:HTMLCanvasElement;context:CanvasRenderingContext2D};
 type LoadedCarAssets={layout:CockpitLayout;panel:PanelData;images:Map<string,LoadedImage>};
-type CarAssets=LoadedCarAssets&{masked:Map<string,MaskedSprite>;dynamic?:DynamicSurface;replaySnapshot?:SnapshotSurface};
+type CarAssets=LoadedCarAssets&{masked:Map<string,MaskedSprite>;dynamic?:DynamicSurface;replaySnapshot?:SnapshotSurface;filterSurface?:SnapshotSurface};
 type DrawState={car:string;pixels:Uint8Array;steering:number;knobX:number;knobY:number};
 type ReplayBarArt={keys:string[];resources:Record<string,number[]>};
 type ReplayFrame={x:number;y:number;width:number;height:number;pixels:number[]};
@@ -76,7 +76,7 @@ function image(url:string){
  });
 }
 
-async function preferredImage(original:string,useEnhanced:boolean,mode:CockpitPixelScalerMode):Promise<LoadedImage>{
+async function preferredImage(original:string,useEnhanced:boolean,_mode:CockpitPixelScalerMode):Promise<LoadedImage>{
  let loaded:HTMLImageElement,enhanced=false;
  if(useEnhanced){
   try{
@@ -84,9 +84,7 @@ async function preferredImage(original:string,useEnhanced:boolean,mode:CockpitPi
    loaded=await image(source);enhanced=true;
   }catch{loaded=await image(original);}
  }else loaded=await image(original);
- if(mode==='off')return {image:loaded,enhanced,filtered:false};
- try{return {image:await scaleCockpitImage(loaded,mode),enhanced,filtered:true};}
- catch{return {image:loaded,enhanced,filtered:false};}
+ return {image:loaded,enhanced,filtered:false};
 }
 
 const sharedLoads=new Map<string,Promise<LoadedCarAssets|undefined>>();
@@ -164,7 +162,18 @@ export function createEnhancedCockpitOverlay(){
   draw(context:CanvasRenderingContext2D,width:number,height:number,state:DrawState){
    if((!enabled&&scaler==='off')||closed)return false;
    const assets=ensure(state.car);if(!assets)return false;
-   const {layout,panel,images}=assets,sx=width/320,sy=height/200;
+   const {layout,panel,images}=assets,filtering=scaler!=='off';
+   const mainSx=width/320,mainSy=height/200;
+   let targetContext=context,targetWidth=width,targetHeight=height;
+   if(filtering){
+    if(!assets.filterSurface){
+     const canvas=document.createElement('canvas');canvas.width=320;canvas.height=200;
+     assets.filterSurface={canvas,context:canvas.getContext('2d')!};
+    }
+    targetContext=assets.filterSurface.context;targetWidth=320;targetHeight=200;
+    targetContext.setTransform(1,0,0,1,0,0);targetContext.clearRect(0,0,320,200);
+   }
+   const sx=targetWidth/320,sy=targetHeight/200;
    const activeReplay=replayOverlay&&replayControlsVisible(replayOverlay,state.pixels)?replayOverlay:undefined;
    let replaySnapshot:HTMLCanvasElement|undefined;
    if(activeReplay){
@@ -174,9 +183,9 @@ export function createEnhancedCockpitOverlay(){
     replaySnapshot=assets.replaySnapshot.canvas;
     assets.replaySnapshot.context.setTransform(1,0,0,1,0,0);assets.replaySnapshot.context.clearRect(0,0,width,height);assets.replaySnapshot.context.drawImage(context.canvas,0,0,width,height);
    }
-   const draw=(source:CanvasImageSource,enhanced:boolean,filtered:boolean,x:number,y:number,w:number,h:number)=>{
-    context.imageSmoothingEnabled=filtered?false:enhanced;
-    context.drawImage(source,x*sx,y*sy,w*sx,h*sy);
+   const draw=(source:CanvasImageSource,enhanced:boolean,_filtered:boolean,x:number,y:number,w:number,h:number)=>{
+    targetContext.imageSmoothingEnabled=enhanced;
+    targetContext.drawImage(source,x*sx,y*sy,w*sx,h*sy);
    };
    const drawFile=(file:string,x:number,y:number,w:number,h:number)=>{const entry=images.get(file);if(entry)draw(entry.image,entry.enhanced,entry.filtered,x,y,w,h);};
    const masked=(artFile:string,maskFile:string)=>{
@@ -210,7 +219,7 @@ export function createEnhancedCockpitOverlay(){
      if(current===expected[at])continue;
      const color=current*3,out=at*4;dynamic.image.data[out]=panel.palette[color];dynamic.image.data[out+1]=panel.palette[color+1];dynamic.image.data[out+2]=panel.palette[color+2];dynamic.image.data[out+3]=255;
     }
-    dynamic.context.putImageData(dynamic.image,0,0);const dynamicSource=scaler==='off'?dynamic.canvas:scaleCockpitCanvas(dynamic.canvas,scaler);draw(dynamicSource,false,scaler!=='off',base.x,base.y,base.width,base.height);
+    dynamic.context.putImageData(dynamic.image,0,0);draw(dynamic.canvas,false,false,base.x,base.y,base.width,base.height);
 
     if(wheel.frame!==1){
      const suffix=wheel.frame===0?'1':'3',layer=panel.layers[`ins${suffix}`],sprite=masked(`ins${suffix}.png`,`inm${suffix}.png`);
@@ -231,10 +240,15 @@ export function createEnhancedCockpitOverlay(){
     if(sprite){const position=cockpitMarker(marker.points,wheel.scaled);draw(sprite.canvas,sprite.enhanced,sprite.filtered,position.x-marker.art.anchorX,position.y-marker.art.anchorY,marker.art.width,marker.art.height);}
    }
 
+   if(filtering&&assets.filterSurface){
+    const filtered=scaleCockpitCanvas(assets.filterSurface.canvas,scaler);
+    context.imageSmoothingEnabled=false;
+    context.drawImage(filtered,0,0,width,height);
+   }
    if(activeReplay&&replaySnapshot){
     context.imageSmoothingEnabled=false;
     for(const rect of activeReplay.rects){
-     const x=rect.x*sx,y=rect.y*sy,w=rect.width*sx,h=rect.height*sy;
+     const x=rect.x*mainSx,y=rect.y*mainSy,w=rect.width*mainSx,h=rect.height*mainSy;
      context.drawImage(replaySnapshot,x,y,w,h,x,y,w,h);
     }
    }
