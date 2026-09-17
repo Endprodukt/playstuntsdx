@@ -1,9 +1,9 @@
-"""Portable asset entrypoint with an external, user-editable hires mirror.
+"""Portable asset entrypoint with original Runtime artwork references.
 
 The original runtime builder stays unchanged in prepare_portable_assets_core.
 This wrapper prevents a second Runtime/game/hires tree, migrates the legacy
 "High Res" folder to "hires", exports lossless original reference artwork,
-and seeds missing external hires files from those Runtime references.
+and keeps those references separate from live high-resolution replacements.
 """
 from __future__ import annotations
 
@@ -99,8 +99,8 @@ def _palette_from(entries: dict[str, bytes], fallback: list[int]) -> list[int]:
     values = raw[16:]
     if len(values) < 768:
         return fallback
-    # Match the original runtime palette conversion exactly. This is a direct
-    # indexed-colour expansion only; it performs no interpolation or filtering.
+    # Match the runtime palette conversion exactly. This expands indexed colour
+    # values only; it does not interpolate, rescale, sharpen or filter pixels.
     return [min(255, value * 4) for value in values[:768]]
 
 
@@ -114,17 +114,16 @@ def _save_original_frame(frame: bytes, palette: list[int], target: Path) -> None
     image = Image.frombytes("P", (width, height), pixels)
     image.putpalette(palette)
     target.parent.mkdir(parents=True, exist_ok=True)
-    # Keep the original indexed pixels. Pillow's PNG writer is lossless and no
-    # resize/resample operation occurs anywhere in this export path.
+    # Indexed source pixels go straight into a lossless PNG. There is no canvas,
+    # resize or resampling operation in this path.
     image.save(target, format="PNG", optimize=False)
 
 
 def _export_original_references(source: Path, runtime: Path) -> dict[str, list[str]]:
     """Export reference PNGs straight from the original PVS pixel data.
 
-    These files are deliberately independent of live texture filtering. They
-    are reference/source images only and must never contain a rendered or
-    smoothed canvas capture.
+    Runtime references are source material, not live replacement textures.
+    Texture filtering must only happen later in the renderer.
     """
     game = runtime / "game"
     exported: dict[str, list[str]] = {"menu": [], "intro": [], "backgrounds": []}
@@ -163,16 +162,11 @@ def _export_original_references(source: Path, runtime: Path) -> dict[str, list[s
     return exported
 
 
-def _seed_hires_references(_legacy_source: Path, output: Path) -> dict[str, object]:
+def _seed_hires_cockpits(_legacy_source: Path, output: Path) -> dict[str, object]:
+    """Preserve the existing cockpit convenience seed without mixing refs/replacements."""
     root = _legacy_source.parent
-    hires = root / "hires"
-    copied: dict[str, list[str]] = {}
-    kept: dict[str, list[str]] = {}
-    for category in ["cockpit", "backgrounds", "intro", "menu"]:
-        category_copied, category_kept = _copy_missing_tree(output / "game" / category, hires / category)
-        copied[category] = category_copied
-        kept[category] = category_kept
-    return {"copied": copied, "kept": kept}
+    copied, kept = _copy_missing_tree(output / "game" / "cockpit", root / "hires" / "cockpit")
+    return {"cockpitCopied": copied, "cockpitKept": kept}
 
 
 def main() -> int:
@@ -181,20 +175,17 @@ def main() -> int:
     output = _argument_path("--output")
     if root is not None:
         _migrate_legacy_hires(root)
-        for category in ["cockpit", "backgrounds", "intro", "menu"]:
-            (root / "hires" / category).mkdir(parents=True, exist_ok=True)
+        (root / "hires" / "cockpit").mkdir(parents=True, exist_ok=True)
 
-    # Let the core finish the runtime first. Its high-res callback now mirrors
-    # all Runtime reference categories externally, without overwriting user art.
-    portable.copy_high_res_assets = _seed_hires_references
+    # The core calls this after Runtime has been generated. Keep its historical
+    # missing-only cockpit seed, but do not copy Runtime reference art into the
+    # live menu/background/intro replacement directories.
+    portable.copy_high_res_assets = _seed_hires_cockpits
     result = portable.main()
 
-    # The core callback runs before this wrapper regains control. Export the
-    # remaining original reference categories now, then seed only missing files.
+    # Add clean original reference folders alongside Runtime/game/cockpit.
     if result == 0 and original is not None and output is not None and output.is_dir():
         _export_original_references(original, output)
-        if root is not None:
-            _seed_hires_references(root / "High Res", output)
 
     # The legacy core still creates High Res/cockpit before preparation. Remove
     # that compatibility directory when it contains no user data.
