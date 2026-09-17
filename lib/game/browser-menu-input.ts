@@ -19,6 +19,7 @@ export function originalBrowserKey(key:string,shift=false){
 const scanCodes:Record<string,number>={Escape:1,Minus:12,Equal:13,Backspace:14,Tab:15,BracketLeft:26,BracketRight:27,Enter:28,NumpadEnter:28,ControlLeft:29,ControlRight:29,Semicolon:39,Quote:40,Backquote:41,ShiftLeft:42,Backslash:43,Comma:51,Period:52,Slash:53,NumpadDivide:53,ShiftRight:54,NumpadMultiply:55,AltLeft:56,AltRight:56,Space:57,CapsLock:58,NumLock:69,ScrollLock:70,Numpad7:71,Home:71,Numpad8:72,ArrowUp:72,Numpad9:73,PageUp:73,NumpadSubtract:74,Numpad4:75,ArrowLeft:75,Numpad5:76,Numpad6:77,ArrowRight:77,NumpadAdd:78,Numpad1:79,End:79,Numpad2:80,ArrowDown:80,Numpad3:81,PageDown:81,Numpad0:82,Insert:82,NumpadDecimal:83,Delete:83,F11:87,F12:88};
 for(const [letters,start] of [['QWERTYUIOP',16],['ASDFGHJKL',30],['ZXCVBNM',44]] as const)Array.from(letters).forEach((letter,i)=>{scanCodes['Key'+letter]=start+i;});
 Array.from('1234567890').forEach((digit,i)=>{scanCodes['Digit'+digit]=2+i;});for(let i=1;i<=10;i++)scanCodes['F'+i]=58+i;
+const wheelMenuArrowScans=new Set([72,80,75,77]);
 export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joystickEnabled?:()=>boolean;drivingBindings?:()=>ArrayLike<number>;onPoll?:()=>void|Promise<void>}={}){
  stopDesktopForceFeedback();
  let active=true,controlHeld=false,pendingKey=0,pendingTextKey=0;
@@ -45,7 +46,15 @@ export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joysti
   // Keep normal key repeat for arrows/text, but emit Escape only on its edge.
   if(event.code==='Escape'&&event.repeat){event.preventDefault();return;}
   if(active){const raw=originalBrowserKey(event.key,event.shiftKey);if(raw)pendingTextKey=raw;}
-  const mapped=desktopControlKeyboardTarget(event),scan=scanCodes[event.code];
+  const scan=scanCodes[event.code];
+  // Wheel mode keeps the physical cursor keys as guaranteed menu navigation,
+  // independent of any driving-key rebinds. This only applies to unmodified
+  // arrows in menus; Ctrl+Arrow etc. still use the normal binding path.
+  if(desktopInputDevice()==='wheel'&&scan!==undefined&&wheelMenuArrowScans.has(scan)&&!event.ctrlKey&&!event.shiftKey&&!event.altKey&&!event.metaKey){
+   held.add(scan);controlHeld=held.has(29);if(!active)return;
+   const key=originalKeyboardScanWord(scan,scanHeld);if(key)pendingKey=key;event.preventDefault();return;
+  }
+  const mapped=desktopControlKeyboardTarget(event);
   if(mapped){
    mappedHeld.set(event.code,mapped.targetScans);controlHeld=scanHeld(29);
    if(!active)return;
