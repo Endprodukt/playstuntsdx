@@ -141,7 +141,7 @@ fn hash_content_tree(root: &Path, directory: &Path, hasher: &mut DefaultHasher) 
 fn runtime_content_state(gamedata: &Path) -> Result<String, String> {
     let root = application_root()?;
     let mut hasher = DefaultHasher::new();
-    "playstuntsdx-runtime-content-v1".hash(&mut hasher);
+    "playstuntsdx-runtime-content-v2".hash(&mut hasher);
     "Gamedata".hash(&mut hasher);
     hash_content_tree(gamedata, gamedata, &mut hasher)?;
     for name in ["Custom Cars", "Custom Tracks", "High Res"] {
