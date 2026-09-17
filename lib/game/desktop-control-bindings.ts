@@ -2,7 +2,7 @@ export const DESKTOP_CONTROL_BINDINGS_KEY='playstunts-dx-control-bindings-v1';
 
 export type DesktopControlAction=
  |'accelerate'|'brake'|'steer-left'|'steer-right'|'shift-up'|'shift-down'|'space-action'|'enter-action'
- |'game-menu'|'camera-cycle'|'camera-1'|'camera-2'|'camera-3'|'camera-4'
+ |'game-menu'|'camera-cycle'|'camera-1'|'camera-2'|'camera-3'|'camera-4'|'enhanced-chase-view'
  |'follow-opponent'|'dashboard'
  |'replay-camera-up'|'replay-camera-down'|'replay-camera-left'|'replay-camera-right'
  |'replay-zoom-in'|'replay-zoom-out'|'terrain-editor';
@@ -22,9 +22,8 @@ export type DesktopControlDefinition={
 
 /**
  * These are the actual original Stunts keyboard functions used by the rebuilt
- * game. Arrow, Space and Enter bindings intentionally keep their original
- * context-sensitive behaviour in menus and replay controls as well as driving.
- * DX-only shortcuts such as F8/F10/F11 are not part of this table.
+ * game, plus DX race actions that share the same rebinding UI. Arrow, Space and
+ * Enter intentionally keep their original context-sensitive behaviour.
  */
 export const DESKTOP_CONTROL_DEFINITIONS:readonly DesktopControlDefinition[]=[
  {id:'accelerate',group:'Driving & menus',label:'Accelerate / Up',help:'Accelerate; also moves up in original menus and replay controls.',targetScans:[72],primaryScan:72,defaultKeys:['ArrowUp']},
@@ -42,6 +41,7 @@ export const DESKTOP_CONTROL_DEFINITIONS:readonly DesktopControlDefinition[]=[
  {id:'camera-2',group:'Race',label:'Camera 2',help:'Select original camera F2.',targetScans:[60],primaryScan:60,defaultKeys:['F2']},
  {id:'camera-3',group:'Race',label:'Camera 3',help:'Select original camera F3.',targetScans:[61],primaryScan:61,defaultKeys:['F3']},
  {id:'camera-4',group:'Race',label:'Camera 4',help:'Select original camera F4.',targetScans:[62],primaryScan:62,defaultKeys:['F4']},
+ {id:'enhanced-chase-view',group:'Race',label:'Change View',help:'Cycle enhanced graphics through Close, Standard, Far and back to the original cockpit view.',targetScans:[],primaryScan:0,defaultKeys:['KeyV']},
  {id:'follow-opponent',group:'Race',label:'Follow Opponent',help:'Original T follow-opponent command.',targetScans:[20],primaryScan:20,defaultKeys:['KeyT']},
  {id:'dashboard',group:'Race',label:'Toggle Dashboard',help:'Original D dashboard toggle.',targetScans:[32],primaryScan:32,defaultKeys:['KeyD']},
 
@@ -124,8 +124,6 @@ export function resetDesktopControlBindings(){
 export function setDesktopControlKeyboard(action:DesktopControlAction,chord:string|undefined){
  const next=desktopControlBindings();
  if(chord){
-  // One physical key/chord owns one semantic action. Remove an older assignment
-  // first so a rebind never fires two original Stunts commands at once.
   for(const definition of DESKTOP_CONTROL_DEFINITIONS)next[definition.id].keys=next[definition.id].keys.filter(value=>value!==chord);
   next[action].keys=[chord];
  }else next[action].keys=[];
