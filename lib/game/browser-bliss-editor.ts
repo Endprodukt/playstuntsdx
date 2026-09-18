@@ -350,26 +350,51 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const bytes=encodeBlissTrack(core.track).subarray(0,1802);host.track.raw=Array.from(bytes);
   renderMap();renderPalette();renderScenery();renderStatus();if(message)status.textContent=message+' · '+status.textContent;
  };
- const paletteLabels=['Paved','Dirt','Ice','Stunts','Banked','Splits','Highway','Elevated','Spins','Scenery','Terrain','Terrain 2'] as const;
+ const paletteLabels=['Paved','Dirt','Ice','Stunts','Banked','Splits','Highway','Elevated','Spins','Scenery','Terrain tiles','Terrain brush'] as const;
  const pageCodes=(index:number)=>{
   const codes=Array.from(new Set(blissPalettePages[index])).filter(code=>index>=10?code<=18:code>0&&code<253);
   return index===11?codes.filter(code=>code===1||code===6):codes;
+ };
+ const terrainLabel=(code:number,pageIndex=page)=>{
+  if(pageIndex===11)return code===1?'Water brush':code===6?'Mountain brush':('Terrain brush '+code);
+  if(code===0)return 'Flat / grass';
+  if(code===1)return 'Water';
+  if(code===6)return 'Mountain';
+  return 'Terrain tile '+code;
  };
  const drawPreview=(canvas:HTMLCanvasElement,code:number,terrain:boolean,size:number)=>{
   const image=blissOriginalPaletteImageData(code,terrain,host.resources,host.palette);
   canvas.width=image.width;canvas.height=image.height;canvas.getContext('2d',{alpha:false})!.putImageData(image,0,0);
   canvas.style.width=size+'px';canvas.style.height=size+'px';
  };
+ const drawPageIcon=(canvas:HTMLCanvasElement,index:number)=>{
+  if(index===10){
+   const codes=[0,1,6,11];canvas.width=32;canvas.height=32;const cx=canvas.getContext('2d',{alpha:false})!;
+   codes.forEach((code,n)=>cx.putImageData(blissOriginalPaletteImageData(code,true,host.resources,host.palette),(n%2)*16,Math.floor(n/2)*16));
+   canvas.style.width='38px';canvas.style.height='38px';return;
+  }
+  if(index===11){
+   canvas.width=32;canvas.height=16;const cx=canvas.getContext('2d',{alpha:false})!;
+   cx.putImageData(blissOriginalPaletteImageData(1,true,host.resources,host.palette),0,0);
+   cx.putImageData(blissOriginalPaletteImageData(6,true,host.resources,host.palette),16,0);
+   canvas.style.width='40px';canvas.style.height='20px';return;
+  }
+  const codes=pageCodes(index),representative=codes[0]??0;drawPreview(canvas,representative,false,38);
+ };
  const renderPalette=()=>{
-  const terrainPage=page>=10,currentCode=terrainPage?terrainBrush:brush,currentLabel=terrainPage?('Terrain '+terrainBrush):(blissElementData[brush]?.id||('Element '+brush));
+  const terrainPage=page>=10,currentCode=terrainPage?terrainBrush:brush,currentLabel=terrainPage?terrainLabel(terrainBrush):(blissElementData[brush]?.id||('Element '+brush));
   selectedName.textContent=manualHexDeadline?'?':currentLabel;
-  selectedCode.textContent=manualHexDeadline?('Manual code: '+manualHex.padEnd(2,'_')):((terrainPage?'Terrain tile ':'Track element ')+currentCode+' · F'+(page+1));
+  selectedCode.textContent=manualHexDeadline?('Manual code: '+manualHex.padEnd(2,'_')):page===10
+   ?('F11 · direct terrain tile · left click/Enter places, right click/Del clears')
+   :page===11
+    ?('F12 · brush mode · left adds, right removes · mouse only')
+    :(('Track element ')+currentCode+' · F'+(page+1));
   drawPreview(selectedPreview,currentCode,terrainPage,112);
 
   paletteGrid.replaceChildren();
   const codes=pageCodes(page);if(paletteCursor>=codes.length)paletteCursor=Math.max(0,codes.length-1);
   codes.forEach((code,index)=>{
-   const label=terrainPage?('Terrain '+code):(blissElementData[code]?.id||('Element '+code));
+   const label=terrainPage?terrainLabel(code):(blissElementData[code]?.id||('Element '+code));
    const entry=button('',()=>{
     paletteCursor=index;selectPaletteCode(code,terrainPage);activeArea='palette';updateArea();
    });
@@ -382,18 +407,25 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
 
   pageBar.replaceChildren();
   for(let i=0;i<blissPalettePages.length;i++){
-   const terrain=i>=10,codesForPage=pageCodes(i),representative=codesForPage[0]??0;
-   const pageButton=button('',()=>{page=i;paletteCursor=0;activeArea='palette';renderPalette();renderStatus();});
-   pageButton.title=(paletteLabels[i]??('Page '+(i+1)))+' · '+(i<10?'F'+(i+1):i===10?'F11 / Shift+F1':'F12 / Shift+F2');pageButton.setAttribute('aria-label',pageButton.title);
+   const pageButton=button('',()=>{choosePage(i);});
+   const shortcut='F'+(i+1);
+   const pageHelp:HoverHelp=i===10
+    ?{name:'Terrain tiles (F11)',shortcut:'F11',description:'Direct terrain editing. Pick any terrain tile and place/delete it like a track element.'}
+    :i===11
+     ?{name:'Terrain brush (F12)',shortcut:'F12',description:'Mouse-only Bliss brush. Pick Water or Mountain; left click floods/raises, right click dries/lowers, with edge repair.'}
+     :{name:paletteLabels[i]??('Page '+(i+1)),shortcut,description:'Select palette page '+(i+1)+'.'};
+   pageButton.title=pageHelp.name+' ('+pageHelp.shortcut+')';pageButton.setAttribute('aria-label',pageButton.title);attachHoverHelp(pageButton,pageHelp);
    pageButton.style.cssText+='display:grid;place-items:center;height:48px;padding:3px;overflow:hidden;';
    const icon=document.createElement('canvas');icon.style.cssText='image-rendering:pixelated;display:block;';
-   drawPreview(icon,representative,terrain,38);pageButton.append(icon);
+   drawPageIcon(icon,i);pageButton.append(icon);
    setActive(pageButton,page===i);pageBar.append(pageButton);
   }
  };
  const selectPaletteCode=(code:number,terrain=page>=10)=>{
-  if(terrain){terrainBrush=code;chooseTool('terrain');}
-  else{brush=code;chooseTool('place');}
+  if(terrain){
+   terrainBrush=code;
+   if(page===11)chooseTool(code===1?'flood':'raise');else chooseTool('terrain');
+  }else{brush=code;chooseTool('place');}
   renderPalette();renderStatus();
  };
  const mapCoordinates=(event:PointerEvent)=>{
@@ -450,7 +482,9 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  map.addEventListener('wheel',event=>{event.preventDefault();setZoom(zoom+(event.deltaY<0?.25:-.25));},{passive:false});
 
  const choosePage=(index:number)=>{
-  page=Math.max(0,Math.min(11,index));paletteCursor=0;activeArea='palette';renderPalette();renderStatus();updateArea();
+  page=Math.max(0,Math.min(11,index));paletteCursor=0;activeArea='palette';
+  if(page===11&&terrainBrush!==1&&terrainBrush!==6)terrainBrush=1;
+  renderPalette();renderStatus();updateArea();
  };
  const pickAtCursor=()=>{
   const code=core.track.track[cellY*30+cellX];
