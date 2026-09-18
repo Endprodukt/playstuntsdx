@@ -8,6 +8,7 @@ import {captureBlissRegion,cutBlissRegion,hflipBlissRegion,pasteBlissRegion,rota
 import {buildBlissClosedCircuit,linkBlissTiles} from './bliss-smart-tools.ts';
 import {analyzeBlissRoute,checkBlissTrack} from './bliss-route.ts';
 import {detectBlissNonStunts,detectBlissTerrainError,findBlissStart} from './bliss-validation.ts';
+import {blissTrackMetadata,setBlissTrackMetadata,type BlissMetadata,type BlissMetadataFormat} from './bliss-metadata.ts';
 
 export interface BlissSelection {x:number;y:number;width:number;height:number}
 
@@ -29,6 +30,8 @@ export class BlissEditorCore {
  compatibility(){return detectBlissNonStunts(this.track,this.definitions);}
  terrainError(){return detectBlissTerrainError(this.track);}
  start(){return findBlissStart(this.track);}
+ metadata(){return blissTrackMetadata(this.track);}
+ setMetadata(metadata:BlissMetadata|null,format:BlissMetadataFormat='binary'){this.change(()=>setBlissTrackMetadata(this.track,metadata,format));}
  setSelection(selection:BlissSelection|null){
   if(selection){captureBlissRegion(this.track,selection.x,selection.y,selection.width,selection.height);}
   this.selection=selection?{...selection}:null;
