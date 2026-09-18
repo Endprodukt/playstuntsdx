@@ -151,23 +151,35 @@ export function analyzeBlissRoute(
    if(connectorCount!==3)continue;
    section.final=point(vector.x,vector.y);
 
+   const exitMask=data.cto[opposite(vector.bearing)];
+   let sawSectionAtPoint=false,matchingSection=0;
    for(let i=1;i<sections.length;i++){
     const previous=sections[i];if(!same(vector,previous.initial))continue;
-    if((1<<previous.bearing)!==data.cto[opposite(vector.bearing)]){
-     section.child=[0,0];section.wrongway=true;section.errors=true;if(section.error<40)section.error=72;
-     errors.push({x:vector.x,y:vector.y,error:72,section:sn});
-    }else if(previous.solving){
+    sawSectionAtPoint=true;
+    // A split can have multiple sections starting at exactly the same tile.
+    // Match the section whose outgoing bearing is actually allowed by the
+    // current entry mask instead of treating the first section at that point
+    // as authoritative.
+    if((exitMask&(1<<previous.bearing))!==0){matchingSection=i;break;}
+   }
+   if(matchingSection){
+    const previous=sections[matchingSection];
+    if(previous.solving){
      section.child=[0,0];section.cycle=true;if(section.error<40)section.error=82;
      errors.push({x:vector.x,y:vector.y,error:82,section:sn});
     }else{
-     section.child=[i,0];previous.parent[1]=sn;
+     section.child=[matchingSection,0];previous.parent[1]=sn;
      section.finishes=previous.finishes;section.cycle=previous.cycle;section.wrongway=previous.wrongway;
      if(section.error<40)section.error=previous.error;
     }
     section.solving=false;return;
    }
+   if(sawSectionAtPoint){
+    section.child=[0,0];section.wrongway=true;section.errors=true;if(section.error<40)section.error=72;
+    errors.push({x:vector.x,y:vector.y,error:72,section:sn});section.solving=false;return;
+   }
 
-   const exitMask=data.cto[opposite(vector.bearing)],one=bitDirection(exitMask);
+   const one=bitDirection(exitMask);
    if(one>=0){
     if(sections.length>254){tooComplex=true;section.solving=false;return;}
     const daughter=sections.length;sections.push(newSection(point(vector.x,vector.y),one,vector.origin));solveSection(daughter);
@@ -176,14 +188,19 @@ export function analyzeBlissRoute(
    }
 
    const daughters:number[]=[];
-   for(let offset=0;offset<4;offset++){
-    const direction=(vector.bearing+offset)&3;
-    if(direction===opposite(vector.bearing)||data.ctype[direction]===0)continue;
+   // Branch only into directions that Bliss' CTO routing mask explicitly
+   // permits for this entry. Looking at CTYPE alone can invent impossible
+   // branches on crossings and is one reason the old port lost/errored paths.
+   for(let direction=0;direction<4;direction++){
+    if((exitMask&(1<<direction))===0)continue;
     if(sections.length>254){tooComplex=true;section.solving=false;return;}
     const daughter=sections.length;sections.push(newSection(point(vector.x,vector.y),direction,vector.origin));daughters.push(daughter);solveSection(daughter);
-    if(daughters.length===2)break;
    }
    if(daughters.length<2){section.child=[daughters[0]??0,0];section.solving=false;return;}
+   // Stunts split pieces expose at most two route alternatives. Keep the
+   // two-child section representation, but fail explicitly if malformed/manual
+   // data produces more instead of silently dropping possible paths.
+   if(daughters.length>2){tooComplex=true;section.solving=false;return;}
    const a=sections[daughters[0]],b=sections[daughters[1]];
    section.finishes=a.finishes||b.finishes;section.cycle=a.cycle&&b.cycle;
    if(section.error===0){section.error=a.error;if(section.error===0||b.error===4)section.error=b.error;}
