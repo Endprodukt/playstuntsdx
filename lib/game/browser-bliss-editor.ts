@@ -2,6 +2,9 @@ import {BlissEditorCore} from './bliss-editor-core.ts';
 import {blissElementData,blissPalettePages} from './bliss-element-data.ts';
 import {blissOriginalMapImageData,blissOriginalPaletteImageData,type BlissOriginalMapResources,BLISS_ORIGINAL_MAP_SIZE} from './bliss-original-map.ts';
 import {encodeBlissTrack} from './bliss-track.ts';
+import {blissParentElement} from './bliss-edit.ts';
+import {blissTrackHash} from './bliss-track.ts';
+import {changeBlissMaterial,findBlissElementByName,smartSelectBliss} from './bliss-shortcuts.ts';
 import {transformBlissTerrainCode,transformBlissTrackCode,type BlissTransformOperation} from './bliss-transformations.ts';
 
 export interface BrowserBlissEditorHost {
@@ -18,6 +21,7 @@ export interface BrowserBlissEditorHost {
 }
 
 type Tool='place'|'erase'|'link'|'flood'|'dry'|'raise'|'lower'|'terrain';
+type EditorArea='grid'|'palette';
 
 const button=(label:string,action:()=>void)=>{
  const element=document.createElement('button');element.type='button';element.textContent=label;
@@ -31,20 +35,61 @@ const panel=(title:string)=>{
 };
 const setActive=(element:HTMLButtonElement,active:boolean)=>{element.style.background=active?'#5b6330':'#232323';element.style.borderColor=active?'#b4c35a':'#555';};
 
-/** First native PlayStunts DX shell for the Bliss port.
- * It intentionally renders with editor art extracted from the user's Stunts
- * files instead of redistributing Bliss' biggfx atlas. */
+const OPTION_HELP=[
+ ['F1 – F12','Select palette page (2×F1 for help)'],
+ ['Ctrl-Q','Toggle debug mode'],
+ ['Ctrl-E','Allow/disallow conflict generation'],
+ ['Ctrl-D','Toggle conflict-warning display'],
+ ['Ctrl-G','Display/hide grid'],
+ ['Ctrl-R','Redraw track'],
+ ['Ctrl-S','Take a track-shot'],
+ ['Ctrl-T','Toggle terrain affected by paste'],
+ ['Ctrl-K','Toggle track affected by paste'],
+ ['Ctrl-O','Toggle colouring mode'],
+ ['Ctrl','Select by dragging with left mouse button'],
+ ['Ctrl-W','Select/Deselect the whole grid'],
+ ['Ctrl-C','Copy selection'],
+ ['Ctrl-X','Cut selection'],
+ ['Ctrl-V','Paste clipboard'],
+ ['F','Flip horizontally'],
+ ['Shift-F','Flip vertically'],
+ ['R','Rotate clockwise'],
+ ['Shift-R','Rotate counter-clockwise'],
+ ['Ctrl-Z','Undo'],
+ ['Ctrl-Y','Redo'],
+ ['U','Link tiles at pointer/keyboard cursor'],
+ ['C','Check track for errors'],
+ ['Arrows','Move keyboard cursor'],
+ ['Tab','Switch between the grid and the palette'],
+ ['Enter','Paste current element/Create closed-circuit'],
+ ['Del','Delete at keyboard cursor or selection'],
+ ['P','Pick element at keyboard cursor position'],
+ ['\\','In manual mode, select element by hex typing'],
+] as const;
+const TILE_HELP=[
+ ['Space','Find element by name'],['A','Banked road'],['B','Boulevard (highway)'],['D','Split (detour)'],['E','Elevated road'],
+ ['G','Spin (cork up/down)'],['H','Chicane'],['I','Pipe'],['J','Ramp (jump)'],['K','Crossroad'],['L','Loop'],
+ ['M','Change material'],['N','Scenery'],['O','Start/Finish line'],['Q','Corner'],['S','Straightway'],
+ ['T','Tunnel and slalom'],['V','Transitions'],['W','Corkscrew'],['X, Y, Z','Side, bottom and corner fillers'],
+] as const;
+
+/** Native PlayStunts DX shell for the Bliss 2.6.1 port.
+ * Track/terrain art comes from the user's Stunts data. Behaviour and shortcuts
+ * intentionally follow Bliss so experienced Bliss users can work by muscle memory. */
 export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const core=BlissEditorCore.fromBytes(Uint8Array.from(host.track.raw));
- let tool:Tool='place',brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,closed=false,zoom=1;
+ let tool:Tool='place',brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,selecting=false,selectionAnchor:{x:number;y:number}|null=null,closed=false,zoom=1;
+ let activeArea:EditorArea='grid',paletteCursor=0,lastPlaced:{x:number;y:number}|null=null,lastF1=0;
+ let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false,colouringMode=false;
+
  const overlay=document.createElement('div');overlay.tabIndex=-1;overlay.style.cssText='position:fixed;inset:0;z-index:2147483000;background:#090909;color:#ddd;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:10px;padding:12px;box-sizing:border-box;font-family:system-ui,Segoe UI,sans-serif;';
  const top=document.createElement('div');top.style.cssText='display:flex;align-items:center;gap:8px;min-width:0;';
  const title=document.createElement('strong');title.textContent='PlayStunts DX — Bliss Track Editor';title.style.cssText='font-size:14px;color:#fff;margin-right:auto;';
  const name=document.createElement('span');name.textContent=host.track.name+'.TRK';name.style.cssText='color:#aaa;font-size:12px;';
- const status=document.createElement('span');status.style.cssText='color:#c8c8c8;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw;';
+ const status=document.createElement('span');status.style.cssText='color:#c8c8c8;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:48vw;';
  top.append(title,name,status);
 
- const main=document.createElement('div');main.style.cssText='display:grid;grid-template-columns:minmax(360px,460px) minmax(0,1fr) minmax(210px,270px);gap:10px;min-height:0;';
+ const main=document.createElement('div');main.style.cssText='display:grid;grid-template-columns:minmax(360px,460px) minmax(0,1fr) minmax(220px,280px);gap:10px;min-height:0;';
  const palettePanel=panel('Track pieces');
  palettePanel.style.display='grid';palettePanel.style.gridTemplateRows='auto auto minmax(0,1fr) auto';palettePanel.style.gap='8px';
  const selectedPiece=document.createElement('div');selectedPiece.style.cssText='display:grid;grid-template-columns:118px minmax(0,1fr);gap:10px;align-items:center;min-height:126px;padding:8px;border:1px solid #353535;background:#0b0b0b;border-radius:5px;';
@@ -67,33 +112,51 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const map=document.createElement('canvas');map.width=BLISS_ORIGINAL_MAP_SIZE;map.height=BLISS_ORIGINAL_MAP_SIZE;map.style.cssText='display:block;image-rendering:pixelated;width:480px;height:480px;max-width:none;max-height:none;cursor:crosshair;box-shadow:0 0 0 1px #333;flex:none;';
  mapWrap.append(map);mapPanel.append(zoomBar,mapWrap);
 
- const toolsPanel=panel('Tools');
- const tools=document.createElement('div');tools.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:5px;';
+ const toolsPanel=panel('Bliss tools');
+ const quick=document.createElement('div');quick.style.cssText='display:grid;grid-template-columns:repeat(4,1fr);gap:5px;';
+ const quickButton=(symbol:string,titleText:string,action:()=>void)=>{
+  const control=button(symbol,action);control.title=titleText;control.setAttribute('aria-label',titleText);control.style.cssText+='font-size:20px;height:44px;padding:3px;';quick.append(control);return control;
+ };
+ quickButton('□','Select',()=>{activeArea='grid';updateArea();});
+ quickButton('⧉','Copy',()=>copySelection());
+ quickButton('✂','Cut',()=>cutSelection());
+ quickButton('↪','Paste',()=>pasteClipboard());
+ quickButton('↔','Flip horizontally (F)',()=>flip(false));
+ quickButton('↕','Flip vertically (Shift+F)',()=>flip(true));
+ quickButton('↻','Rotate clockwise (R)',()=>rotate(false));
+ quickButton('↺','Rotate counter-clockwise (Shift+R)',()=>rotate(true));
+ quickButton('↶','Undo',()=>{if(core.undo())changed('Undo');});
+ quickButton('↷','Redo',()=>{if(core.redo())changed('Redo');});
+ quickButton('?','Bliss shortcut help',()=>showHelp(0));
+ quickButton('✓','Check track',()=>checkTrack());
+
+ const switches=document.createElement('div');switches.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:10px;';
+ const switchButtons=new Map<string,HTMLButtonElement>();
+ const addSwitch=(id:string,label:string,action:()=>void)=>{const b=button(label,action);switchButtons.set(id,b);switches.append(b);};
+ addSwitch('conflicts','Conflicts',()=>{showConflicts=!showConflicts;renderMap();renderStatus();});
+ addSwitch('allow','Mix tiles',()=>{allowConflicts=!allowConflicts;renderStatus();});
+ addSwitch('grid','Grid',()=>{showGrid=!showGrid;renderMap();renderStatus();});
+ addSwitch('trk','Paste TRK',()=>{affectTrack=!affectTrack;renderStatus();});
+ addSwitch('ter','Paste TER',()=>{affectTerrain=!affectTerrain;renderStatus();});
+ addSwitch('debug','Debug',()=>{debugMode=!debugMode;renderMap();renderStatus();});
+
+ const terrainTools=document.createElement('div');terrainTools.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:10px;';
  const toolButtons=new Map<Tool,HTMLButtonElement>();
  const chooseTool=(next:Tool)=>{tool=next;for(const [key,value] of toolButtons)setActive(value,key===tool);renderStatus();};
  for(const [key,label] of [['place','Place'],['erase','Erase'],['link','Auto link'],['flood','Flood'],['dry','Dry'],['raise','Raise'],['lower','Lower'],['terrain','Terrain tile']] as const){
-  const control=button(label,()=>chooseTool(key));toolButtons.set(key,control);tools.append(control);
+  const control=button(label,()=>chooseTool(key));toolButtons.set(key,control);terrainTools.append(control);
  }
- const transformBox=document.createElement('div');transformBox.style.cssText='display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:10px;';
- const rotate=button('Rotate ↻',()=>transformBrush('clockwise','Rotate'));
- const flipH=button('Flip ↔',()=>transformBrush('hflip','Horizontal flip'));
- const flipV=button('Flip ↕',()=>transformBrush('vflip','Vertical flip'));
- transformBox.append(rotate,flipH,flipV);
- const help=document.createElement('p');help.textContent='Left click/drag edits · Right click erases · Mouse wheel zooms · Ctrl+Z/Y undo/redo · 1–8 select tools · R rotates · H/V flip.';help.style.cssText='font-size:11px;line-height:1.35;color:#999;margin:10px 0 0;';
- toolsPanel.append(tools,transformBox,help);
+ const help=document.createElement('p');help.textContent='Bliss keys are active: F/Shift+F, R/Shift+R, F1–F12, Ctrl+C/X/V/W, arrows, Tab, Enter, Del, P, U, C and tile shortcuts.';help.style.cssText='font-size:11px;line-height:1.35;color:#999;margin:10px 0 0;';
+ toolsPanel.append(quick,switches,terrainTools,help);
 
  main.append(palettePanel,mapPanel,toolsPanel);
 
  const footer=document.createElement('div');footer.style.cssText='display:flex;align-items:center;gap:7px;min-width:0;';
  const coords=document.createElement('span');coords.style.cssText='font-size:11px;color:#888;margin-right:auto;';
+ const newTrackButton=button('New',()=>{void createNewTrack();});
  const undo=button('Undo',()=>{if(core.undo())changed('Undo');});
  const redo=button('Redo',()=>{if(core.redo())changed('Redo');});
- const validate=button('Check track',()=>{
-  const result=core.check();
-  status.textContent=result.ok?'Track OK — winning path found':'Track check: '+result.reason+' · error '+result.error;
-  status.style.color=result.ok?'#aee18a':'#ffbd7a';
- });
- const newTrackButton=button('New',()=>{void createNewTrack();});
+ const validate=button('Check track',()=>checkTrack());
  const save=button('Save',()=>{void saveTrack();});
  const saveAs=button('Save As',()=>{void saveTrack(true);});
  const done=button('Done',()=>{void finish();});
@@ -110,21 +173,53 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const width=Math.max(1,mapWrap.clientWidth-20),height=Math.max(1,mapWrap.clientHeight-20);
   setZoom(Math.min(4,width/BLISS_ORIGINAL_MAP_SIZE,height/BLISS_ORIGINAL_MAP_SIZE));
  };
+ const drawSelection=()=>{
+  const selection=core.selection;if(!selection)return;
+  context.save();context.strokeStyle='#f2d000';context.lineWidth=2;
+  context.strokeRect(selection.x*16+1,selection.y*16+1,selection.width*16-2,selection.height*16-2);context.restore();
+ };
+ const drawDebug=()=>{
+  if(!debugMode)return;
+  context.save();context.font='5px monospace';context.textBaseline='top';
+  for(let y=0;y<30;y++)for(let x=0;x<30;x++){
+   const index=y*30+x,t=core.track.track[index],l=core.track.terrain[index];
+   context.fillStyle='rgba(0,0,0,.72)';context.fillRect(x*16,y*16,15,6);
+   context.fillStyle='#fff';context.fillText(t.toString(16).padStart(2,'0').toUpperCase()+'/'+l.toString(16).padStart(2,'0').toUpperCase(),x*16+1,y*16+1);
+  }
+  context.restore();
+ };
+ const drawConflict=()=>{
+  if(!showConflicts)return;
+  const issue=core.compatibility()??core.terrainError();if(!issue)return;
+  context.save();context.strokeStyle='#ff3434';context.lineWidth=2;context.strokeRect(issue.x*16+1,issue.y*16+1,14,14);context.restore();
+ };
  const renderMap=()=>{
-  context.putImageData(blissOriginalMapImageData(core.track,host.resources,host.palette),0,0);
-  context.save();context.strokeStyle='rgba(255,255,255,.85)';context.lineWidth=1;context.strokeRect(cellX*16+.5,cellY*16+.5,15,15);context.restore();
+  context.putImageData(blissOriginalMapImageData(core.track,host.resources,host.palette,showGrid),0,0);
+  drawConflict();drawDebug();drawSelection();
+  context.save();context.strokeStyle=activeArea==='grid'?'#fff':'rgba(255,255,255,.55)';context.lineWidth=1;context.strokeRect(cellX*16+.5,cellY*16+.5,15,15);context.restore();
+ };
+ const updateArea=()=>{
+  palettePanel.style.boxShadow=activeArea==='palette'?'0 0 0 2px #879341 inset':'none';
+  mapPanel.style.boxShadow=activeArea==='grid'?'0 0 0 2px #879341 inset':'none';
+  renderMap();renderPalette();renderStatus();
  };
  const renderStatus=()=>{
-  const activeCode=tool==='terrain'?terrainBrush:brush;
-  const label=tool==='terrain'?('Terrain '+terrainBrush):(blissElementData[brush]?.id||('Element '+brush));
-  status.textContent=(core.modified?'Modified · ':'')+tool.toUpperCase()+' · '+label+' ['+activeCode+']';
+  const terrainPage=page>=10,activeCode=terrainPage?terrainBrush:brush;
+  const label=terrainPage?('Terrain '+terrainBrush):(blissElementData[brush]?.id||('Element '+brush));
+  const flags=[allowConflicts?'MIX':'',showGrid?'GRID':'',showConflicts?'WARN':'',affectTrack?'TRK':'',affectTerrain?'TER':'',debugMode?'DBG':'',colouringMode?'COL':''].filter(Boolean).join(' ');
+  status.textContent=(core.modified?'Modified · ':'')+label+' ['+activeCode+']'+(flags?' · '+flags:'');
   status.style.color=core.modified?'#f2d36d':'#c8c8c8';
-  coords.textContent='Cell '+(cellX+1)+','+(cellY+1)+' · landscape '+core.track.landscape+' · format '+core.track.format;
+  const selection=core.selection;
+  coords.textContent='Cell '+(cellX+1)+','+(cellY+1)+(selection?' · selection '+selection.width+'×'+selection.height:'')+' · '+(activeArea==='grid'?'GRID':'PALETTE');
   undo.disabled=!core.history.canUndo;redo.disabled=!core.history.canRedo;
+  for(const [id,b] of switchButtons){
+   const active=id==='conflicts'?showConflicts:id==='allow'?allowConflicts:id==='grid'?showGrid:id==='trk'?affectTrack:id==='ter'?affectTerrain:debugMode;
+   setActive(b,active);
+  }
  };
  const changed=(message='')=>{
   const bytes=encodeBlissTrack(core.track).subarray(0,1802);host.track.raw=Array.from(bytes);
-  renderMap();renderStatus();if(message)status.textContent=message+' · '+status.textContent;
+  renderMap();renderPalette();renderStatus();if(message)status.textContent=message+' · '+status.textContent;
  };
  const paletteLabels=['Paved','Dirt','Ice','Stunts','Banked','Splits','Highway','Elevated','Spins','Scenery','Terrain','Terrain 2'] as const;
  const pageCodes=(index:number)=>Array.from(new Set(blissPalettePages[index])).filter(code=>index>=10?code<=18:code>0&&code<253);
@@ -135,43 +230,51 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  const renderPalette=()=>{
   const terrainPage=page>=10,currentCode=terrainPage?terrainBrush:brush,currentLabel=terrainPage?('Terrain '+terrainBrush):(blissElementData[brush]?.id||('Element '+brush));
-  selectedName.textContent=currentLabel;selectedCode.textContent=(terrainPage?'Terrain tile ':'Track element ')+currentCode;
+  selectedName.textContent=currentLabel;selectedCode.textContent=(terrainPage?'Terrain tile ':'Track element ')+currentCode+' · F'+(page+1);
   drawPreview(selectedPreview,currentCode,terrainPage,112);
 
   paletteGrid.replaceChildren();
-  for(const code of pageCodes(page)){
+  const codes=pageCodes(page);if(paletteCursor>=codes.length)paletteCursor=Math.max(0,codes.length-1);
+  codes.forEach((code,index)=>{
    const label=terrainPage?('Terrain '+code):(blissElementData[code]?.id||('Element '+code));
    const entry=button('',()=>{
-    if(terrainPage){terrainBrush=code;chooseTool('terrain');}
-    else{brush=code;chooseTool('place');}
-    renderPalette();
+    paletteCursor=index;selectPaletteCode(code,terrainPage);activeArea='palette';updateArea();
    });
    entry.title=label;entry.setAttribute('aria-label',label);
    entry.style.cssText+='display:grid;place-items:center;min-height:74px;padding:4px;overflow:hidden;';
    const preview=document.createElement('canvas');preview.style.cssText='image-rendering:pixelated;display:block;';
    drawPreview(preview,code,terrainPage,64);entry.append(preview);
-   setActive(entry,code===currentCode);paletteGrid.append(entry);
-  }
+   setActive(entry,code===currentCode||activeArea==='palette'&&index===paletteCursor);paletteGrid.append(entry);
+  });
 
   pageBar.replaceChildren();
   for(let i=0;i<blissPalettePages.length;i++){
-   const terrain=i>=10,codes=pageCodes(i),representative=codes[0]??0;
-   const pageButton=button('',()=>{page=i;renderPalette();});
-   pageButton.title=paletteLabels[i]??('Page '+(i+1));pageButton.setAttribute('aria-label',pageButton.title);
+   const terrain=i>=10,codesForPage=pageCodes(i),representative=codesForPage[0]??0;
+   const pageButton=button('',()=>{page=i;paletteCursor=0;activeArea='palette';renderPalette();renderStatus();});
+   pageButton.title=(paletteLabels[i]??('Page '+(i+1)))+' · '+(i<10?'F'+(i+1):i===10?'F11 / Shift+F1':'F12 / Shift+F2');pageButton.setAttribute('aria-label',pageButton.title);
    pageButton.style.cssText+='display:grid;place-items:center;height:48px;padding:3px;overflow:hidden;';
    const icon=document.createElement('canvas');icon.style.cssText='image-rendering:pixelated;display:block;';
    drawPreview(icon,representative,terrain,38);pageButton.append(icon);
    setActive(pageButton,page===i);pageBar.append(pageButton);
   }
  };
+ const selectPaletteCode=(code:number,terrain=page>=10)=>{
+  if(terrain){terrainBrush=code;chooseTool('terrain');}
+  else{brush=code;chooseTool('place');}
+  renderPalette();renderStatus();
+ };
  const mapCoordinates=(event:PointerEvent)=>{
   const rect=map.getBoundingClientRect(),px=(event.clientX-rect.left)*map.width/rect.width,py=(event.clientY-rect.top)*map.height/rect.height;
   return {x:Math.max(0,Math.min(29,Math.floor(px/16))),y:Math.max(0,Math.min(29,Math.floor(py/16))),vx:Math.max(0,Math.min(30,Math.round(px/16))),vy:Math.max(0,Math.min(30,Math.round(py/16)))};
  };
+ const setSelectionFrom=(a:{x:number;y:number},b:{x:number;y:number})=>{
+  const x=Math.min(a.x,b.x),y=Math.min(a.y,b.y),width=Math.abs(a.x-b.x)+1,height=Math.abs(a.y-b.y)+1;
+  core.setSelection({x,y,width,height});renderMap();renderStatus();
+ };
  const apply=(event:PointerEvent,forceErase=false)=>{
-  const p=mapCoordinates(event);cellX=p.x;cellY=p.y;
-  if(forceErase||event.button===2||tool==='erase')core.clear(p.x,p.y);
-  else if(tool==='place')core.place(p.x,p.y,brush);
+  const p=mapCoordinates(event);cellX=p.x;cellY=p.y;activeArea='grid';
+  if(forceErase||event.button===2||tool==='erase')core.clear(p.x,p.y,allowConflicts);
+  else if(tool==='place'){if(core.place(p.x,p.y,brush,allowConflicts))lastPlaced={x:p.x,y:p.y};}
   else if(tool==='link')core.link(p.x,p.y);
   else if(tool==='flood')core.flood(p.vx,p.vy);
   else if(tool==='dry')core.dry(p.vx,p.vy);
@@ -180,101 +283,204 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   else if(tool==='terrain')core.paintTerrain(p.x,p.y,terrainBrush);
   changed();
  };
- const pointerDown=(event:PointerEvent)=>{event.preventDefault();painting=true;map.setPointerCapture(event.pointerId);apply(event,event.button===2);};
- const pointerMove=(event:PointerEvent)=>{const p=mapCoordinates(event);if(p.x!==cellX||p.y!==cellY){cellX=p.x;cellY=p.y;if(painting&&(event.buttons&3))apply(event,(event.buttons&2)!==0);else{renderMap();renderStatus();}}};
- const pointerUp=(event:PointerEvent)=>{painting=false;if(map.hasPointerCapture(event.pointerId))map.releasePointerCapture(event.pointerId);};
+ const pointerDown=(event:PointerEvent)=>{
+  event.preventDefault();activeArea='grid';map.setPointerCapture(event.pointerId);
+  const p=mapCoordinates(event);cellX=p.x;cellY=p.y;
+  if(event.ctrlKey&&event.button===0){selecting=true;selectionAnchor={x:p.x,y:p.y};setSelectionFrom(selectionAnchor,p);return;}
+  painting=true;apply(event,event.button===2);
+ };
+ const pointerMove=(event:PointerEvent)=>{
+  const p=mapCoordinates(event);if(p.x===cellX&&p.y===cellY)return;cellX=p.x;cellY=p.y;
+  if(selecting&&selectionAnchor){setSelectionFrom(selectionAnchor,p);return;}
+  if(painting&&(event.buttons&3))apply(event,(event.buttons&2)!==0);else{renderMap();renderStatus();}
+ };
+ const pointerUp=(event:PointerEvent)=>{painting=false;selecting=false;selectionAnchor=null;if(map.hasPointerCapture(event.pointerId))map.releasePointerCapture(event.pointerId);};
  map.addEventListener('pointerdown',pointerDown);map.addEventListener('pointermove',pointerMove);map.addEventListener('pointerup',pointerUp);map.addEventListener('pointercancel',pointerUp);map.addEventListener('contextmenu',event=>event.preventDefault());
  map.addEventListener('wheel',event=>{event.preventDefault();setZoom(zoom+(event.deltaY<0?.25:-.25));},{passive:false});
 
+ const choosePage=(index:number)=>{
+  page=Math.max(0,Math.min(11,index));paletteCursor=0;activeArea='palette';renderPalette();renderStatus();updateArea();
+ };
+ const pickAtCursor=()=>{
+  const code=core.track.track[cellY*30+cellX];
+  if(code){const parent=blissParentElement(core.track,cellX,cellY,core.definitions);brush=parent.code;page=Math.min(9,Math.max(0,blissPalettePages.findIndex(values=>values.includes(brush))));chooseTool('place');renderPalette();renderStatus();return;}
+  if(page>=10){terrainBrush=core.track.terrain[cellY*30+cellX];renderPalette();renderStatus();}
+ };
+ const copySelection=()=>{if(core.copySelection()){status.textContent='Selection copied';status.style.color='#aee18a';}else status.textContent='Select a region first.';};
+ const cutSelection=()=>{if(core.cutSelection({track:affectTrack,terrain:affectTerrain})){core.setSelection(null);changed('Selection cut');}else status.textContent='Select a region first.';};
+ const pasteClipboard=()=>{if(core.paste(cellX,cellY,{track:affectTrack,terrain:affectTerrain}))changed('Clipboard pasted');else status.textContent='Clipboard is empty.';};
+ const flip=(vertical:boolean)=>{
+  try{
+   if(core.selection){const ok=vertical?core.vflipSelection():core.hflipSelection();if(ok)changed(vertical?'Selection flipped vertically':'Selection flipped horizontally');return;}
+   transformBrush(vertical?'vflip':'hflip',vertical?'Vertical flip':'Horizontal flip');
+  }catch(error){status.textContent=String(error);status.style.color='#ff9b9b';}
+ };
+ const rotate=(counter:boolean)=>{
+  try{
+   if(core.selection){const ok=counter?core.rotateSelectionCounterClockwise():core.rotateSelectionClockwise();if(ok)changed(counter?'Selection rotated counter-clockwise':'Selection rotated clockwise');return;}
+   transformBrush(counter?'counterClockwise':'clockwise',counter?'Rotate counter-clockwise':'Rotate clockwise');
+  }catch{status.textContent='Bliss can only rotate a square selection in place.';status.style.color='#ffbd7a';}
+ };
+ const checkTrack=()=>{
+  const result=core.check();status.textContent=result.ok?'Track OK — winning path found':'Track check: '+result.reason+' · error '+result.error;status.style.color=result.ok?'#aee18a':'#ffbd7a';
+  if(result.point){cellX=result.point.x;cellY=result.point.y;renderMap();}
+ };
+ const wholeSelection=()=>{const s=core.selection;if(s&&s.x===0&&s.y===0&&s.width===30&&s.height===30)core.setSelection(null);else core.setSelection({x:0,y:0,width:30,height:30});renderMap();renderStatus();};
+ const deleteAtCursor=()=>{
+  if(core.selection){if(core.deleteSelection({track:affectTrack,terrain:affectTerrain}))changed('Selection deleted');return;}
+  if(page>=10){if(core.paintTerrain(cellX,cellY,0))changed('Terrain deleted');}
+  else if(core.clear(cellX,cellY,allowConflicts))changed('Element deleted');
+ };
+ const insertAtCursor=()=>{
+  if(activeArea==='palette'){
+   const codes=pageCodes(page),code=codes[paletteCursor];if(code!==undefined)selectPaletteCode(code,page>=10);activeArea='grid';updateArea();return;
+  }
+  if(core.selection){if(core.buildClosedCircuit(brush))changed('Closed circuit created');else{status.textContent='This brush cannot create a closed circuit.';status.style.color='#ffbd7a';}return;}
+  if(page>=10){if(core.paintTerrain(cellX,cellY,terrainBrush))changed('Terrain placed');}
+  else if(core.place(cellX,cellY,brush,allowConflicts)){lastPlaced={x:cellX,y:cellY};changed('Element placed');}
+ };
+ const smartSelect=(key:string,direction:1|-1)=>{
+  const next=smartSelectBliss(core.track,brush,key,direction,lastPlaced,core.definitions);if(next!==brush){brush=next;chooseTool('place');renderPalette();renderStatus();}
+ };
+ const changeMaterial=()=>{const next=changeBlissMaterial(brush);if(next!==brush){brush=next;renderPalette();renderStatus();}};
+ const findByName=()=>{
+  if(page===11){terrainBrush=terrainBrush===0||terrainBrush>5?1:6;renderPalette();renderStatus();return;}
+  const query=window.prompt('Find Bliss element by name:','');if(query===null)return;
+  const next=findBlissElementByName(query,brush);if(next!==brush){brush=next;chooseTool('place');renderPalette();renderStatus();}else{status.textContent='No matching element found.';status.style.color='#ffbd7a';}
+ };
+ const manualHex=()=>{
+  if(!allowConflicts){status.textContent='Manual hex selection is available when “Mix tiles” (Ctrl+E) is enabled.';status.style.color='#ffbd7a';return;}
+  const entered=window.prompt('Bliss manual mode — enter a 2-digit hexadecimal element code:','');if(!entered)return;
+  const value=Number.parseInt(entered.trim(),16);if(!Number.isInteger(value)||value<0||value>255){window.alert('Enter a value from 00 to FF.');return;}
+  if(page>=10)terrainBrush=value;else brush=value;renderPalette();renderStatus();
+ };
+ const moveCursor=(dx:number,dy:number,extend:boolean)=>{
+  const old={x:cellX,y:cellY};cellX=Math.max(0,Math.min(29,cellX+dx));cellY=Math.max(0,Math.min(29,cellY+dy));
+  if(extend){if(!selectionAnchor)selectionAnchor=old;setSelectionFrom(selectionAnchor,{x:cellX,y:cellY});}
+  else selectionAnchor=null;
+  renderMap();renderStatus();
+ };
+ const movePalette=(dx:number,dy:number)=>{const codes=pageCodes(page);if(!codes.length)return;paletteCursor=Math.max(0,Math.min(codes.length-1,paletteCursor+dx+dy*4));renderPalette();renderStatus();};
+
  const keyDown=(event:KeyboardEvent)=>{
-  if(event.ctrlKey&&(event.code==='KeyZ'||event.code==='KeyY')){event.preventDefault();if(event.code==='KeyZ'){if(core.undo())changed('Undo');}else if(core.redo())changed('Redo');return;}
-  if(event.code==='Escape'){event.preventDefault();void finish();return;}
-  if(event.code==='KeyR'){event.preventDefault();transformBrush('clockwise','Rotate');return;}
-  if(event.code==='KeyH'){event.preventDefault();transformBrush('hflip','Horizontal flip');return;}
-  if(event.code==='KeyV'){event.preventDefault();transformBrush('vflip','Vertical flip');return;}
-  const keys:Record<string,Tool>={Digit1:'place',Digit2:'erase',Digit3:'link',Digit4:'flood',Digit5:'dry',Digit6:'raise',Digit7:'lower',Digit8:'terrain'};
-  if(keys[event.code]){event.preventDefault();chooseTool(keys[event.code]);}
+  if(event.defaultPrevented)return;
+  const code=event.code,key=event.key;
+
+  if(/^F([1-9]|1[0-2])$/.test(code)){
+   event.preventDefault();const n=Number(code.slice(1));
+   if(n===1&&!event.shiftKey){const now=performance.now();if(page===0&&now-lastF1<650){showHelp(0);lastF1=0;return;}lastF1=now;choosePage(0);return;}
+   if(event.shiftKey&&(n===1||n===2)){choosePage(9+n);return;}
+   choosePage(n-1);return;
+  }
+
+  if(event.ctrlKey){
+   const upper=key.toUpperCase();
+   if(upper==='Z'){event.preventDefault();if(core.undo())changed('Undo');return;}
+   if(upper==='Y'){event.preventDefault();if(core.redo())changed('Redo');return;}
+   if(upper==='C'){event.preventDefault();copySelection();return;}
+   if(upper==='X'){event.preventDefault();cutSelection();return;}
+   if(upper==='V'){event.preventDefault();pasteClipboard();return;}
+   if(upper==='W'){event.preventDefault();wholeSelection();return;}
+   if(upper==='E'){event.preventDefault();allowConflicts=!allowConflicts;renderStatus();return;}
+   if(upper==='D'){event.preventDefault();showConflicts=!showConflicts;renderMap();renderStatus();return;}
+   if(upper==='G'){event.preventDefault();showGrid=!showGrid;renderMap();renderStatus();return;}
+   if(upper==='Q'){event.preventDefault();debugMode=!debugMode;renderMap();renderStatus();return;}
+   if(upper==='T'){event.preventDefault();affectTerrain=!affectTerrain;renderStatus();return;}
+   if(upper==='K'){event.preventDefault();affectTrack=!affectTrack;renderStatus();return;}
+   if(upper==='R'){event.preventDefault();renderMap();renderStatus();return;}
+   if(upper==='S'){event.preventDefault();void takeTrackShot();return;}
+   if(upper==='H'){event.preventDefault();status.textContent='Track hash: '+blissTrackHash(core.track).toString(16).toUpperCase().padStart(8,'0');status.style.color='#aee18a';return;}
+   if(upper==='O'){event.preventDefault();colouringMode=!colouringMode;renderStatus();status.textContent='Colouring mode '+(colouringMode?'enabled':'disabled')+' — colour editing UI is the next Bliss block to port.';status.style.color='#ffbd7a';return;}
+  }
+
+  if(code==='Escape'){event.preventDefault();void finish();return;}
+  if(code==='Tab'){event.preventDefault();activeArea=activeArea==='grid'?'palette':'grid';selectionAnchor=null;updateArea();return;}
+  if(code==='ArrowUp'||code==='ArrowDown'||code==='ArrowLeft'||code==='ArrowRight'){
+   event.preventDefault();const dx=code==='ArrowLeft'?-1:code==='ArrowRight'?1:0,dy=code==='ArrowUp'?-1:code==='ArrowDown'?1:0;
+   if(activeArea==='palette')movePalette(dx,dy);else moveCursor(dx,dy,event.ctrlKey);return;
+  }
+  if(code==='Enter'){event.preventDefault();insertAtCursor();return;}
+  if(code==='Delete'){event.preventDefault();deleteAtCursor();return;}
+  if(code==='Space'){event.preventDefault();findByName();return;}
+  if(code==='Backslash'){event.preventDefault();manualHex();return;}
+  if(code==='KeyP'){event.preventDefault();pickAtCursor();return;}
+  if(code==='KeyU'){event.preventDefault();const linked=core.link(cellX,cellY);if(linked!==null){brush=linked;changed('Tiles linked');}else{status.textContent='No compatible tile link at cursor.';status.style.color='#ffbd7a';}return;}
+  if(code==='KeyC'){event.preventDefault();checkTrack();return;}
+  if(code==='KeyF'){event.preventDefault();flip(event.shiftKey);return;}
+  if(code==='KeyR'){event.preventDefault();rotate(event.shiftKey);return;}
+  if(code==='KeyM'){event.preventDefault();changeMaterial();return;}
+  if(code==='KeyX'||code==='KeyY'||code==='KeyZ'){
+   event.preventDefault();brush=code==='KeyX'?255:code==='KeyY'?254:253;chooseTool('place');renderPalette();renderStatus();return;
+  }
+
+  if(/^Key[A-W]$/.test(code)&&!['KeyC','KeyF','KeyM','KeyP','KeyR','KeyU'].includes(code)){
+   const letter=key.length===1?key:code.slice(3);const entity=letter.toUpperCase();
+   if(!['A','B','D','E','G','H','I','J','K','L','N','O','Q','S','T','V','W'].includes(entity))return;
+   event.preventDefault();smartSelect(entity,event.shiftKey?-1:1);return;
+  }
  };
  window.addEventListener('keydown',keyDown,true);
 
  function transformBrush(operation:BlissTransformOperation,label:string){
-  const terrain=tool==='terrain';
-  const before=terrain?terrainBrush:brush;
-  const next=terrain?transformBlissTerrainCode(before,operation):transformBlissTrackCode(before,operation);
-  if(terrain)terrainBrush=next;else brush=next;
-  renderPalette();renderStatus();
-  if(next===before){
-   status.textContent=label+': this piece is symmetrical, so its orientation does not change.';
-   status.style.color='#aaa';
-  }else{
-   status.textContent=label+' → '+next+' · '+(terrain?('Terrain '+next):(blissElementData[next]?.id||('Element '+next)));
-   status.style.color='#aee18a';
-  }
+  const terrain=page>=10,before=terrain?terrainBrush:brush,next=terrain?transformBlissTerrainCode(before,operation):transformBlissTrackCode(before,operation);
+  if(terrain)terrainBrush=next;else brush=next;renderPalette();renderStatus();
+  if(next===before){status.textContent=label+': this piece is symmetrical, so its orientation does not change.';status.style.color='#aaa';}
+  else{status.textContent=label+' → '+next+' · '+(terrain?('Terrain '+next):(blissElementData[next]?.id||('Element '+next)));status.style.color='#aee18a';}
+ }
+
+ function showHelp(initial:0|1){
+  let helpPage=initial;
+  const shade=document.createElement('div');shade.style.cssText='position:fixed;inset:0;z-index:2147483640;background:rgba(0,0,0,.72);display:grid;place-items:center;padding:30px;';
+  const box=document.createElement('div');box.style.cssText='width:min(760px,90vw);max-height:88vh;overflow:auto;background:#1e1e34;border:2px solid #80809a;color:#ddd;padding:18px 22px;box-shadow:0 18px 60px #000;font:14px/1.35 ui-monospace,Consolas,monospace;';
+  const heading=document.createElement('h2');heading.style.cssText='text-align:center;font-size:16px;margin:0 0 12px;border-bottom:1px solid #aaa;padding-bottom:8px;';
+  const table=document.createElement('div');table.style.cssText='display:grid;grid-template-columns:120px 1fr;column-gap:18px;row-gap:2px;';
+  const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;margin-top:16px;';
+  const optionsButton=button('Option keys',()=>{helpPage=0;draw();}),tilesButton=button('Tile shortcuts',()=>{helpPage=1;draw();}),close=button('Back',()=>shade.remove());
+  actions.append(optionsButton,tilesButton,close);box.append(heading,table,actions);shade.append(box);document.body.append(shade);
+  const draw=()=>{heading.textContent=helpPage===0?'Help — Option keys':'Help — Tile shortcuts';table.replaceChildren();for(const [keyName,description] of helpPage===0?OPTION_HELP:TILE_HELP){const a=document.createElement('span'),b=document.createElement('span');a.textContent=keyName;a.style.color='#d7d76a';b.textContent=description;b.style.color='#aaaaff';table.append(a,b);}setActive(optionsButton,helpPage===0);setActive(tilesButton,helpPage===1);};
+  shade.addEventListener('pointerdown',event=>{if(event.target===shade)shade.remove();});draw();
+ }
+
+ async function takeTrackShot(){
+  const shot=document.createElement('canvas');shot.width=BLISS_ORIGINAL_MAP_SIZE;shot.height=BLISS_ORIGINAL_MAP_SIZE;
+  shot.getContext('2d',{alpha:false})!.putImageData(blissOriginalMapImageData(core.track,host.resources,host.palette,showGrid),0,0);
+  const blob=await new Promise<Blob|null>(resolve=>shot.toBlob(resolve,'image/png'));if(!blob){status.textContent='Could not create track-shot.';return;}
+  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=(host.track.name||'TRACK')+'-trackshot.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  status.textContent='Track-shot exported.';status.style.color='#aee18a';
  }
 
  async function createNewTrack(){
   if(core.modified&&!window.confirm('Discard the current unsaved changes and create a new track?'))return;
-  const names=['Desert','Tropical','Alpine','City','Country'];
-  const current=Math.max(0,Math.min(4,core.track.landscape))+1;
-  const answer=window.prompt('New track environment:\n1 Desert\n2 Tropical\n3 Alpine\n4 City\n5 Country',String(current));
-  if(answer===null)return;
-  const choice=Number.parseInt(answer.trim(),10)-1;
-  if(!Number.isInteger(choice)||choice<0||choice>4){window.alert('Choose a number from 1 to 5.');return;}
-  const preset=host.presets?.[choice]?.terrain;
-  core.newTrack({landscape:choice,format:preset?.[900]??152,terrain:preset});
-  host.track.name='';name.textContent='UNTITLED.TRK';cellX=0;cellY=0;page=0;brush=4;terrainBrush=0;chooseTool('place');
-  changed('New '+names[choice]+' track');
+  const names=['Desert','Tropical','Alpine','City','Country'],current=Math.max(0,Math.min(4,core.track.landscape))+1;
+  const answer=window.prompt('New track environment:\n1 Desert\n2 Tropical\n3 Alpine\n4 City\n5 Country',String(current));if(answer===null)return;
+  const choice=Number.parseInt(answer.trim(),10)-1;if(!Number.isInteger(choice)||choice<0||choice>4){window.alert('Choose a number from 1 to 5.');return;}
+  const preset=host.presets?.[choice]?.terrain;core.newTrack({landscape:choice,format:preset?.[900]??152,terrain:preset});
+  host.track.name='';name.textContent='UNTITLED.TRK';cellX=0;cellY=0;page=0;brush=4;terrainBrush=0;lastPlaced=null;core.setSelection(null);chooseTool('place');changed('New '+names[choice]+' track');
  }
 
  async function requestedTrackName(force=false){
-  if(!force&&host.track.name){
-   const isCustom=host.customTrackExists?await host.customTrackExists(host.track.name):true;
-   if(isCustom)return host.track.name;
-  }
-  const entered=window.prompt('Track name (maximum 8 characters):',host.track.name||'NEWTRACK');
-  if(entered===null)return null;
-  const clean=entered.trim().replace(/[^A-Za-z0-9_-]/g,'_').toUpperCase().slice(0,8);
-  if(!clean){window.alert('Please enter a track name.');return null;}
-  return clean;
+  if(!force&&host.track.name){const isCustom=host.customTrackExists?await host.customTrackExists(host.track.name):true;if(isCustom)return host.track.name;}
+  const entered=window.prompt('Track name (maximum 8 characters):',host.track.name||'NEWTRACK');if(entered===null)return null;
+  const clean=entered.trim().replace(/[^A-Za-z0-9_-]/g,'_').toUpperCase().slice(0,8);if(!clean){window.alert('Please enter a track name.');return null;}return clean;
  }
 
  async function saveTrack(forceName=false){
-  const target=await requestedTrackName(forceName);if(!target)return false;
-  const savePath='';
-  const targetIsCustom=host.customTrackExists?await host.customTrackExists(target):false;
-  const targetExists=await host.exists(savePath,target);
-  if(host.customTrackExists&&targetExists&&!targetIsCustom){
-   window.alert(target+'.TRK is a supplied track and cannot be replaced through Custom Tracks. Choose another name.');
-   return false;
-  }
+  const target=await requestedTrackName(forceName);if(!target)return false;const savePath='';
+  const targetIsCustom=host.customTrackExists?await host.customTrackExists(target):false,targetExists=await host.exists(savePath,target);
+  if(host.customTrackExists&&targetExists&&!targetIsCustom){window.alert(target+'.TRK is a supplied track and cannot be replaced through Custom Tracks. Choose another name.');return false;}
   if(targetIsCustom&&(forceName||target!==host.track.name)&&!window.confirm(target+'.TRK already exists in Custom Tracks. Overwrite it?'))return false;
-  const bytes=encodeBlissTrack(core.track).subarray(0,1802);
-  let customLocation='';
-  try{
-   if(host.persistCustomTrack)customLocation=await host.persistCustomTrack(target,bytes);
-  }catch(error){
-   status.textContent='Could not save to Custom Tracks: '+String(error);status.style.color='#ff9b9b';return false;
-  }
-  const statusCode=await host.writeTrack(savePath,target,bytes);
-  if(statusCode){status.textContent='Track was written to Custom Tracks, but could not be added to the current track list.';status.style.color='#ffbd7a';return false;}
-  host.track.name=target;host.track.path=savePath;
-  name.textContent=host.track.name+'.TRK';
-  await host.clearScores(savePath,host.track.name);host.track.raw=Array.from(bytes);core.markSaved();renderStatus();
-  status.textContent=customLocation?'Saved to '+customLocation:'Saved '+host.track.name+'.TRK';
-  status.style.color='#aee18a';return true;
+  const bytes=encodeBlissTrack(core.track).subarray(0,1802);let customLocation='';
+  try{if(host.persistCustomTrack)customLocation=await host.persistCustomTrack(target,bytes);}catch(error){status.textContent='Could not save to Custom Tracks: '+String(error);status.style.color='#ff9b9b';return false;}
+  const statusCode=await host.writeTrack(savePath,target,bytes);if(statusCode){status.textContent='Track was written to Custom Tracks, but could not be added to the current track list.';status.style.color='#ffbd7a';return false;}
+  host.track.name=target;host.track.path=savePath;name.textContent=host.track.name+'.TRK';await host.clearScores(savePath,host.track.name);host.track.raw=Array.from(bytes);core.markSaved();renderStatus();
+  status.textContent=customLocation?'Saved to '+customLocation:'Saved '+host.track.name+'.TRK';status.style.color='#aee18a';return true;
  }
  async function finish(){
-  if(closed)return;
-  if(core.modified){
-   const choice=window.confirm('Save changes to '+host.track.name+'.TRK before leaving the Bliss editor?');
-   if(choice&&!await saveTrack())return;
-  }
+  if(closed)return;if(core.modified){const choice=window.confirm('Save changes to '+(host.track.name||'UNTITLED')+'.TRK before leaving the Bliss editor?');if(choice&&!await saveTrack())return;}
   closed=true;cleanup();resolveDone?.();
  }
  const cleanup=()=>{window.removeEventListener('keydown',keyDown,true);overlay.remove();};
  let resolveDone:(()=>void)|undefined;
- renderPalette();renderMap();renderStatus();chooseTool('place');overlay.focus();
- requestAnimationFrame(()=>fitMap());
- await new Promise<void>(resolve=>{resolveDone=resolve;});
- cleanup();
+ renderPalette();renderMap();renderStatus();chooseTool('place');updateArea();overlay.focus();requestAnimationFrame(()=>fitMap());
+ await new Promise<void>(resolve=>{resolveDone=resolve;});cleanup();
 }
