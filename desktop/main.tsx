@@ -10,6 +10,7 @@ import { installDesktopControlBindings } from './control-bindings';
 import { installDesktopDriveControls } from './gamepad-drive';
 import { installDesktopOptionsOverlay } from './options-overlay';
 import { ensureDesktopRuntimeStartup } from './runtime-startup';
+import { blissEditorActive } from '../lib/game/bliss-editor-presence';
 import {
   MT32_CHANNEL, createMt32Snapshot, createMt32SoundCatalog,
   type Mt32Command, type Mt32HostDevice,
@@ -124,7 +125,7 @@ function DesktopApp() {
     }
 
     function onKeyDown(event: KeyboardEvent) {
-      if (event.repeat) return;
+      if (event.repeat || blissEditorActive()) return;
       const fullscreenKey = event.key === 'F11' || (event.altKey && event.key === 'Enter');
       if (fullscreenKey) {
         event.preventDefault();
