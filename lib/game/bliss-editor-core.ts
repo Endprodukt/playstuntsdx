@@ -6,7 +6,7 @@ import {blissTransformations,type BlissTransformations} from './bliss-transforma
 import {clearBlissTrackElement,dryBlissTerrain,floodBlissTerrain,lowerBlissTerrain,placeBlissTrackElement,raiseBlissTerrain} from './bliss-edit.ts';
 import {captureBlissRegion,cutBlissRegion,hflipBlissRegion,pasteBlissRegion,rotateBlissRegionClockwise,rotateBlissRegionCounterClockwise,vflipBlissRegion,type BlissRegion} from './bliss-region.ts';
 import {buildBlissClosedCircuit,linkBlissTiles} from './bliss-smart-tools.ts';
-import {analyzeBlissRoute,checkBlissTrack} from './bliss-route.ts';
+import {analyzeBlissRoute,blissPathLength,checkBlissTrack} from './bliss-route.ts';
 import {detectBlissNonStunts,detectBlissTerrainError,findBlissStart,listBlissCompatibilityIssues} from './bliss-validation.ts';
 import {blissTrackMetadata,setBlissTrackMetadata,type BlissMetadata,type BlissMetadataFormat} from './bliss-metadata.ts';
 import {generateBlissScenery,type BlissSceneryGeneratorConfig} from './bliss-scenery-generator.ts';
@@ -51,6 +51,7 @@ export class BlissEditorCore {
   this.track=next;this.history.clear();this.clipboard=null;this.selection=null;this.strokeBefore=null;this.strokeChanged=false;this.modified=true;
  }
  analyze(){return analyzeBlissRoute(this.track,this.definitions);}
+ pathLength(analysis:ReturnType<typeof analyzeBlissRoute>,pathIndex:number,weighted=false){return blissPathLength(this.track,analysis,pathIndex,weighted,this.definitions);}
  check(){return checkBlissTrack(this.track);}
  compatibility(){return detectBlissNonStunts(this.track,this.definitions);}
  warnings(){return listBlissCompatibilityIssues(this.track,this.definitions);}
