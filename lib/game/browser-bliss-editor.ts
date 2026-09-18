@@ -724,7 +724,11 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   changed();
  };
  const pointerDown=(event:PointerEvent)=>{
-  const binding=pointerBinding(event),action=actionForBinding(binding);
+  const binding=pointerBinding(event);let action=actionForBinding(binding);
+  if(!action&&event.shiftKey){
+   const base=[...modifierPrefix({ctrlKey:event.ctrlKey,shiftKey:false,altKey:event.altKey,metaKey:event.metaKey}),'Mouse'+event.button].join('+'),baseAction=actionForBinding(base);
+   if(baseAction?.smartKey)action=baseAction;
+  }
   if(!action){if(defaultOwnsBinding(binding)){event.preventDefault();event.stopPropagation();}return;}
   event.preventDefault();activeArea='grid';map.setPointerCapture(event.pointerId);
   const p=mapCoordinates(event);cellX=p.x;cellY=p.y;
@@ -732,7 +736,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    if(action.id==='paint')commitPaste();else{pasteMode=false;renderMap();renderStatus();}
    return;
   }
-  if(action.id==='selectDrag'&&!colouringMode){selecting=true;selectionAnchor={x:p.x,y:p.y};setSelectionFrom(selectionAnchor,p);return;}
+  if((action.id==='selectDrag'||(selectionTool&&action.id==='paint'))&&!colouringMode){selecting=true;selectionAnchor={x:p.x,y:p.y};setSelectionFrom(selectionAnchor,p);return;}
   if(action.id==='paint'||action.id==='erase'){
    painting=true;activePaintAction=action.id;core.beginStroke();apply(event,action.id==='erase');return;
   }
@@ -765,6 +769,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const wheelInput=(event:WheelEvent)=>{
   const binding=wheelBinding(event),action=actionForBinding(binding);
   if(action){event.preventDefault();executeBoundAction(action,event.shiftKey);return;}
+  if(event.shiftKey){
+   const base=wheelBinding({ctrlKey:event.ctrlKey,shiftKey:false,altKey:event.altKey,metaKey:event.metaKey,deltaY:event.deltaY} as WheelEvent),baseAction=actionForBinding(base);
+   if(baseAction?.smartKey){event.preventDefault();executeBoundAction(baseAction,true);return;}
+  }
   if(defaultOwnsBinding(binding)){event.preventDefault();return;}
  };
  window.addEventListener('pointerdown',capturePointerBinding,true);
@@ -958,6 +966,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
 
   const binding=keyboardBinding(event),boundAction=actionForBinding(binding);
   if(boundAction){event.preventDefault();event.stopImmediatePropagation();executeBoundAction(boundAction,event.shiftKey);return;}
+  if(event.shiftKey){
+   const base=[...modifierPrefix({ctrlKey:event.ctrlKey,shiftKey:false,altKey:event.altKey,metaKey:event.metaKey}),event.code].join('+'),baseAction=actionForBinding(base);
+   if(baseAction?.smartKey){event.preventDefault();event.stopImmediatePropagation();executeBoundAction(baseAction,true);return;}
+  }
   if(defaultOwnsBinding(binding)){event.preventDefault();event.stopImmediatePropagation();return;}
 
   if(/^F([1-9]|1[0-2])$/.test(code)){
