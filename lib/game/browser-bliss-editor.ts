@@ -12,7 +12,7 @@ import {blissTerrainPresets,type BlissTerrainPreset} from './bliss-terrain-prese
 import {setBlissTrackMetadata,type BlissMetadata} from './bliss-metadata.ts';
 import {blissRoundToEven,blissSceneryDefaults,type BlissSceneryPlacement,type BlissSceneryRule} from './bliss-scenery-generator.ts';
 import {blissTournamentUrl,parseBlissScoreboard,parseBlissTournamentConfig,type BlissTournamentRace} from './bliss-tournaments.ts';
-import {blissEstimatedTimeCentiseconds,blissTimey} from './bliss-route.ts';
+import {blissEstimatedTimeCentiseconds,blissTimey,summarizeBlissTrackAnalysis} from './bliss-route.ts';
 
 export interface BrowserBlissEditorHost {
  canvas:HTMLCanvasElement;
@@ -144,7 +144,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  let brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,selecting=false,selectionAnchor:{x:number;y:number}|null=null,closed=false,zoom=1;
  let activeArea:EditorArea='grid',paletteCursor=0,lastPlaced:{x:number;y:number}|null=null;
  let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false;
- let selectionTool=false,pasteMode=false,manualHex='',manualHexDeadline=0,modalOpen=false;
+ let selectionTool=false,pasteMode=false,manualHex='',manualHexDeadline=0,modalOpen=false,analysisCarIndex=16;
 
  const overlay=document.createElement('div');overlay.tabIndex=-1;overlay.style.cssText='position:fixed;inset:0;z-index:2147483000;background:#090909;color:#ddd;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:10px;padding:12px;box-sizing:border-box;font-family:system-ui,Segoe UI,sans-serif;';
  const top=document.createElement('div');top.style.cssText='display:flex;align-items:center;gap:8px;min-width:0;';
@@ -241,7 +241,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const redoTool=quickButton(14,'Redo',()=>{if(core.redo())changed('Redo');});
  quickButton(15,'Help',()=>showHelp(0));
  quickButton(16,'Generate Scenery',()=>showSceneryGenerator());
- quickButton(17,'Track Analysis — paths/errors; racer time estimates pending',()=>showTrackAnalysis());
+ quickButton(17,'Track Analysis',()=>showTrackAnalysis());
  quickButton(18,'Tournaments',()=>showTournaments());
  quickButton(19,'Editor Settings — full Bliss settings port pending');
 
@@ -1033,69 +1033,120 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  function showTrackAnalysis(){
   let analysis:ReturnType<BlissEditorCore['analyze']>;
   try{analysis=core.analyze();}catch(error){void centeredNotice('Track Analysis','Analysis failed: '+String(error));return;}
-  if(!analysis.sections.length){void centeredNotice('Track Analysis','A start/finish line is required before the track can be analysed.');return;}
-  if(analysis.tooComplex){void centeredNotice('Track Analysis','Track too complex. Bliss supports up to 254 sections and 1000 paths.');return;}
+  if(!analysis.sections.length){void centeredNotice('Track Analysis','Track has no valid path. A valid start/finish line is required.');return;}
+  if(analysis.tooComplex){void centeredNotice('Track Analysis','Track is too complex. Too many splits!');return;}
   if(!analysis.paths.length){void centeredNotice('Track Analysis','Track has no valid path.');return;}
 
-  const tileLengths=analysis.paths.map((_,index)=>core.pathLength(analysis,index,false));
-  const tokenLengths=analysis.paths.map((_,index)=>core.pathLength(analysis,index,true));
-  const winning=analysis.paths.map((path,index)=>({path,index,tiles:tileLengths[index],tokens:tokenLengths[index]})).filter(row=>row.path.finishes);
-  const safe=winning.filter(row=>row.path.error===0);
-  const cycles=analysis.paths.filter(path=>path.error===82).length;
-  const shortestWinning=winning.length?Math.min(...winning.map(row=>row.tiles)):0;
-  const shortestSafe=safe.length?Math.min(...safe.map(row=>row.tiles)):0;
-  const fastestWinning=winning.length?Math.min(...winning.map(row=>row.tokens)):0;
-  const fastestSafe=safe.length?Math.min(...safe.map(row=>row.tokens)):0;
-  const estimated=(tokens:number)=>blissTimey(blissEstimatedTimeCentiseconds(tokens,1));
+  const summary=summarizeBlissTrackAnalysis(core.track,analysis,core.definitions);
+  const cars=[
+   ['ANSX','Acura NSX',1.467],['AUDI','Audi Quattro',1.387],['VETT','Chevrolet Corvette ZR1',1.499],['zF40','Ferrari F40',1.242],
+   ['FGTO','Ferrari GTO',1.415],['RANG','Ford Ranger',1.380],['JAGU','Jaguar XJR9 IMSA',1.129],['COUN','Lamborghini Countach',1.475],
+   ['LM02','Lamborghini LM-002',1.552],['LANC','Lancia Delta Integrale',1.358],['zLET','Lotus Esprit Turbo',1.518],['CDOR','Melange XGT-88',1.070],
+   ['NSKY','Nissan Skyline GT-R',1.466],['zPTR','Porsche 911 Turbo',1.489],['P962','Porsche 962 IMSA',1.085],['PC04','Porsche Carrera 4',1.508],
+   ['PMIN','Porsche March Indy',1.000],['GATE','Speedgate XSD',1.073],
+  ] as const;
+  const rh=[['Duplode',6.8815],['Marco',6.8863],['FinRok',7.0758],['Zak McKracken',7.6161],['Cas',7.6255],['Nach',7.6588],['AbuRaf70',7.9953],['Shoegazing Leo',9.2796]] as const;
+  const noRh=[['Marco',7.4313],['Duplode',7.6066],['Cas',8.3744]] as const;
+  analysisCarIndex=Math.max(0,Math.min(cars.length-1,analysisCarIndex));
+  const handicap=()=>cars[analysisCarIndex][2];
+  const timeFor=(tokens:number,weight=7.2955)=>blissTimey(blissEstimatedTimeCentiseconds(tokens,handicap(),weight));
 
   modalOpen=true;
   const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
-  const box=document.createElement('div');box.style.cssText='width:min(780px,94vw);max-height:88vh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:18px 20px;box-shadow:0 22px 70px #000;border-radius:6px;font:13px/1.4 system-ui,Segoe UI,sans-serif;';
+  const box=document.createElement('div');box.style.cssText='width:min(820px,95vw);max-height:90vh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:18px 20px;box-shadow:0 22px 70px #000;border-radius:6px;font:13px/1.4 system-ui,Segoe UI,sans-serif;';
   const heading=document.createElement('h2');heading.textContent='Track Analysis';heading.style.cssText='text-align:center;font-size:18px;margin:0 0 12px;border-bottom:1px solid #aaa;padding-bottom:8px;';
-  const body=document.createElement('div');body.style.cssText='overflow:auto;';
-  let page:'summary'|'paths'='summary';
-  const draw=()=>{
-   body.replaceChildren();
-   if(page==='summary'){
-    const table=document.createElement('div');table.style.cssText='display:grid;grid-template-columns:230px minmax(0,1fr);gap:8px 14px;';
-    const rows:[string,string][]=[
-     ['Total paths',String(analysis.paths.length)],
-     ['Winning paths',String(winning.length)],
-     ['Shortest winning path',winning.length?shortestWinning+' tiles':'none'],
-     ['Estimated winning time',winning.length?estimated(fastestWinning)+' ('+fastestWinning+' tokens)':'—'],
-     ['Safe paths',String(safe.length)],
-     ['Shortest safe path',safe.length?shortestSafe+' tiles':'none'],
-     ['Estimated safe time',safe.length?estimated(fastestSafe)+' ('+fastestSafe+' tokens)':'—'],
-     ['Cycles',String(cycles)],
-     ['Route errors / warnings',String(analysis.errors.length)],
-    ];
-    for(const [label,value] of rows){const a=document.createElement('strong'),b=document.createElement('span');a.textContent=label;a.style.color='#c8c8dc';b.textContent=value;b.style.color='#ddd';table.append(a,b);}
-    const prognosis=document.createElement('p');
-    const fatal=analysis.paths.some(path=>path.error>=70&&path.error<=79);
-    prognosis.textContent=winning.length?(fatal?'Prognosis: track contains a path-flow error.':'Prognosis: at least one winning path is available.'):'Prognosis: no winning path.';
-    prognosis.style.cssText='margin:16px 0 0;color:'+(winning.length?'#b9d88c':'#ffbd7a')+';';
-    const note=document.createElement('p');note.textContent='Opponent path = shortest winning path by Stunts tile count. Fastest = lowest Bliss weighted token count. Time uses Bliss default Porsche March Indy calibration (7.2955).';note.style.cssText='margin:8px 0 0;color:#aaa;';
-    body.append(table,prognosis,note);
-   }else{
-    const table=document.createElement('div');table.style.cssText='display:grid;gap:4px;';
-    analysis.paths.forEach((path,index)=>{
-     const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:48px 92px 115px 92px 105px minmax(120px,1fr);gap:8px;padding:7px 8px;border:1px solid #3d3d55;background:#111126;';
-     const labels:string[]=[];
-     if(path.finishes&&tileLengths[index]===shortestWinning)labels.push("opp's path");
-     if(path.finishes&&tokenLengths[index]===fastestWinning)labels.push('Fastest');
-     const statusText=path.finishes?(path.error===0?'Complete, safe':'Complete, with warnings'):(path.error===72?'Incomplete, wrong way':path.error===82?'Incomplete, cyclic':'Incomplete');
-     const values=['#'+(index+1),tileLengths[index]+' tiles',estimated(tokenLengths[index]),tokenLengths[index]+' tokens',statusText,labels.join(' · ')];
-     values.forEach((value,column)=>{const span=document.createElement(column===0?'strong':'span');span.textContent=value;row.append(span);});table.append(row);
-    });
-    body.append(table);
+  const body=document.createElement('div');body.style.cssText='overflow:auto;min-height:280px;';
+  const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:14px;';
+  let page:0|1|2=0;
+
+  const prognosisText=()=>{
+   switch(summary.prognosis){
+    case 'terrain-crash':return 'Stunts will crash because of terrain errors';
+    case 'terrain-fatal':return 'Track will not run, due to terrain errors';
+    case 'flow-fatal':return 'Track will fail because of path flow error';
+    case 'terrain-warning':return 'Track will run, but terrain problems may occur';
+    case 'non-stunts':return 'Stunts will run the track. Using the internal editor will corrupt it, though';
+    case 'ok':return 'Track will run fine';
+    default:return "Track will fail because there's no winning path";
    }
   };
-  const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;margin-top:14px;';
-  const pathsButton=button('See paths',()=>{page=page==='summary'?'paths':'summary';pathsButton.textContent=page==='summary'?'See paths':'Main page';draw();});
-  const close=()=>{modalOpen=false;shade.remove();},closeButton=button('Close',close);
-  actions.append(pathsButton,closeButton);box.append(heading,body,actions);shade.append(box);document.body.append(shade);draw();
+
+  const carSelector=()=>{
+   const wrap=document.createElement('div');wrap.style.cssText='display:flex;justify-content:center;align-items:center;gap:9px;margin-top:15px;';
+   const label=document.createElement('span');label.textContent='Times estimated based on:';label.style.color='#c8c8dc';
+   const select=document.createElement('select');select.style.cssText='padding:6px 8px;background:#0d0d18;border:1px solid #676783;color:#fff;border-radius:3px;min-width:230px;';
+   cars.forEach((car,index)=>{const option=document.createElement('option');option.value=String(index);option.textContent=car[1];option.selected=index===analysisCarIndex;select.append(option);});
+   select.addEventListener('change',()=>{analysisCarIndex=Number(select.value)||0;draw();});
+   wrap.append(label,select);return wrap;
+  };
+
+  const drawSummary=()=>{
+   const table=document.createElement('div');table.style.cssText='display:grid;grid-template-columns:260px minmax(0,1fr);gap:8px 14px;';
+   const rows:[string,string][]=[
+    ['Total paths',String(summary.totalPaths)],
+    ['Winning paths',String(summary.winningPaths)],
+   ];
+   if(summary.winningPaths){
+    rows.push(['Shortest winning path',summary.shortestWinning+' tiles']);
+    rows.push(['Estimated winning time',timeFor(summary.briefestWinning!)+' ('+summary.briefestWinning+' tokens)']);
+   }
+   rows.push(['Safe paths',String(summary.safePaths)]);
+   if(summary.safePaths){
+    rows.push(['Shortest safe path',summary.shortestSafe+' tiles']);
+    rows.push(['Estimated winning time on a safe path',timeFor(summary.briefestSafe!)]);
+   }
+   rows.push(['Cycles',String(summary.cycles)]);
+   for(const [label,value] of rows){const a=document.createElement('strong'),b=document.createElement('span');a.textContent=label;a.style.color='#c8c8dc';b.textContent=value;b.style.color='#d8d66d';table.append(a,b);}
+   const prognosisLabel=document.createElement('strong');prognosisLabel.textContent='Prognosis:';prognosisLabel.style.cssText='display:block;color:#c8c8dc;margin-top:18px;';
+   const prognosis=document.createElement('div');prognosis.textContent=prognosisText();prognosis.style.cssText='color:#d8d66d;margin-top:4px;';
+   body.append(table,prognosisLabel,prognosis);
+   if(summary.winningPaths)body.append(carSelector());
+  };
+
+  const drawPaths=()=>{
+   const list=document.createElement('div');list.style.cssText='display:grid;gap:6px;';
+   summary.paths.forEach(row=>{
+    const item=document.createElement('div');item.style.cssText='padding:8px 10px;border:1px solid #40405b;background:#111126;';
+    const first=document.createElement('div');first.style.cssText='color:#c8c8dc;';
+    first.textContent='Path '+(row.index+1)+': '+row.tiles+' tiles - '+timeFor(row.tokens);
+    const second=document.createElement('div');second.style.cssText='color:#d8d66d;margin-top:2px;';
+    let statusText=row.finishes?(row.error?'Complete, with warnings':'Complete, safe'):'Incomplete';
+    if(!row.finishes&&row.wrongWay)statusText+=', wrong way';
+    else if(!row.finishes&&row.cyclic)statusText+=', cyclic';
+    if(row.opponentPath)statusText+=" (opp's path)";
+    if(row.fastest)statusText+=' - Fastest';
+    second.textContent=statusText;item.append(first,second);list.append(item);
+   });
+   body.append(list);
+   if(summary.winningPaths)body.append(carSelector());
+  };
+
+  const drawTimes=()=>{
+   if(!summary.briefestWinning){const empty=document.createElement('p');empty.textContent='No winning path is available for time estimates.';body.append(empty);return;}
+   const section=(titleText:string,rows:readonly (readonly [string,number])[])=>{
+    const title=document.createElement('h3');title.textContent=titleText;title.style.cssText='text-align:center;font-size:14px;color:#ddd;margin:6px 0 8px;';
+    const table=document.createElement('div');table.style.cssText='display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:4px 16px;max-width:520px;margin:0 auto 18px;';
+    for(const [racer,ratio] of rows){const a=document.createElement('span'),b=document.createElement('span');a.textContent=racer;a.style.color='#c8c8dc';b.textContent=timeFor(summary.briefestWinning!,ratio);b.style.color='#d8d66d';table.append(a,b);}
+    body.append(title,table);
+   };
+   section('Estimated OWOOT times for famous racers',rh);
+   section('Estimated OWOOT NoRH times for famous racers',noRh);
+   body.append(carSelector());
+  };
+
+  const pathsButton=button('See paths',()=>{page=1;draw();}),timesButton=button('See times',()=>{page=2;draw();}),mainButton=button('Main page',()=>{page=0;draw();});
+  const close=()=>{modalOpen=false;shade.remove();},closeButton=button('OK',close);
+  const draw=()=>{
+   body.replaceChildren();actions.replaceChildren();
+   if(page===0){drawSummary();actions.append(pathsButton);if(summary.winningPaths)actions.append(timesButton);actions.append(closeButton);}
+   else if(page===1){drawPaths();if(summary.winningPaths)actions.append(timesButton);actions.append(mainButton,closeButton);}
+   else{drawTimes();actions.append(mainButton,pathsButton,closeButton);}
+  };
+
+  box.append(heading,body,actions);shade.append(box);document.body.append(shade);draw();
   shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();close();}});
-  shade.addEventListener('pointerdown',event=>{if(event.target===shade)close();});requestAnimationFrame(()=>shade.focus());
+  shade.addEventListener('pointerdown',event=>{if(event.target===shade)close();});
+  requestAnimationFrame(()=>shade.focus());
  }
 
  function showHelp(initial:0|1){
