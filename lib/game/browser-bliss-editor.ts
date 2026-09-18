@@ -44,9 +44,16 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
 
  const main=document.createElement('div');main.style.cssText='display:grid;grid-template-columns:minmax(360px,460px) minmax(0,1fr) minmax(210px,270px);gap:10px;min-height:0;';
  const palettePanel=panel('Track pieces');
- const pageBar=document.createElement('div');pageBar.style.cssText='display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;';
- const paletteGrid=document.createElement('div');paletteGrid.style.cssText='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;align-content:start;overflow:auto;max-height:calc(100vh - 155px);padding-right:3px;';
- palettePanel.append(pageBar,paletteGrid);
+ palettePanel.style.display='grid';palettePanel.style.gridTemplateRows='auto auto minmax(0,1fr) auto';palettePanel.style.gap='8px';
+ const selectedPiece=document.createElement('div');selectedPiece.style.cssText='display:grid;grid-template-columns:118px minmax(0,1fr);gap:10px;align-items:center;min-height:126px;padding:8px;border:1px solid #353535;background:#0b0b0b;border-radius:5px;';
+ const selectedPreview=document.createElement('canvas');selectedPreview.width=32;selectedPreview.height=32;selectedPreview.style.cssText='width:112px;height:112px;image-rendering:pixelated;display:block;background:#070707;border:1px solid #292929;';
+ const selectedInfo=document.createElement('div');selectedInfo.style.cssText='min-width:0;';
+ const selectedName=document.createElement('strong');selectedName.style.cssText='display:block;color:#fff;font-size:14px;line-height:1.25;margin-bottom:5px;';
+ const selectedCode=document.createElement('span');selectedCode.style.cssText='display:block;color:#888;font-size:11px;';
+ selectedInfo.append(selectedName,selectedCode);selectedPiece.append(selectedPreview,selectedInfo);
+ const paletteGrid=document.createElement('div');paletteGrid.style.cssText='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;align-content:start;overflow:auto;min-height:0;padding-right:3px;';
+ const pageBar=document.createElement('div');pageBar.style.cssText='display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding-top:6px;border-top:1px solid #2d2d2d;';
+ palettePanel.append(selectedPiece,paletteGrid,pageBar);
 
  const mapPanel=panel('30 × 30 track');
  mapPanel.style.display='grid';mapPanel.style.gridTemplateRows='auto auto minmax(0,1fr)';mapPanel.style.placeItems='stretch';
@@ -117,28 +124,42 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const bytes=encodeBlissTrack(core.track).subarray(0,1802);host.track.raw=Array.from(bytes);
   renderMap();renderStatus();if(message)status.textContent=message+' · '+status.textContent;
  };
+ const paletteLabels=['Paved','Dirt','Ice','Stunts','Banked','Splits','Highway','Elevated','Spins','Scenery','Terrain','Terrain 2'] as const;
+ const pageCodes=(index:number)=>Array.from(new Set(blissPalettePages[index])).filter(code=>index>=10?code<=18:code>0&&code<253);
+ const drawPreview=(canvas:HTMLCanvasElement,code:number,terrain:boolean,size:number)=>{
+  const image=blissOriginalPaletteImageData(code,terrain,host.resources,host.palette);
+  canvas.width=image.width;canvas.height=image.height;canvas.getContext('2d',{alpha:false})!.putImageData(image,0,0);
+  canvas.style.width=size+'px';canvas.style.height=size+'px';
+ };
  const renderPalette=()=>{
-  pageBar.replaceChildren();
-  for(let i=0;i<blissPalettePages.length;i++){
-   const pageButton=button(String(i+1),()=>{page=i;renderPalette();});pageButton.style.padding='6px 9px';setActive(pageButton,page===i);pageBar.append(pageButton);
-  }
+  const terrainPage=page>=10,currentCode=terrainPage?terrainBrush:brush,currentLabel=terrainPage?('Terrain '+terrainBrush):(blissElementData[brush]?.id||('Element '+brush));
+  selectedName.textContent=currentLabel;selectedCode.textContent=(terrainPage?'Terrain tile ':'Track element ')+currentCode;
+  drawPreview(selectedPreview,currentCode,terrainPage,112);
+
   paletteGrid.replaceChildren();
-  const terrainPage=page>=10;
-  const codes=Array.from(new Set(blissPalettePages[page])).filter(code=>terrainPage?code<=18:code>0&&code<253);
-  for(const code of codes){
+  for(const code of pageCodes(page)){
    const label=terrainPage?('Terrain '+code):(blissElementData[code]?.id||('Element '+code));
    const entry=button('',()=>{
     if(terrainPage){terrainBrush=code;chooseTool('terrain');}
     else{brush=code;chooseTool('place');}
     renderPalette();
    });
-   entry.title=label;entry.style.cssText+='display:grid;grid-template-rows:88px auto;justify-items:center;align-items:center;gap:6px;min-height:118px;padding:8px 6px;text-align:center;overflow:hidden;';
-   const preview=document.createElement('canvas'),image=blissOriginalPaletteImageData(code,terrainPage,host.resources,host.palette);
-   preview.width=image.width;preview.height=image.height;preview.getContext('2d',{alpha:false})!.putImageData(image,0,0);
-   preview.style.cssText='width:88px;height:88px;image-rendering:pixelated;display:block;';
-   const caption=document.createElement('span');caption.textContent=code+' · '+label;caption.style.cssText='display:block;width:100%;font-size:11px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-   entry.replaceChildren(preview,caption);
-   setActive(entry,code===(terrainPage?terrainBrush:brush));paletteGrid.append(entry);
+   entry.title=label;entry.setAttribute('aria-label',label);
+   entry.style.cssText+='display:grid;place-items:center;min-height:74px;padding:4px;overflow:hidden;';
+   const preview=document.createElement('canvas');preview.style.cssText='image-rendering:pixelated;display:block;';
+   drawPreview(preview,code,terrainPage,64);entry.append(preview);
+   setActive(entry,code===currentCode);paletteGrid.append(entry);
+  }
+
+  pageBar.replaceChildren();
+  for(let i=0;i<blissPalettePages.length;i++){
+   const terrain=i>=10,codes=pageCodes(i),representative=codes[0]??0;
+   const pageButton=button('',()=>{page=i;renderPalette();});
+   pageButton.title=paletteLabels[i]??('Page '+(i+1));pageButton.setAttribute('aria-label',pageButton.title);
+   pageButton.style.cssText+='display:grid;place-items:center;height:48px;padding:3px;overflow:hidden;';
+   const icon=document.createElement('canvas');icon.style.cssText='image-rendering:pixelated;display:block;';
+   drawPreview(icon,representative,terrain,38);pageButton.append(icon);
+   setActive(pageButton,page===i);pageBar.append(pageButton);
   }
  };
  const mapCoordinates=(event:PointerEvent)=>{
