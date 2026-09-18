@@ -832,25 +832,26 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  }
 
  async function createNewTrack(){
-  if(core.modified&&!window.confirm('Discard the current unsaved changes and create a new track?'))return;
-  const names=['Desert','Tropical','Alpine','City','Country'],current=Math.max(0,Math.min(4,core.track.landscape))+1;
-  const answer=window.prompt('New track environment:\n1 Desert\n2 Tropical\n3 Alpine\n4 City\n5 Country',String(current));if(answer===null)return;
-  const choice=Number.parseInt(answer.trim(),10)-1;if(!Number.isInteger(choice)||choice<0||choice>4){window.alert('Choose a number from 1 to 5.');return;}
-  const preset=host.presets?.[choice]?.terrain;core.newTrack({landscape:choice,format:preset?.[900]??152,terrain:preset});
-  host.track.name='';name.textContent='UNTITLED.TRK';cellX=0;cellY=0;page=0;brush=4;terrainBrush=0;lastPlaced=null;core.setSelection(null);chooseTool('place');changed('New '+names[choice]+' track');
+  if(core.modified&&!await centeredConfirm('New Track','Discard the current unsaved changes and create a new track?','Discard and Continue','Cancel'))return;
+  const preset=await selectTerrainPreset(blissTerrainPresets(host.presets));if(!preset)return;
+  const landscape=core.track.landscape;
+  core.newTrack({landscape,format:preset.format,terrain:preset.terrain});
+  host.track.name='';name.textContent='UNTITLED.TRK';cellX=0;cellY=0;page=0;brush=4;terrainBrush=0;lastPlaced=null;core.setSelection(null);chooseTool('place');changed('New track · '+preset.name);
  }
 
  async function requestedTrackName(force=false){
   if(!force&&host.track.name){const isCustom=host.customTrackExists?await host.customTrackExists(host.track.name):true;if(isCustom)return host.track.name;}
-  const entered=window.prompt('Track name (maximum 8 characters):',host.track.name||'NEWTRACK');if(entered===null)return null;
-  const clean=entered.trim().replace(/[^A-Za-z0-9_-]/g,'_').toUpperCase().slice(0,8);if(!clean){window.alert('Please enter a track name.');return null;}return clean;
+  const entered=await centeredPrompt('Save Track','Track name (maximum 8 characters):',host.track.name||'NEWTRACK');if(entered===null)return null;
+  const clean=entered.trim().replace(/[^A-Za-z0-9_-]/g,'_').toUpperCase().slice(0,8);
+  if(!clean){await centeredNotice('Save Track','Please enter a track name.');return null;}
+  return clean;
  }
 
  async function saveTrack(forceName=false){
   const target=await requestedTrackName(forceName);if(!target)return false;const savePath='';
   const targetIsCustom=host.customTrackExists?await host.customTrackExists(target):false,targetExists=await host.exists(savePath,target);
-  if(host.customTrackExists&&targetExists&&!targetIsCustom){window.alert(target+'.TRK is a supplied track and cannot be replaced through Custom Tracks. Choose another name.');return false;}
-  if(targetIsCustom&&(forceName||target!==host.track.name)&&!window.confirm(target+'.TRK already exists in Custom Tracks. Overwrite it?'))return false;
+  if(host.customTrackExists&&targetExists&&!targetIsCustom){await centeredNotice('Save Track',target+'.TRK is a supplied track and cannot be replaced through Custom Tracks. Choose another name.');return false;}
+  if(targetIsCustom&&(forceName||target!==host.track.name)&&!await centeredConfirm('Overwrite Track',target+'.TRK already exists in Custom Tracks. Overwrite it?','Overwrite','Cancel'))return false;
   const bytes=encodeBlissTrack(core.track).subarray(0,1802);let customLocation='';
   try{if(host.persistCustomTrack)customLocation=await host.persistCustomTrack(target,bytes);}catch(error){status.textContent='Could not save to Custom Tracks: '+String(error);status.style.color='#ff9b9b';return false;}
   const statusCode=await host.writeTrack(savePath,target,bytes);if(statusCode){status.textContent='Track was written to Custom Tracks, but could not be added to the current track list.';status.style.color='#ffbd7a';return false;}
