@@ -16,7 +16,7 @@ export interface BlissOriginalMapResources {
 }
 
 /** Render all 900 terrain cells first, then the original editor's AND/OR track artwork. */
-export function renderBlissOriginalMap(source:BlissTrack,resources:BlissOriginalMapResources){
+export function renderBlissOriginalMap(source:BlissTrack,resources:BlissOriginalMapResources,showGrid=true){
  const pixels=new Uint8Array(BLISS_ORIGINAL_MAP_SIZE*BLISS_ORIGINAL_MAP_SIZE);
  const clip={left:0,right:BLISS_ORIGINAL_MAP_SIZE,top:0,bottom:BLISS_ORIGINAL_MAP_SIZE};
  for(let y=0;y<30;y++)for(let x=0;x<30;x++){
@@ -33,6 +33,13 @@ export function renderBlissOriginalMap(source:BlissTrack,resources:BlissOriginal
   if(mask)drawEditorClippedRaster(pixels,BLISS_ORIGINAL_MAP_SIZE,mask,x*16,y*16,'and',clip);
   if(image)drawEditorClippedRaster(pixels,BLISS_ORIGINAL_MAP_SIZE,image,x*16,y*16,'or',clip);
  }
+ if(!showGrid){
+  // Bliss draws the grid separately from the tile graphics. The reconstructed
+  // Stunts editor art contains a one-pixel cell edge, so remove those seams
+  // after composition when Ctrl+G hides the grid.
+  for(let x=16;x<BLISS_ORIGINAL_MAP_SIZE;x+=16)for(let y=0;y<BLISS_ORIGINAL_MAP_SIZE;y++)pixels[y*BLISS_ORIGINAL_MAP_SIZE+x]=pixels[y*BLISS_ORIGINAL_MAP_SIZE+x-1];
+  for(let y=16;y<BLISS_ORIGINAL_MAP_SIZE;y+=16)for(let x=0;x<BLISS_ORIGINAL_MAP_SIZE;x++)pixels[y*BLISS_ORIGINAL_MAP_SIZE+x]=pixels[(y-1)*BLISS_ORIGINAL_MAP_SIZE+x];
+ }
  return pixels;
 }
 
@@ -44,8 +51,8 @@ function indexedImageData(indexed:Uint8Array,width:number,height:number,palette:
  return new ImageData(rgba,width,height);
 }
 
-export function blissOriginalMapImageData(source:BlissTrack,resources:BlissOriginalMapResources,palette:ReadonlyArray<number>){
- return indexedImageData(renderBlissOriginalMap(source,resources),BLISS_ORIGINAL_MAP_SIZE,BLISS_ORIGINAL_MAP_SIZE,palette);
+export function blissOriginalMapImageData(source:BlissTrack,resources:BlissOriginalMapResources,palette:ReadonlyArray<number>,showGrid=true){
+ return indexedImageData(renderBlissOriginalMap(source,resources,showGrid),BLISS_ORIGINAL_MAP_SIZE,BLISS_ORIGINAL_MAP_SIZE,palette);
 }
 
 /** Palette thumbnail built from the same original Stunts artwork as the map. */
