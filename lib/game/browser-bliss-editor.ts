@@ -283,8 +283,8 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  addSwitch('ter','TER',()=>{affectTerrain=!affectTerrain;renderMap();renderStatus();});
  addSwitch('debug','DEB',()=>{debugMode=!debugMode;renderMap();renderStatus();});
 
- const shortcutReference=document.createElement('section');shortcutReference.style.cssText='min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);border-top:1px solid #343447;padding-top:9px;';
- const shortcutHeader=document.createElement('div');shortcutHeader.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:7px;';
+ const shortcutReference=document.createElement('section');shortcutReference.style.cssText='min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);align-content:start;border-top:1px solid #343447;padding-top:9px;';
+ const shortcutHeader=document.createElement('div');shortcutHeader.style.cssText='display:flex;align-items:center;align-self:start;gap:8px;margin-bottom:7px;';
  const shortcutTitle=document.createElement('strong');shortcutTitle.textContent='Keyboard shortcuts';shortcutTitle.style.cssText='font-size:11px;color:#eee;margin-right:auto;';
  const shortcutToggle=button('',()=>{showShortcutReference=!showShortcutReference;renderShortcutReference();try{localStorage.setItem(shortcutHelpStorageKey,showShortcutReference?'1':'0');}catch{}});
  shortcutToggle.style.cssText+='padding:4px 7px;font-size:10px;';
@@ -303,7 +303,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  appendShortcutGroup('Track piece shortcuts',TILE_HELP);
  const renderShortcutReference=()=>{
   shortcutList.style.display=showShortcutReference?'block':'none';
-  shortcutReference.style.gridTemplateRows=showShortcutReference?'auto minmax(0,1fr)':'auto';
+  shortcutReference.style.gridTemplateRows=showShortcutReference?'auto minmax(0,1fr)':'auto 0';
   shortcutToggle.textContent=showShortcutReference?'Hide':'Show';
   shortcutToggle.title=(showShortcutReference?'Hide':'Show')+' keyboard shortcut reference';
  };
