@@ -118,8 +118,7 @@ const EDITOR_BINDING_ACTIONS:readonly EditorBindingAction[]=[
  {id:'moveDown',group:'Editing & navigation',description:'Move cursor down',defaultBinding:'ArrowDown'},
  {id:'moveLeft',group:'Editing & navigation',description:'Move cursor left',defaultBinding:'ArrowLeft'},
  {id:'moveRight',group:'Editing & navigation',description:'Move cursor right',defaultBinding:'ArrowRight'},
- {id:'view2D',group:'Editing & navigation',description:'Switch to 2D view',defaultBinding:null},
- {id:'view3D',group:'Editing & navigation',description:'Switch to 3D view',defaultBinding:null},
+ {id:'toggleView',group:'Editing & navigation',description:'Switch 2D / 3D view',defaultBinding:null},
  {id:'toggleDebug',group:'Editing & navigation',description:'Toggle debug mode',defaultBinding:'Ctrl+KeyQ'},
  {id:'toggleManual',group:'Editing & navigation',description:'Allow/disallow conflict generation',defaultBinding:'Ctrl+KeyE'},
  {id:'toggleWarnings',group:'Editing & navigation',description:'Toggle conflict-warning display',defaultBinding:'Ctrl+KeyD'},
@@ -767,7 +766,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(eraseColour){border[index]=BLISS_TRANSPARENT_COLOUR;background[index]=BLISS_TRANSPARENT_COLOUR;}
   else{border[index]=borderColour;background[index]=backgroundColour;}
   metadata.colours={border,background};metadata.tool='PlayStunts DX';metadata.toolVersion=100;
-  core.setMetadata(metadata,'binary');renderMap();renderStatus();
+  core.setMetadata(metadata,'binary');renderMap();renderStatus();if(viewMode==='3d')editor3D?.update(core.track);
  };
  const apply=(event:PointerEvent,forceErase=false)=>{
   const p=mapCoordinates(event);cellX=p.x;cellY=p.y;activeArea='grid';
@@ -1015,8 +1014,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    case 'moveDown': if(activeArea==='palette')movePalette(0,1);else moveCursor(0,1,shiftHeld);return true;
    case 'moveLeft': if(activeArea==='palette')movePalette(-1,0);else moveCursor(-1,0,shiftHeld);return true;
    case 'moveRight': if(activeArea==='palette')movePalette(1,0);else moveCursor(1,0,shiftHeld);return true;
-   case 'view2D': void setViewMode('2d');return true;
-   case 'view3D': void setViewMode('3d');return true;
+   case 'toggleView': void setViewMode(viewMode==='2d'?'3d':'2d');return true;
    case 'toggleDebug': debugMode=!debugMode;renderMap();renderStatus();return true;
    case 'toggleManual': allowConflicts=!allowConflicts;renderStatus();return true;
    case 'toggleWarnings': showConflicts=!showConflicts;renderMap();renderStatus();return true;
