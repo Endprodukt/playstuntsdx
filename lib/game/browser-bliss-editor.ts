@@ -5,7 +5,7 @@ import {createBlissTrack,encodeBlissTrack} from './bliss-track.ts';
 import {blissParentElement} from './bliss-edit.ts';
 import {blissTrackHash} from './bliss-track.ts';
 import {changeBlissMaterial,findBlissElementByName,smartSelectBliss} from './bliss-shortcuts.ts';
-import {transformBlissTerrainCode,transformBlissTrackCode,type BlissTransformOperation} from './bliss-transformations.ts';
+import {blissTrackTransforms,transformBlissTerrainCode,transformBlissTrackCode,type BlissTransformOperation} from './bliss-transformations.ts';
 import {BLISS_TOOL_ICON_COLUMNS,BLISS_TOOL_ICON_SIZE,BLISS_TOOL_ICON_SPRITE} from './bliss-tool-icons.ts';
 import {setBlissEditorActive} from './bliss-editor-presence.ts';
 import {blissTerrainPresets,type BlissTerrainPreset} from './bliss-terrain-presets.ts';
@@ -13,6 +13,7 @@ import {setBlissTrackMetadata,type BlissMetadata} from './bliss-metadata.ts';
 import {blissRoundToEven,blissSceneryDefaults,type BlissSceneryPlacement,type BlissSceneryRule} from './bliss-scenery-generator.ts';
 import {blissTournamentUrl,parseBlissScoreboard,parseBlissTournamentConfig,type BlissTournamentRace} from './bliss-tournaments.ts';
 import {blissEstimatedTimeCentiseconds,blissTimey,summarizeBlissTrackAnalysis,traceBlissPath,type BlissRouteAnalysis} from './bliss-route.ts';
+import {BLISS_PLAYER_CARD_ICON,BLISS_OPPONENT_CARD_ICON} from './bliss-card-icons.ts';
 
 export interface BrowserBlissEditorHost {
  canvas:HTMLCanvasElement;
@@ -29,6 +30,7 @@ export interface BrowserBlissEditorHost {
  fetchUrl?(url:string):Promise<Uint8Array>;
  enumerateTracks?():Promise<string[]>;
  readTrack?(path:string,name:string):Promise<Uint8Array>;
+ analysisCars?:readonly {id:string;name:string}[];
  presets?:readonly {terrain:number[]}[];
 }
 
@@ -162,7 +164,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const selectedName=document.createElement('strong');selectedName.style.cssText='display:block;color:#fff;font-size:14px;line-height:1.25;margin-bottom:5px;';
  const selectedCode=document.createElement('span');selectedCode.style.cssText='display:block;color:#888;font-size:11px;';
  selectedInfo.append(selectedName,selectedCode);selectedPiece.append(selectedPreview,selectedInfo);
- const paletteGrid=document.createElement('div');paletteGrid.style.cssText='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;align-content:start;overflow:auto;min-height:0;padding-right:3px;';
+ const paletteGrid=document.createElement('div');paletteGrid.style.cssText='display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:repeat(6,52px);gap:3px;align-content:start;overflow:hidden;min-height:324px;padding:3px;background:#0b0b0b;border:1px solid #2f2f2f;';
  const pageBar=document.createElement('div');pageBar.style.cssText='display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding-top:6px;border-top:1px solid #2d2d2d;';
  const landscapeNames=['Desert','Tropical','Alpine','City','Country'] as const;
  const sceneryBox=document.createElement('div');sceneryBox.style.cssText='border-top:1px solid #2d2d2d;padding-top:8px;';
@@ -350,10 +352,40 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   renderMap();renderPalette();renderScenery();renderStatus();if(message)status.textContent=message+' · '+status.textContent;
  };
  const paletteLabels=['Paved','Dirt','Ice','Stunts','Banked','Splits','Highway','Elevated','Spins','Scenery','Terrain tiles','Terrain brush'] as const;
- const pageCodes=(index:number)=>{
-  const codes=Array.from(new Set(blissPalettePages[index])).filter(code=>index>=10?code<=18:code>0&&code<253);
-  return index===11?codes.filter(code=>code===1||code===6):codes;
+ const markerImages:{[key:number]:HTMLImageElement}={2:new Image(),3:new Image()};
+ markerImages[2].src=BLISS_PLAYER_CARD_ICON;markerImages[3].src=BLISS_OPPONENT_CARD_ICON;
+
+ const pageSlots=(index:number)=>blissPalettePages[index];
+ type PaletteBlock={code:number;row:number;column:number;width:number;height:number};
+ const paletteBlocks=(index:number):PaletteBlock[]=>{
+  const slots=pageSlots(index),used=Array(36).fill(false),blocks:PaletteBlock[]=[];
+  for(let row=0;row<6;row++)for(let column=0;column<6;column++){
+   const slot=row*6+column;if(used[slot])continue;
+   const code=slots[slot]??0;
+   const selectable=index<10?(code>0&&code<253):index===11?(code===1||code===6):(code<=18);
+   if(!selectable)continue;
+   let width=1,height=1;
+   if(index<10){
+    const shape=blissTrackTransforms[code];width=Math.max(1,shape?.width??1);height=Math.max(1,shape?.height??1);
+    if(column+width>6||row+height>6)width=height=1;
+    else{
+     let same=true;
+     for(let y=0;y<height;y++)for(let x=0;x<width;x++)if(slots[(row+y)*6+column+x]!==code)same=false;
+     if(!same)width=height=1;
+    }
+   }else if(index===11){
+    // Bliss' F12 palette is two 2×2 pictograms (water and mountain).
+    if(column<=4&&row<=4&&slots[slot+1]===code&&slots[slot+6]===code&&slots[slot+7]===code){width=2;height=2;}
+   }
+   for(let y=0;y<height;y++)for(let x=0;x<width;x++)used[(row+y)*6+column+x]=true;
+   blocks.push({code,row,column,width,height});
+  }
+  return blocks;
  };
+ const blockForCursor=(index:number,cursor:number)=>paletteBlocks(index).find(block=>{
+  const row=Math.floor(cursor/6),column=cursor%6;
+  return row>=block.row&&row<block.row+block.height&&column>=block.column&&column<block.column+block.width;
+ });
  const terrainLabel=(code:number,pageIndex=page)=>{
   if(pageIndex===11)return code===1?'Water brush':code===6?'Mountain brush':('Terrain brush '+code);
   if(code===0)return 'Flat / grass';
@@ -361,10 +393,15 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(code===6)return 'Mountain';
   return 'Terrain tile '+code;
  };
- const drawPreview=(canvas:HTMLCanvasElement,code:number,terrain:boolean,size:number)=>{
+ const drawPreview=(canvas:HTMLCanvasElement,code:number,terrain:boolean,size:number,width=1,height=1)=>{
   const image=blissOriginalPaletteImageData(code,terrain,host.resources,host.palette);
-  canvas.width=image.width;canvas.height=image.height;canvas.getContext('2d',{alpha:false})!.putImageData(image,0,0);
-  canvas.style.width=size+'px';canvas.style.height=size+'px';
+  const cropWidth=terrain?16:Math.max(16,Math.min(image.width,width*16)),cropHeight=terrain?16:Math.max(16,Math.min(image.height,height*16));
+  canvas.width=cropWidth;canvas.height=cropHeight;
+  const cx=canvas.getContext('2d',{alpha:false})!;
+  cx.putImageData(image,0,0,0,0,cropWidth,cropHeight);
+  const marker=!terrain?markerImages[code]:undefined;
+  if(marker?.complete&&marker.naturalWidth)cx.drawImage(marker,0,0,cropWidth,cropHeight);
+  canvas.style.width=Math.max(size,width*size)+'px';canvas.style.height=Math.max(size,height*size)+'px';
  };
  const drawPageIcon=(canvas:HTMLCanvasElement,index:number)=>{
   if(index===10){
@@ -378,7 +415,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    cx.putImageData(blissOriginalPaletteImageData(6,true,host.resources,host.palette),16,0);
    canvas.style.width='40px';canvas.style.height='20px';return;
   }
-  const codes=pageCodes(index),representative=codes[0]??0;drawPreview(canvas,representative,false,38);
+  const representative=pageSlots(index).find(code=>code>0&&code<253)??0;drawPreview(canvas,representative,false,38);
  };
  const renderPalette=()=>{
   const terrainPage=page>=10,currentCode=terrainPage?terrainBrush:brush,currentLabel=terrainPage?terrainLabel(terrainBrush):(blissElementData[brush]?.id||('Element '+brush));
@@ -388,21 +425,26 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    :page===11
     ?('F12 · brush mode · left adds, right removes · mouse only')
     :(('Track element ')+currentCode+' · F'+(page+1));
-  drawPreview(selectedPreview,currentCode,terrainPage,112);
+  const selectedShape=!terrainPage?blissTrackTransforms[currentCode]:undefined;
+  drawPreview(selectedPreview,currentCode,terrainPage,112,selectedShape?.width??1,selectedShape?.height??1);
 
   paletteGrid.replaceChildren();
-  const codes=pageCodes(page);if(paletteCursor>=codes.length)paletteCursor=Math.max(0,codes.length-1);
-  codes.forEach((code,index)=>{
-   const label=terrainPage?terrainLabel(code):(blissElementData[code]?.id||('Element '+code));
+  const blocks=paletteBlocks(page);
+  if(!blockForCursor(page,paletteCursor)&&blocks.length)paletteCursor=blocks[0].row*6+blocks[0].column;
+  for(const block of blocks){
+   const {code,row,column,width,height}=block,label=terrainPage?terrainLabel(code):(blissElementData[code]?.id||('Element '+code));
    const entry=button('',()=>{
-    paletteCursor=index;selectPaletteCode(code,terrainPage);activeArea='palette';updateArea();
+    paletteCursor=row*6+column;selectPaletteCode(code,terrainPage);activeArea='palette';updateArea();
    });
    entry.title=label;entry.setAttribute('aria-label',label);
-   entry.style.cssText+='display:grid;place-items:center;min-height:74px;padding:4px;overflow:hidden;';
-   const preview=document.createElement('canvas');preview.style.cssText='image-rendering:pixelated;display:block;';
-   drawPreview(preview,code,terrainPage,64);entry.append(preview);
-   setActive(entry,code===currentCode||activeArea==='palette'&&index===paletteCursor);paletteGrid.append(entry);
-  });
+   entry.style.cssText+='display:grid;place-items:center;padding:3px;overflow:hidden;min-width:0;min-height:0;';
+   entry.style.gridColumn=(column+1)+' / span '+width;entry.style.gridRow=(row+1)+' / span '+height;
+   const preview=document.createElement('canvas');preview.style.cssText='image-rendering:pixelated;display:block;max-width:100%;max-height:100%;object-fit:contain;';
+   drawPreview(preview,code,terrainPage,44,width,height);entry.append(preview);
+   const cursorBlock=blockForCursor(page,paletteCursor);
+   const cursorHere=cursorBlock===block;
+   setActive(entry,code===currentCode||activeArea==='palette'&&cursorHere);paletteGrid.append(entry);
+  }
 
   pageBar.replaceChildren();
   for(let i=0;i<blissPalettePages.length;i++){
@@ -573,7 +615,16 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   else selectionAnchor=null;
   renderMap();renderStatus();
  };
- const movePalette=(dx:number,dy:number)=>{const codes=pageCodes(page);if(!codes.length)return;paletteCursor=Math.max(0,Math.min(codes.length-1,paletteCursor+dx+dy*4));renderPalette();renderStatus();};
+ const movePalette=(dx:number,dy:number)=>{
+  const blocks=paletteBlocks(page);if(!blocks.length)return;
+  const current=blockForCursor(page,paletteCursor)??blocks[0];
+  let row=dy>0?current.row+current.height-1:current.row,column=dx>0?current.column+current.width-1:current.column;
+  for(let step=0;step<6;step++){
+   row+=dy;column+=dx;if(row<0||row>5||column<0||column>5)break;
+   const slot=row*6+column,block=blockForCursor(page,slot);
+   if(block){paletteCursor=block.row*6+block.column;renderPalette();renderStatus();return;}
+  }
+ };
 
  const keyDown=(event:KeyboardEvent)=>{
   if(modalOpen||event.defaultPrevented)return;
