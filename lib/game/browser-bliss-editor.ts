@@ -493,7 +493,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    try{
     const bytes=await host.readTrack!('',stem);if(bytes.length!==1802)throw Error('Track must contain exactly 1802 bytes');
     core.loadBytes(bytes);host.track.name=stem;host.track.path='';host.track.raw=Array.from(bytes);name.textContent=stem+'.TRK';
-    cellX=0;cellY=0;lastPlaced=null;core.setSelection(null);shade.remove();renderPalette();renderMap();renderStatus();status.textContent='Loaded '+stem+'.TRK';status.style.color='#aee18a';
+    cellX=0;cellY=0;lastPlaced=null;core.setSelection(null);shade.remove();renderPalette();renderScenery();renderMap();renderStatus();status.textContent='Loaded '+stem+'.TRK';status.style.color='#aee18a';
    }catch(error){status.textContent='Could not load '+filename+': '+String(error);status.style.color='#ff9b9b';}
   };
   for(const filename of filenames){const entry=button(filename,()=>void choose(filename));entry.style.textAlign='left';entry.style.fontFamily='ui-monospace,Consolas,monospace';list.append(entry);}
