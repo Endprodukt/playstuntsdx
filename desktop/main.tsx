@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import OpeningSequence from '../app/OpeningSequence';
+import OpeningSequence, { preloadOpeningSequenceRuntime } from '../app/OpeningSequence';
 import { loadBrowserSetupSelection } from '../lib/game/browser-setup-selection';
 import { nativeLaunchProfile } from '../lib/game/native-launch-profile';
 import type { BrowserMt32Power, BrowserNativeMt32Device } from '../lib/game/browser-native-mt32-music';
@@ -89,16 +89,28 @@ function DesktopApp() {
           if (controller.signal.aborted) return;
           setGamedataReady(ready);
           if (!ready) return;
-          await ensureDesktopRuntimeStartup(core);
           if (controller.signal.aborted) return;
         } else {
           setGamedataReady(true);
         }
 
-        const response = await fetch('/game/assets.json', { signal: controller.signal });
-        if (!response.ok) throw new Error('PlayStunts DX game assets could not be loaded.');
-        const loadedAssets = (await response.json()) as Assets;
-        const saved = await loadBrowserSetupSelection(controller.signal);
+        // These startup jobs are independent. Start them together so the large
+        // game runtime chunk, assets, setup parsing and native runtime check do
+        // not form a serial loading waterfall before the first game frame.
+        const runtimeModule = preloadOpeningSequenceRuntime();
+        const assetsRequest = fetch('/game/assets.json', { signal: controller.signal }).then(async response => {
+          if (!response.ok) throw new Error('PlayStunts DX game assets could not be loaded.');
+          return await response.json() as Assets;
+        });
+        const setupRequest = loadBrowserSetupSelection(controller.signal);
+        const nativeRuntime = core ? ensureDesktopRuntimeStartup(core) : Promise.resolve();
+
+        const [loadedAssets, saved] = await Promise.all([
+          assetsRequest,
+          setupRequest,
+          nativeRuntime,
+          runtimeModule,
+        ]).then(([loaded, setup]) => [loaded, setup] as const);
         if (controller.signal.aborted) return;
         const profile = nativeLaunchProfile(saved.selection);
         setAssets(loadedAssets);
