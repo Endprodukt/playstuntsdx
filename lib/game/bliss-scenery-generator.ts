@@ -85,14 +85,14 @@ export function blissSceneryAvailability(source:BlissTrack,eraseExisting=false){
  return blissSceneryMap(source,eraseExisting).availability;
 }
 
-/** Exact Menu_Scenery count conversion:
- *   amount = available * percent / 100 - 1
- * where assignment to Short performs FreeBASIC round-to-even.
- * For j = 1 To amount then places exactly max(0, amount) primary objects.
+/** Bliss scenery count conversion.
+ * The generated-object count is the rounded percentage of eligible cells.
+ * The generation loop is 1..amount inclusive, so subtracting one here would
+ * make every request one object too small (1 -> 0, 2 -> 1).
  */
 export function blissSceneryTargetCount(available:number,percent:number){
  const p=Math.max(0,Math.min(100,percent));
- return Math.max(0,blissRoundToEven(available*p/100-1));
+ return Math.max(0,blissRoundToEven(available*p/100));
 }
 
 /** Exact defaults and ordering from Bliss 2.6.1 Menu_Scenery. */
