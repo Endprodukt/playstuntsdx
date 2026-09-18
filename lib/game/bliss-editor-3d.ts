@@ -23,10 +23,11 @@ export interface BlissEditor3DView {
  close():void;
 }
 
-export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,options:{initialCamera?:{position:[number,number,number];target:[number,number,number];fov?:number}}={}):BlissEditor3DView{
- const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,logarithmicDepthBuffer:true,powerPreference:'high-performance'});
+export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,options:{initialCamera?:{position:[number,number,number];target:[number,number,number];fov?:number};transparentBackground?:boolean;showGround?:boolean}={}):BlissEditor3DView{
+ const transparentBackground=!!options.transparentBackground;
+ const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:transparentBackground,logarithmicDepthBuffer:true,powerPreference:'high-performance'});
  renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
- renderer.setClearColor(0x88a0b8,1);
+ renderer.setClearColor(transparentBackground?0x000000:0x88a0b8,transparentBackground?0:1);
 
  const scene=new THREE.Scene(),world=new THREE.Group();
  world.scale.z=-1;scene.add(world);
@@ -53,7 +54,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   new THREE.PlaneGeometry(30720,30720),
   new THREE.MeshBasicMaterial({color:0x466f35,side:THREE.DoubleSide,toneMapped:false})
  );
- base.rotation.x=-Math.PI/2;base.position.set(15360,-3,15360);world.add(base);
+ base.rotation.x=-Math.PI/2;base.position.set(15360,-3,15360);base.visible=options.showGround!==false;world.add(base);
 
  const pickPlane=new THREE.Mesh(
   new THREE.PlaneGeometry(30720,30720),
