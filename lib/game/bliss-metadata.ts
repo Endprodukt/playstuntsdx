@@ -2,6 +2,7 @@
 // Bliss copyright (C) 2016-2023 Lucas Pedrosa; GPLv3. See THIRD_PARTY_NOTICES.md.
 import type {BlissTrack} from './bliss-track.ts';
 
+export const BLISS_TRANSPARENT_COLOUR=0xF81F;
 export interface BlissMetadataColours {
  border:Uint16Array;
  background:Uint16Array;
@@ -54,7 +55,7 @@ export function decodeBlissMetadata(bytes:Uint8Array):{format:BlissMetadataForma
    else if(key==='Tool'&&length>4){const nameLength=length-4,v=new DataView(field.buffer,field.byteOffset,field.byteLength);meta.tool=decoder.decode(field.subarray(0,nameLength));meta.toolVersion=v.getUint32(nameLength,true);}
    else if(key==='Etim'&&length===4){meta.editingTime=new DataView(field.buffer,field.byteOffset,field.byteLength).getInt32(0,true);}
    else if(key==='Colr'){
-    const border=new Uint16Array(900),background=new Uint16Array(900),v=new DataView(field.buffer,field.byteOffset,field.byteLength);let p=0,cell=0;
+    const border=new Uint16Array(900),background=new Uint16Array(900);border.fill(BLISS_TRANSPARENT_COLOUR);background.fill(BLISS_TRANSPARENT_COLOUR);const v=new DataView(field.buffer,field.byteOffset,field.byteLength);let p=0,cell=0;
     while(p+5<=field.length&&cell<900){const count=field[p++],b=v.getUint16(p,true),g=v.getUint16(p+2,true);p+=4;for(let i=0;i<count&&cell<900;i++,cell++){border[cell]=b;background[cell]=g;}}
     meta.colours={border,background};
    }
@@ -108,7 +109,7 @@ export function encodeBlissMetadata(metadata:BlissMetadata,format:BlissMetadataF
  if(metadata.editingTime>=0){const data:number[]=[];writeU32(data,Math.trunc(metadata.editingTime)>>>0);binaryField(output,'Etim',Uint8Array.from(data));}
  if(metadata.colours){
   if(metadata.colours.border.length!==900||metadata.colours.background.length!==900)throw Error('Bliss metadata colour layers must contain 900 cells');
-  let any=false;for(let i=0;i<900;i++)if(metadata.colours.border[i]!==0||metadata.colours.background[i]!==0){any=true;break;}
+  let any=false;for(let i=0;i<900;i++)if(metadata.colours.border[i]!==BLISS_TRANSPARENT_COLOUR||metadata.colours.background[i]!==BLISS_TRANSPARENT_COLOUR){any=true;break;}
   if(any){
    const data:number[]=[];let at=0;
    while(at<900){
