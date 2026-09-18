@@ -59,6 +59,7 @@ import {createNativeDialogRuntime} from './native-dialog-runtime.ts';
 import {runNativeRaceResults,type NativeRaceResultsState,type NativeRaceResultsHost,type NativeEvaluationResources} from './native-race-results.ts';
 import type {NativeHighScorePreparationHost} from './native-high-score-preparation.ts';
 import type {Assets} from './types.ts';
+import {blissOriginalSceneryPreview} from './bliss-scenery-preview.ts';
 const ENHANCED_BACKGROUND_ROOT='/site/enhanced-backgrounds';
 const HIRES_MAIN_MENU='/game/hires/main-menu.png';
 const enhancedTrackOverviews=['desert','tropical','alpine','city','country'].map(name=>`${ENHANCED_BACKGROUND_ROOT}/${name}-overview.png`);
@@ -154,6 +155,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   show('editor');input.setActive(false);
   try{
    const {runBrowserBlissEditor}=await import('./browser-bliss-editor.ts');
+   const sceneryPreviews=panoramas.slice(0,5).map((entry,index)=>blissOriginalSceneryPreview(baseline,index,entry.resources,palette));
    const tauriCore=(window as typeof window&{__TAURI__?:{core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}}}).__TAURI__?.core;
    const customTracks=tauriCore?{
     customTrackExists:(name:string)=>tauriCore.invoke<boolean>('custom_track_exists',{name}),
@@ -162,6 +164,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    await runBrowserBlissEditor({
     canvas,track,palette,
     resources:{art,terrainNames:terrainNames.names,images:editor.screenResources.images},
+    sceneryPreviews,
     writeTrack:editor.writeTrack,clearScores:editor.clearScores,exists:editor.exists,presets,
     enumerateTracks:()=>host.enumerate('','.trk'),readTrack:editor.readTrack,...customTracks,
    });
