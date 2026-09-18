@@ -1,6 +1,6 @@
 // Native editor state built around the Bliss 2.6.1 behaviour port.
 // This is the integration seam for the future React/Tauri editor UI.
-import {decodeBlissTrack,encodeBlissTrack,cloneBlissTrack,type BlissTrack} from './bliss-track.ts';
+import {createBlissTrack,decodeBlissTrack,encodeBlissTrack,cloneBlissTrack,type BlissTrack} from './bliss-track.ts';
 import {BlissHistory} from './bliss-history.ts';
 import {blissTransformations,type BlissTransformations} from './bliss-transformations.ts';
 import {clearBlissTrackElement,dryBlissTerrain,floodBlissTerrain,lowerBlissTerrain,placeBlissTrackElement,raiseBlissTerrain} from './bliss-edit.ts';
@@ -25,6 +25,14 @@ export class BlissEditorCore {
  serialize(){return encodeBlissTrack(this.track);}
  private change(action:()=>void){const before=cloneBlissTrack(this.track);action();this.history.push(before);this.modified=true;}
  markSaved(){this.modified=false;}
+ newTrack(options:{landscape?:number;format?:number;terrain?:ArrayLike<number>}={}){
+  const next=createBlissTrack(options.landscape??4,options.format??152);
+  if(options.terrain){
+   if(options.terrain.length<900)throw Error('New Bliss terrain preset must contain at least 900 cells');
+   for(let i=0;i<900;i++)next.terrain[i]=options.terrain[i];
+  }
+  this.track=next;this.history.clear();this.clipboard=null;this.selection=null;this.modified=true;
+ }
  analyze(){return analyzeBlissRoute(this.track,this.definitions);}
  check(){return checkBlissTrack(this.track);}
  compatibility(){return detectBlissNonStunts(this.track,this.definitions);}
