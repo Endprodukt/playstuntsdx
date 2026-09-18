@@ -671,6 +671,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
     :(('Track element ')+currentCode+' · F'+(page+1));
   const selectedShape=!terrainPage?blissTrackTransforms[currentCode]:undefined;
   drawSelectedPreview(currentCode,terrainPage,selectedShape?.width??1,selectedShape?.height??1);
+  if(viewMode==='3d'&&editor3D)editor3D.setGhost({x:cellX,y:cellY},currentCode,terrainPage,core.track.terrain[cellY*30+cellX]);
 
   paletteGrid.replaceChildren();
   const blocks=paletteBlocks(page);
@@ -721,7 +722,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    requestAnimationFrame(()=>editor3D?.render());
    status.textContent='3D view · Ctrl + Left drag orbit · Ctrl + Right drag pan · Wheel dolly';
    status.style.color='#aee18a';
-  }else{editor3D?.setHover(null);renderMap();requestAnimationFrame(()=>fitMap());}
+  }else{editor3D?.setHover(null);editor3D?.setGhost(null,0,false,0);renderMap();requestAnimationFrame(()=>fitMap());}
  }
  const mapCoordinates=(event:PointerEvent)=>{
   const rect=map.getBoundingClientRect(),px=(event.clientX-rect.left)*map.width/rect.width,py=(event.clientY-rect.top)*map.height/rect.height;
@@ -817,8 +818,11 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  let view3DDrag:'orbit'|'pan'|null=null,view3DLastX=0,view3DLastY=0;
  const update3DCell=(event:PointerEvent)=>{
   const cell=editor3D?.cellAt(event.clientX,event.clientY)??null;
-  if(cell){cellX=cell.x;cellY=cell.y;activeArea='grid';editor3D?.setHover(cell);renderStatus();}
-  else editor3D?.setHover(null);
+  if(cell){
+   cellX=cell.x;cellY=cell.y;activeArea='grid';editor3D?.setHover(cell);
+   const terrainPage=page>=10,currentCode=terrainPage?terrainBrush:brush;
+   editor3D?.setGhost(cell,currentCode,terrainPage,core.track.terrain[cell.y*30+cell.x]);renderStatus();
+  }else{editor3D?.setHover(null);editor3D?.setGhost(null,0,false,0);}
   return cell;
  };
  map3D.addEventListener('pointerdown',event=>{
