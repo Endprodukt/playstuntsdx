@@ -1,9 +1,10 @@
 // Native PlayStunts DX port of Bliss 2.6.1 track-flow analysis.
+// The control flow follows bliss.bas: FindStart -> GenerateSections ->
+// SolveSection -> SolvePath -> PathLength.
 // Bliss copyright (C) 2016-2023 Lucas Pedrosa; GPLv3. See THIRD_PARTY_NOTICES.md.
 import type {BlissTrack} from './bliss-track.ts';
 import {blissCellIndex} from './bliss-track.ts';
 import {blissElementData,type BlissElementData} from './bliss-element-data.ts';
-import {blissParentElement} from './bliss-edit.ts';
 import {blissTransformations,type BlissTransformations} from './bliss-transformations.ts';
 import {detectBlissTerrainError,findBlissStart} from './bliss-validation.ts';
 
@@ -14,7 +15,7 @@ export interface BlissSection {
  initial:BlissPoint;final:BlissPoint|null;
  solving:boolean;origin:number;bearing:number;
  parent:[number,number];child:[number,number];
- length:number;finishes:boolean;cycle:boolean;wrongway:boolean;errors:boolean;error:number;
+ finishes:boolean;cycle:boolean;wrongway:boolean;errors:boolean;error:number;
 }
 export interface BlissPath {sections:number[];error:number;finishes:boolean}
 export interface BlissRouteAnalysis {
@@ -30,21 +31,25 @@ const bitDirection=(value:number)=>value===1?0:value===2?1:value===4?2:value===8
 const terrainAt=(source:BlissTrack,x:number,y:number)=>source.terrain[blissCellIndex(x,y)];
 const trackAt=(source:BlissTrack,x:number,y:number)=>source.track[blissCellIndex(x,y)];
 
-function owner(source:BlissTrack,x:number,y:number,definitions:BlissTransformations){
- const parent=blissParentElement(source,x,y,definitions);
- return {...parent,data:blissElementData[parent.code],shape:definitions.track[parent.code]};
+function parentCoordinates(source:BlissTrack,x:number,y:number){
+ const filler=trackAt(source,x,y);
+ if(filler===255)x--;
+ else if(filler===254)y--;
+ else if(filler===253){x--;y--;}
+ return {x,y};
 }
 
-function chooseExit(mask:number,bearing:number,detour:boolean){
- const single=bitDirection(mask);if(single>=0)return single;
- const choices=[0,1,2,3].filter(direction=>(mask&(1<<direction))!==0);
- if(!choices.length)return bearing;
- const straight=choices.includes(bearing)?bearing:choices[0];
- if(!detour)return straight;
- return choices.find(direction=>direction!==straight)??straight;
+function exitBearing(mask:number,bearing:number,detour:boolean){
+ switch(mask){
+  case 1:return 0;case 2:return 1;case 4:return 2;case 8:return 3;
+  case 3:return bearing===1?(detour?0:1):(detour?1:0);
+  case 6:return bearing===2?(detour?1:2):(detour?2:1);
+  case 9:return bearing===3?(detour?0:3):(detour?3:0);
+  case 12:return bearing===3?(detour?2:3):(detour?3:2);
+  default:return bearing;
+ }
 }
 
-/** Port of Bliss GetNext. Coordinates are zero based in the DX port. */
 export function getNextBlissVector(
  source:BlissTrack,
  slot:BlissTrackVector,
@@ -52,70 +57,67 @@ export function getNextBlissVector(
  definitions:BlissTransformations=blissTransformations,
  elements:readonly BlissElementData[]=blissElementData,
 ):BlissTrackVector{
- const currentOwner=owner(source,slot.x,slot.y,definitions),curel=currentOwner.code;
- const current=elements[curel],shape=currentOwner.shape,bearing=slot.bearing,entry=opposite(bearing);
- let x=slot.x,y=slot.y,error=0;
- const lateral=!!current.cisalt[bearing];
+ const curel=trackAt(source,slot.x,slot.y),current=elements[curel],shape=definitions.track[curel];
+ const bearing=slot.bearing,entry=opposite(bearing);
+ let x=slot.x,y=slot.y,error=0,isRamp=false,isBridge=false;
+ const alt=current.cisalt[bearing]!==0;
 
- if(bearing===0){x+=lateral?1:0;y-=1;}
- else if(bearing===1){y+=lateral?1:0;x+=shape.width;}
- else if(bearing===2){x+=lateral?1:0;y+=shape.height;}
- else {y+=lateral?1:0;x-=1;}
+ if(bearing===0){if(alt)x++;y--;}
+ else if(bearing===1){if(alt)y++;x+=shape.width;}
+ else if(bearing===2){if(alt)x++;y+=shape.height;}
+ else{if(alt)y++;x--;}
 
- const elevated=current.ctype[bearing]===2;
- const ramp=elevated&&shape.width===1&&shape.height===1&&current.ctype[entry]===1;
- const bridge=elevated&&!ramp;
- if(detour&&elevated){
-  if(bearing===0)y--;else if(bearing===1)x++;else if(bearing===2)y++;else x--;
+ if(current.ctype[bearing]===2){
+  isRamp=shape.width===1&&shape.height===1&&current.ctype[entry]===1;
+  isBridge=!isRamp;
+  if(detour){if(bearing===0)y--;else if(bearing===1)x++;else if(bearing===2)y++;else x--;}
  }
  if(!inside(x,y))return {x,y,bearing,origin:entry,error:80};
 
- const nextOwner=owner(source,x,y,definitions);x=nextOwner.x;y=nextOwner.y;
+ ({x,y}=parentCoordinates(source,x,y));
  if(!inside(x,y))return {x,y,bearing,origin:entry,error:80};
- const newel=nextOwner.code,next=elements[newel],nextShape=nextOwner.shape;
+ const newel=trackAt(source,x,y),next=elements[newel],nextShape=definitions.track[newel];
 
  if(next.ctype[entry]===0){
-  if((ramp||bridge)&&!detour)return getNextBlissVector(source,slot,true,definitions,elements);
-  if(ramp)return {x,y,bearing,origin:entry,error:73};
+  if((isRamp||isBridge)&&!detour)return getNextBlissVector(source,slot,true,definitions,elements);
+  if(isRamp)return {x,y,bearing,origin:entry,error:73};
   if(current.ctype[bearing]===2)return {x,y,bearing,origin:entry,error:74};
   return {x,y,bearing,origin:entry,error:81};
- }
- if(next.ctype[entry]!==current.ctype[bearing])error=70;
+ }else if(next.ctype[entry]!==current.ctype[bearing])error=70;
 
- if(ramp&&detour){
+ if(isRamp&&detour){
   const forbidden=[9,8,7,10][bearing];
   if(terrainAt(source,slot.x,slot.y)===forbidden)error=21;
   else if(terrainAt(source,slot.x,slot.y)===0&&terrainAt(source,x,y)===6)error=21;
- }else if(bridge&&detour){
+ }else if(isBridge&&detour){
   if(terrainAt(source,slot.x,slot.y)!==6||terrainAt(source,x,y)===6)error=21;
  }
 
  if(bearing===0||bearing===2){
-  if(x-(next.cisalt[entry]?1:0)!==slot.x-(current.cisalt[bearing]?1:0))error=81;
- }else if(y-(next.cisalt[entry]?1:0)!==slot.y-(current.cisalt[bearing]?1:0))error=81;
+  if(x-(next.cisalt[entry]!==0?1:0)!==slot.x-(current.cisalt[bearing]!==0?1:0))error=81;
+ }else if(y-(next.cisalt[entry]!==0?1:0)!==slot.y-(current.cisalt[bearing]!==0?1:0))error=81;
 
  if(slot.origin!==entry||current.entity===116||current.entity===104){
   if(nextShape.width===1&&nextShape.height===1&&next.ctype[entry]===1&&next.ctype[bearing]===2){
-   const beyond=bearing===0?[x,y-1]:bearing===1?[x+1,y]:bearing===2?[x,y+1]:[x-1,y];
-   if(inside(beyond[0],beyond[1])){
-    const after=owner(source,beyond[0],beyond[1],definitions);
-    if(elements[after.code].ctype[entry]!==2)error=71;
+   const bx=bearing===1?x+1:bearing===3?x-1:x;
+   const by=bearing===0?y-1:bearing===2?y+1:y;
+   if(inside(bx,by)){
+    const parent=parentCoordinates(source,bx,by);
+    if(inside(parent.x,parent.y)&&elements[trackAt(source,parent.x,parent.y)].ctype[entry]!==2)error=71;
    }
   }
  }
 
  const mask=next.cto[entry];
  if(mask===0)error=4;
- const newBearing=chooseExit(mask,bearing,detour);
- return {x,y,bearing:newBearing,origin:entry,error};
+ return {x,y,bearing:exitBearing(mask,bearing,detour),origin:entry,error};
 }
 
 const newSection=(initial:BlissPoint,bearing:number,origin:number):BlissSection=>({
  initial:{...initial},final:null,solving:false,origin,bearing,parent:[0,0],child:[0,0],
- length:0,finishes:false,cycle:false,wrongway:false,errors:false,error:0,
+ finishes:false,cycle:false,wrongway:false,errors:false,error:0,
 });
 
-/** Port of GenerateSections/SolveSection/SolvePath. Section index 0 is intentionally unused. */
 export function analyzeBlissRoute(
  source:BlissTrack,
  definitions:BlissTransformations=blissTransformations,
@@ -124,116 +126,156 @@ export function analyzeBlissRoute(
 ):BlissRouteAnalysis{
  const start=findBlissStart(source);
  if(start.error)return {sections:[],paths:[],errors:[],tooComplex:false};
+
  const sections:BlissSection[]=[newSection(point(0,0),0,0),newSection(point(start.x,start.y),start.bearing,start.origin)];
  const errors:BlissTrackError[]=[];
  let tooComplex=false;
 
- const solveSection=(sn:number)=>{
-  const section=sections[sn];section.error=0;section.errors=false;section.solving=true;section.length=0;section.finishes=false;section.cycle=false;section.final=null;section.wrongway=false;
+ const solveSection=(sn:number):void=>{
+  const section=sections[sn];
+  section.error=0;section.errors=false;section.solving=true;section.finishes=false;section.cycle=false;section.final=null;section.wrongway=false;
   let vector:BlissTrackVector={x:section.initial.x,y:section.initial.y,bearing:section.bearing,origin:section.origin,error:0};
+
   for(let guard=0;guard<10000;guard++){
-   const old={...vector};section.length++;vector=getNextBlissVector(source,vector,false,definitions,elements);
+   const old={...vector};
+   vector=getNextBlissVector(source,vector,false,definitions,elements);
    if(vector.error)errors.push({x:old.x,y:old.y,error:vector.error,section:sn});
+
    if(vector.error>=70&&vector.error<=79){
-    if(section.error<40)section.error=vector.error;section.errors=true;section.solving=false;section.final=point(old.x,old.y);section.child=[0,0];return;
+    if(section.error<40)section.error=vector.error;
+    section.errors=true;section.solving=false;section.final=point(old.x,old.y);section.child=[0,0];return;
    }
    if(vector.error>=80&&vector.error<=89){
-    if(section.error===0)section.error=vector.error;section.errors=true;section.solving=false;section.final=point(old.x,old.y);section.child=[0,0];return;
+    if(section.error===0)section.error=vector.error;
+    section.errors=true;section.solving=false;section.final=point(old.x,old.y);section.child=[0,0];return;
    }
-   if(vector.error>=20&&vector.error<=39){if(section.error===0)section.error=vector.error;section.errors=true;}
+   if(vector.error>=20&&vector.error<=39){
+    if(section.error===0)section.error=vector.error;section.errors=true;
+   }
 
    if(same(vector,sections[1].initial)){
     section.final=point(vector.x,vector.y);section.child=[0,0];section.finishes=true;section.solving=false;return;
    }
 
-   const data=elements[trackAt(source,vector.x,vector.y)];
-   const connectorCount=data.ctype.filter(Boolean).length;
-   if(connectorCount!==3)continue;
+   const code=trackAt(source,vector.x,vector.y),data=elements[code];
+   if(data.ctype.filter(Boolean).length!==3)continue;
    section.final=point(vector.x,vector.y);
 
-   const exitMask=data.cto[opposite(vector.bearing)];
-   let sawSectionAtPoint=false,matchingSection=0;
    for(let i=1;i<sections.length;i++){
     const previous=sections[i];if(!same(vector,previous.initial))continue;
-    sawSectionAtPoint=true;
-    // A split can have multiple sections starting at exactly the same tile.
-    // Match the section whose outgoing bearing is actually allowed by the
-    // current entry mask instead of treating the first section at that point
-    // as authoritative.
-    if((exitMask&(1<<previous.bearing))!==0){matchingSection=i;break;}
-   }
-   if(matchingSection){
-    const previous=sections[matchingSection];
-    if(previous.solving){
-     section.child=[0,0];section.cycle=true;if(section.error<40)section.error=82;
+    if((1<<previous.bearing)!==data.cto[opposite(vector.bearing)]){
+     section.child=[0,0];section.wrongway=true;section.errors=true;
+     if(section.error<40)section.error=72;
+     errors.push({x:vector.x,y:vector.y,error:72,section:sn});
+    }else if(previous.solving){
+     section.child=[0,0];section.cycle=true;
+     if(section.error<40)section.error=82;
      errors.push({x:vector.x,y:vector.y,error:82,section:sn});
     }else{
-     section.child=[matchingSection,0];previous.parent[1]=sn;
+     section.child=[i,0];previous.parent[1]=sn;
      section.finishes=previous.finishes;section.cycle=previous.cycle;section.wrongway=previous.wrongway;
      if(section.error<40)section.error=previous.error;
     }
     section.solving=false;return;
    }
-   if(sawSectionAtPoint){
-    section.child=[0,0];section.wrongway=true;section.errors=true;if(section.error<40)section.error=72;
-    errors.push({x:vector.x,y:vector.y,error:72,section:sn});section.solving=false;return;
-   }
 
-   const one=bitDirection(exitMask);
-   if(one>=0){
-    if(sections.length>254){tooComplex=true;section.solving=false;return;}
-    const daughter=sections.length;sections.push(newSection(point(vector.x,vector.y),one,vector.origin));solveSection(daughter);
-    const child=sections[daughter];section.finishes=child.finishes;section.cycle=child.cycle;section.wrongway=child.wrongway;if(section.error===0)section.error=child.error;
+   const destination=data.cto[opposite(vector.bearing)],single=bitDirection(destination);
+   if(single>=0){
+    sections.push(newSection(point(vector.x,vector.y),single,vector.origin));
+    if(sections.length-1>254){tooComplex=true;section.solving=false;return;}
+    const daughter=sections.length-1;solveSection(daughter);
+    const child=sections[daughter];
+    section.finishes=child.finishes;section.cycle=child.cycle;section.wrongway=child.wrongway;
+    if(section.error===0)section.error=child.error;
     section.child=[daughter,0];child.parent=[sn,0];section.solving=false;return;
    }
 
    const daughters:number[]=[];
-   // Branch only into directions that Bliss' CTO routing mask explicitly
-   // permits for this entry. Looking at CTYPE alone can invent impossible
-   // branches on crossings and is one reason the old port lost/errored paths.
-   for(let direction=0;direction<4;direction++){
-    if((exitMask&(1<<direction))===0)continue;
-    if(sections.length>254){tooComplex=true;section.solving=false;return;}
-    const daughter=sections.length;sections.push(newSection(point(vector.x,vector.y),direction,vector.origin));daughters.push(daughter);solveSection(daughter);
+   for(let i=vector.bearing;i<=vector.bearing+3;i++){
+    const direction=i%4;
+    if(direction===opposite(vector.bearing)||data.ctype[direction]===0)continue;
+    sections.push(newSection(point(vector.x,vector.y),direction,vector.origin));
+    if(sections.length-1>254){tooComplex=true;section.solving=false;return;}
+    const daughter=sections.length-1;daughters.push(daughter);solveSection(daughter);
    }
-   if(daughters.length<2){section.child=[daughters[0]??0,0];section.solving=false;return;}
-   // Stunts split pieces expose at most two route alternatives. Keep the
-   // two-child section representation, but fail explicitly if malformed/manual
-   // data produces more instead of silently dropping possible paths.
-   if(daughters.length>2){tooComplex=true;section.solving=false;return;}
-   const a=sections[daughters[0]],b=sections[daughters[1]];
-   section.finishes=a.finishes||b.finishes;section.cycle=a.cycle&&b.cycle;
-   if(section.error===0){section.error=a.error;if(section.error===0||b.error===4)section.error=b.error;}
-   section.wrongway=a.wrongway&&b.wrongway;section.child=[daughters[0],daughters[1]];
-   a.parent=[sn,0];b.parent=[sn,0];section.solving=false;return;
+   if(daughters.length<2){
+    section.child=[daughters[0]??0,0];section.solving=false;return;
+   }
+   const first=sections[daughters[0]],second=sections[daughters[1]];
+   section.finishes=first.finishes||second.finishes;
+   section.cycle=first.cycle&&second.cycle;
+   if(section.error===0){section.error=first.error;if(section.error===0||second.error===4)section.error=second.error;}
+   section.wrongway=first.wrongway&&second.wrongway;
+   section.child=[daughters[0],daughters[1]];
+   first.parent=[sn,0];second.parent=[sn,0];
+   section.solving=false;return;
   }
-  section.solving=false;section.error=section.error||82;section.cycle=true;
+
+  section.solving=false;section.cycle=true;section.errors=true;section.error=82;
  };
 
  solveSection(1);
  if(tooComplex)return {sections,paths:[],errors,tooComplex:true};
 
  const paths:BlissPath[]=[{sections:[1],error:0,finishes:false}];
- const solvePath=(index:number)=>{
-  const route=paths[index],thisSection=route.sections[route.sections.length-1],section=sections[thisSection];
+ const solvePath=(pn:number):void=>{
+  const path=paths[pn],thisSection=path.sections[path.sections.length-1],section=sections[thisSection];
   if(section.errors){
-   if(section.error>=40){route.error=section.error;return;}
-   if(route.error===0)route.error=section.error;
+   if(section.error>=40){path.error=section.error;return;}
+   if(path.error===0)path.error=section.error;
   }
-  if(same(section.final,sections[1].initial)){route.finishes=true;return;}
+  if(same(section.final,sections[1].initial)){path.finishes=true;return;}
   const [c1,c2]=section.child;
-  if(!c2){
-   if(!c1)return;
-   if(route.sections.includes(c1)){route.error=82;return;}
-   route.sections.push(c1);solvePath(index);return;
+  if(c2===0){
+   if(c1===0)return;
+   if(path.sections.includes(c1)){path.error=82;return;}
+   path.sections.push(c1);solvePath(pn);return;
   }
-  if(paths.length>=maxPaths){tooComplex=true;return;}
-  const other:BlissPath={sections:[...route.sections,c2],error:route.error,finishes:route.finishes};paths.push(other);
-  route.sections.push(c1);
-  solvePath(paths.length-1);solvePath(index);
+  if(paths.length===maxPaths){tooComplex=true;return;}
+  paths.push({sections:[...path.sections,c2],error:path.error,finishes:path.finishes});
+  path.sections.push(c1);
+  solvePath(paths.length-1);solvePath(pn);
  };
  solvePath(0);
  return {sections,paths,errors,tooComplex:tooComplex||paths.length>=maxPaths};
+}
+
+export function blissPathLength(
+ source:BlissTrack,
+ analysis:BlissRouteAnalysis,
+ pathIndex:number,
+ weighted=false,
+ definitions:BlissTransformations=blissTransformations,
+ elements:readonly BlissElementData[]=blissElementData,
+){
+ const path=analysis.paths[pathIndex];if(!path)return 0;
+ let length=0;
+ for(const sectionNumber of path.sections){
+  const section=analysis.sections[sectionNumber];if(!section||!section.final)continue;
+  let vector:BlissTrackVector={x:section.initial.x,y:section.initial.y,bearing:section.bearing,origin:0,error:0};
+  let justStarted=analysis.sections.length===2&&analysis.sections[1].finishes;
+  for(let guard=0;guard<10000&&(!same(vector,section.final)||justStarted);guard++){
+   vector=getNextBlissVector(source,vector,false,definitions,elements);justStarted=false;
+   if(!inside(vector.x,vector.y))break;
+   const code=trackAt(source,vector.x,vector.y);
+   if(weighted)length+=elements[code].length;
+   else{const shape=definitions.track[code];length+=(shape.width>1||shape.height>1)?2:1;}
+  }
+ }
+ return length+(weighted?10:1);
+}
+
+export const BLISS_RACER_WEIGHT=7.2955;
+export function blissEstimatedTimeCentiseconds(tokens:number,carHandicap=1,racerWeight=BLISS_RACER_WEIGHT){
+ return Math.max(0,Math.round(tokens*racerWeight*carHandicap));
+}
+export function blissTimey(centiseconds:number){
+ let value=Math.max(0,Math.round(centiseconds));
+ const c=value%100;value=Math.floor(value/100);
+ const s=value%60;value=Math.floor(value/60);
+ const m=value%60;const h=Math.floor(value/60);
+ const cc=String(c).padStart(2,'0'),ss=String(s).padStart(2,'0');
+ return h?String(h)+':'+String(m).padStart(2,'0')+':'+ss+'.'+cc:String(m)+':'+ss+'.'+cc;
 }
 
 export interface BlissTrackCheck {
@@ -242,7 +284,6 @@ export interface BlissTrackCheck {
  analysis?:BlissRouteAnalysis;
 }
 
-/** Non-UI equivalent of Bliss CheckTrack. */
 export function checkBlissTrack(source:BlissTrack):BlissTrackCheck{
  const terrain=detectBlissTerrainError(source);
  if(terrain&&terrain.code>=40&&terrain.code<=49)return {ok:false,error:terrain.code,point:{x:terrain.x,y:terrain.y},reason:'terrain'};
