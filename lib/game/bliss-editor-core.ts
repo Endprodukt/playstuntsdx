@@ -23,6 +23,9 @@ export class BlissEditorCore {
  }
  static fromBytes(bytes:Uint8Array,definitions:BlissTransformations=blissTransformations){return new BlissEditorCore(decodeBlissTrack(bytes),definitions);}
  serialize(){return encodeBlissTrack(this.track);}
+ loadBytes(bytes:Uint8Array){
+  this.track=decodeBlissTrack(bytes);this.history.clear();this.clipboard=null;this.selection=null;this.modified=false;
+ }
  private change(action:()=>void){const before=cloneBlissTrack(this.track);action();this.history.push(before);this.modified=true;}
  markSaved(){this.modified=false;}
  newTrack(options:{landscape?:number;format?:number;terrain?:ArrayLike<number>}={}){
