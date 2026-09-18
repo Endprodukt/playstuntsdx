@@ -731,7 +731,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    if(!editor3D){const module=await import('./bliss-editor-3d.ts');editor3D=module.createBlissEditor3DView(map3D,host.assets,core.track);}
    else editor3D.update(core.track);
    requestAnimationFrame(()=>editor3D?.render());
-   status.textContent='3D view · Ctrl + Left drag orbit · Ctrl + Right drag pan · Wheel dolly';
+   status.textContent='3D view · Ctrl + Left drag orbit · Ctrl + Middle/Right drag move · Wheel / Ctrl+Wheel dolly';
    status.style.color='#aee18a';
   }else{editor3D?.setHover(null);editor3D?.setGhost(null,0,false,0);renderMap();requestAnimationFrame(()=>fitMap());}
  }
@@ -838,7 +838,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  map3D.addEventListener('pointerdown',event=>{
   if(viewMode!=='3d'||!editor3D)return;
-  if(event.ctrlKey&&(event.button===0||event.button===2)){
+  if(event.ctrlKey&&(event.button===0||event.button===1||event.button===2)){
    event.preventDefault();view3DDrag=event.button===0?'orbit':'pan';view3DLastX=event.clientX;view3DLastY=event.clientY;map3D.setPointerCapture(event.pointerId);return;
   }
   const cell=update3DCell(event);if(!cell)return;
@@ -861,6 +861,9 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  map3D.addEventListener('pointerup',end3DDrag);map3D.addEventListener('pointercancel',end3DDrag);map3D.addEventListener('contextmenu',event=>event.preventDefault());
  map3D.addEventListener('wheel',event=>{
   if(viewMode!=='3d'||!editor3D)return;
+  if(event.ctrlKey){
+   event.preventDefault();editor3D.dolly(event.deltaY,event.clientX,event.clientY);return;
+  }
   const action=actionForBinding(wheelBinding(event));
   if(action?.id==='zoomIn'||action?.id==='zoomOut'){event.preventDefault();editor3D.dolly(action.id==='zoomIn'?-120:120,event.clientX,event.clientY);return;}
   if(action){event.preventDefault();executeBoundAction(action,event.shiftKey);}
