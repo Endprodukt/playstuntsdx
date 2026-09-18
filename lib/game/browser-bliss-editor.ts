@@ -147,6 +147,9 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  let activeArea:EditorArea='grid',paletteCursor=0,lastPlaced:{x:number;y:number}|null=null;
  let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false;
  let selectionTool=false,pasteMode=false,manualHex='',manualHexDeadline=0,modalOpen=false,analysisCarIndex=-1;
+ const shortcutHelpStorageKey='playstunts-bliss-shortcuts-visible';
+ let showShortcutReference=true;
+ try{showShortcutReference=localStorage.getItem(shortcutHelpStorageKey)!=='0';}catch{}
 
  const overlay=document.createElement('div');overlay.tabIndex=-1;overlay.style.cssText='position:fixed;inset:0;z-index:2147483000;background:#090909;color:#ddd;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:10px;padding:12px;box-sizing:border-box;font-family:system-ui,Segoe UI,sans-serif;';
  const top=document.createElement('div');top.style.cssText='display:flex;align-items:center;gap:8px;min-width:0;';
@@ -209,6 +212,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  mapWrap.append(map);mapPanel.append(zoomBar,mapWrap);
 
  const toolsPanel=panel('Bliss tools');
+ toolsPanel.style.display='grid';toolsPanel.style.gridTemplateRows='auto auto auto minmax(0,1fr)';toolsPanel.style.gap='10px';toolsPanel.style.minHeight='0';
  const attachHoverHelp=(control:HTMLElement,help:HoverHelp)=>{
   const shortcut=help.shortcut?('Shortcut: '+help.shortcut+'\n'):'';
   // Use the browser's native hover tooltip instead of reserving permanent
@@ -261,8 +265,32 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  addSwitch('ter','TER',()=>{affectTerrain=!affectTerrain;renderMap();renderStatus();});
  addSwitch('debug','DEB',()=>{debugMode=!debugMode;renderMap();renderStatus();});
 
- const help=document.createElement('p');help.textContent='Bliss keys are active: F/Shift+F, R/Shift+R, F1–F12, Ctrl+C/X/V/W, arrows, Tab, Enter, Del, P, U, C and tile shortcuts.';help.style.cssText='font-size:11px;line-height:1.35;color:#999;margin:10px 0 0;';
- toolsPanel.append(quick,switches,help);
+ const shortcutReference=document.createElement('section');shortcutReference.style.cssText='min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);border-top:1px solid #343447;padding-top:9px;';
+ const shortcutHeader=document.createElement('div');shortcutHeader.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:7px;';
+ const shortcutTitle=document.createElement('strong');shortcutTitle.textContent='Keyboard shortcuts';shortcutTitle.style.cssText='font-size:11px;color:#eee;margin-right:auto;';
+ const shortcutToggle=button('',()=>{showShortcutReference=!showShortcutReference;renderShortcutReference();try{localStorage.setItem(shortcutHelpStorageKey,showShortcutReference?'1':'0');}catch{}});
+ shortcutToggle.style.cssText+='padding:4px 7px;font-size:10px;';
+ const shortcutList=document.createElement('div');shortcutList.style.cssText='min-height:0;overflow:auto;padding-right:3px;scrollbar-gutter:stable;';
+ const appendShortcutGroup=(titleText:string,rows:readonly (readonly [string,string])[])=>{
+  const heading=document.createElement('div');heading.textContent=titleText;heading.style.cssText='font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#8f8fae;margin:5px 0 4px;';
+  const grid=document.createElement('div');grid.style.cssText='display:grid;grid-template-columns:minmax(58px,82px) minmax(0,1fr);gap:3px 7px;align-items:start;';
+  for(const [keyName,description] of rows){
+   const key=document.createElement('kbd');key.textContent=keyName;key.style.cssText='display:inline-block;min-width:0;padding:2px 4px;border:1px solid #48485d;border-bottom-color:#64647c;border-radius:3px;background:#191927;color:#e3df78;font:600 9.5px/1.25 ui-monospace,Consolas,monospace;white-space:normal;overflow-wrap:anywhere;';
+   const text=document.createElement('span');text.textContent=description;text.style.cssText='color:#b7b7c9;font-size:10px;line-height:1.3;';
+   grid.append(key,text);
+  }
+  shortcutList.append(heading,grid);
+ };
+ appendShortcutGroup('Editing & navigation',OPTION_HELP);
+ appendShortcutGroup('Track piece shortcuts',TILE_HELP);
+ const renderShortcutReference=()=>{
+  shortcutList.style.display=showShortcutReference?'block':'none';
+  shortcutReference.style.gridTemplateRows=showShortcutReference?'auto minmax(0,1fr)':'auto';
+  shortcutToggle.textContent=showShortcutReference?'Hide':'Show';
+  shortcutToggle.title=(showShortcutReference?'Hide':'Show')+' keyboard shortcut reference';
+ };
+ shortcutHeader.append(shortcutTitle,shortcutToggle);shortcutReference.append(shortcutHeader,shortcutList);renderShortcutReference();
+ toolsPanel.append(quick,switches,shortcutReference);
 
  main.append(palettePanel,mapPanel,toolsPanel);
 
