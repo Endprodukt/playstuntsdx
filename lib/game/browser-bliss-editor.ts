@@ -795,6 +795,46 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   requestAnimationFrame(()=>shade.focus());
  }
 
+ function showTrackInformation(){
+  modalOpen=true;
+  const current=core.metadata(),now=new Date(),elapsed=metadataEditingBase+Math.max(0,Math.floor((performance.now()-editingSessionStarted)/1000));
+  const metadata:BlissMetadata=current?{...current.metadata}:{
+   title:'',author:'Anonymous',comment:'',championship:'',
+   year:now.getFullYear(),month:now.getMonth()+1,day:now.getDate(),
+   tool:'PlayStunts DX',toolVersion:100,editingTime:elapsed,
+  };
+  if(!metadata.year){metadata.year=now.getFullYear();metadata.month=now.getMonth()+1;metadata.day=now.getDate();}
+  metadata.editingTime=elapsed;
+  const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
+  const box=document.createElement('div');box.style.cssText='width:min(610px,92vw);background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:20px 22px;box-shadow:0 22px 70px #000;border-radius:6px;font:14px/1.4 system-ui,Segoe UI,sans-serif;';
+  const heading=document.createElement('h2');heading.textContent='Track Information';heading.style.cssText='text-align:center;font-size:18px;margin:0 0 14px;color:#fff;border-bottom:1px solid #aaa;padding-bottom:8px;';
+  const form=document.createElement('div');form.style.cssText='display:grid;grid-template-columns:130px minmax(0,1fr);gap:9px 12px;align-items:center;';
+  const makeField=(labelText:string,value:string,multiline=false)=>{
+   const label=document.createElement('label');label.textContent=labelText;label.style.color='#c8c8dc';
+   const input=multiline?document.createElement('textarea'):document.createElement('input');
+   input.value=value;input.maxLength=64;input.style.cssText='box-sizing:border-box;width:100%;padding:8px 9px;background:#0d0d18;border:1px solid #676783;color:#fff;border-radius:4px;font:13px ui-monospace,Consolas,monospace;'+(multiline?'min-height:70px;resize:vertical;':'');
+   form.append(label,input);return input;
+  };
+  const titleField=makeField('Title',metadata.title),authorField=makeField('Author',metadata.author),commentField=makeField('Comment',metadata.comment,true),champField=makeField('Championship',metadata.championship);
+  const dateLabel=document.createElement('span');dateLabel.textContent='Creation date';dateLabel.style.color='#c8c8dc';
+  const dateValue=document.createElement('span');dateValue.textContent=[metadata.year,String(metadata.month).padStart(2,'0'),String(metadata.day).padStart(2,'0')].join('-');dateValue.style.color='#aaa';
+  const timeLabel=document.createElement('span');timeLabel.textContent='Editing time';timeLabel.style.color='#c8c8dc';
+  const timeValue=document.createElement('span');timeValue.textContent=Math.floor(elapsed/3600)+'h '+Math.floor((elapsed%3600)/60)+'m '+(elapsed%60)+'s';timeValue.style.color='#aaa';
+  form.append(dateLabel,dateValue,timeLabel,timeValue);
+  const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;margin-top:16px;';
+  const close=()=>{modalOpen=false;shade.remove();};
+  const saveInfo=()=>{
+   metadata.title=titleField.value.slice(0,64);metadata.author=authorField.value.slice(0,64);metadata.comment=commentField.value.slice(0,64);metadata.championship=champField.value.slice(0,64);
+   metadata.tool='PlayStunts DX';metadata.toolVersion=100;metadata.editingTime=metadataEditingBase+Math.max(0,Math.floor((performance.now()-editingSessionStarted)/1000));
+   core.setMetadata(metadata,current?.format??'binary');close();changed('Track information updated');
+  };
+  const saveButton=button('Save',saveInfo),cancel=button('Cancel',close);saveButton.style.cssText+='min-width:105px;background:#4e5b2b;border-color:#a9bd58;';cancel.style.cssText+='min-width:105px;';
+  actions.append(saveButton,cancel);box.append(heading,form,actions);shade.append(box);document.body.append(shade);
+  shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();close();}});
+  shade.addEventListener('pointerdown',event=>{if(event.target===shade)close();});
+  requestAnimationFrame(()=>titleField.focus());
+ }
+
  function showTrackAnalysis(){
   const analysis=core.analyze();
   const finishing=analysis.paths.filter(path=>path.finishes).length;
