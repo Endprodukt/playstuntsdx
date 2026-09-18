@@ -812,6 +812,134 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   requestAnimationFrame(()=>shade.focus());
  }
 
+ type TournamentSite={name:string;url:string};
+ const tournamentStorageKey='playstuntsdx.bliss.tournaments.v1';
+ const loadTournamentSites=():TournamentSite[]=>{
+  try{
+   const value=JSON.parse(localStorage.getItem(tournamentStorageKey)??'[]');
+   if(!Array.isArray(value))return [];
+   return value.filter(row=>row&&typeof row.name==='string'&&typeof row.url==='string').map(row=>({name:row.name,url:row.url}));
+  }catch{return [];}
+ };
+ const saveTournamentSites=(sites:readonly TournamentSite[])=>{try{localStorage.setItem(tournamentStorageKey,JSON.stringify(sites));}catch{}};
+
+ async function showTournamentScoreboard(site:TournamentSite,race:BlissTournamentRace){
+  if(!host.fetchUrl){await centeredNotice('Tournament','Network access is unavailable in this build.');return;}
+  if(!race.scoreboard){await centeredNotice('Scoreboard','This tournament does not publish a scoreboard.');return;}
+  let bytes:Uint8Array;
+  try{bytes=await host.fetchUrl(blissTournamentUrl(site.url,race.scoreboard));}
+  catch(error){await centeredNotice('Scoreboard','Could not load the scoreboard: '+String(error));return;}
+  if(!bytes.length){await centeredNotice('Scoreboard','There is no scoreboard for this race yet.');return;}
+  const entries=parseBlissScoreboard(bytes);
+  modalOpen=true;
+  const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
+  const box=document.createElement('div');box.style.cssText='width:min(820px,94vw);max-height:86vh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:18px 20px;box-shadow:0 22px 70px #000;border-radius:6px;font:13px/1.35 system-ui,Segoe UI,sans-serif;';
+  const heading=document.createElement('h2');heading.textContent=(race.tournament||site.name)+' — Scoreboard';heading.style.cssText='text-align:center;font-size:18px;margin:0 0 12px;border-bottom:1px solid #aaa;padding-bottom:8px;';
+  const list=document.createElement('div');list.style.cssText='overflow:auto;display:grid;gap:4px;';
+  if(!entries.length){const empty=document.createElement('p');empty.textContent='No competing entries.';empty.style.color='#aaa';list.append(empty);}
+  entries.forEach((entry,index)=>{
+   const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:44px minmax(120px,1fr) 110px 100px 90px 70px;gap:7px;align-items:center;padding:7px 8px;background:#111126;border:1px solid #3d3d55;';
+   const rank=document.createElement('strong');rank.textContent=entry.number||String(index+1);
+   const racer=document.createElement('span');racer.textContent=entry.name||'—';
+   const time=document.createElement('span');time.textContent=entry.lapTime||(entry.lapLength?entry.lapLength+' bytes':'—');
+   const car=document.createElement('span');car.textContent=entry.car||entry.carId||'—';
+   const style=document.createElement('span');style.textContent=entry.style||entry.handicap||'';
+   const verified=document.createElement('span');verified.textContent=entry.verified?'✓ verified':'';
+   row.append(rank,racer,time,car,style,verified);list.append(row);
+  });
+  const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;margin-top:14px;';
+  const close=()=>{modalOpen=false;shade.remove();},back=button('Back',close);back.style.minWidth='105px';actions.append(back);
+  box.append(heading,list,actions);shade.append(box);document.body.append(shade);
+  shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();close();}});
+  shade.addEventListener('pointerdown',event=>{if(event.target===shade)close();});requestAnimationFrame(()=>back.focus());
+ }
+
+ async function loadTournamentTrack(site:TournamentSite,race:BlissTournamentRace){
+  if(!host.fetchUrl){await centeredNotice('Tournament','Network access is unavailable in this build.');return false;}
+  if(!race.trackFile){await centeredNotice('Tournament','This race does not specify a track file.');return false;}
+  let bytes:Uint8Array;
+  try{bytes=await host.fetchUrl(blissTournamentUrl(site.url,race.trackFile));}
+  catch(error){await centeredNotice('Tournament','Could not download the current track: '+String(error));return false;}
+  if(bytes.length<1802||bytes.length>13802){await centeredNotice('Tournament','The downloaded track is not a valid Bliss/Stunts track file.');return false;}
+  core.loadBytes(bytes);
+  if(!core.metadata()&&(race.trackTitle||race.trackAuthor||race.tournament)){
+   const now=new Date();
+   core.setMetadata({
+    title:race.trackTitle,author:race.trackAuthor||'Anonymous',comment:'',championship:race.tournament||site.name,
+    year:now.getFullYear(),month:now.getMonth()+1,day:now.getDate(),tool:'PlayStunts DX',toolVersion:100,editingTime:0,
+   });
+  }
+  const file=race.trackFile.split(/[\\/]/).pop()??'TOURTRK.TRK',stem=file.replace(/\.trk$/i,'').replace(/[^A-Za-z0-9_-]/g,'_').toUpperCase().slice(0,8)||'TOURTRK';
+  host.track.name=stem;host.track.path='';host.track.raw=Array.from(bytes.subarray(0,1802));name.textContent=stem+'.TRK';
+  metadataEditingBase=Math.max(0,core.metadata()?.metadata.editingTime??0);editingSessionStarted=performance.now();
+  cellX=0;cellY=0;lastPlaced=null;core.setSelection(null);renderPalette();renderScenery();renderMap();renderStatus();
+  status.textContent='Tournament track loaded · use Save to store it in Custom Tracks';status.style.color='#aee18a';return true;
+ }
+
+ async function showTournamentRace(site:TournamentSite,race:BlissTournamentRace){
+  modalOpen=true;
+  const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
+  const box=document.createElement('div');box.style.cssText='width:min(610px,92vw);background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:20px 22px;box-shadow:0 22px 70px #000;border-radius:6px;font:14px/1.4 system-ui,Segoe UI,sans-serif;';
+  const heading=document.createElement('h2');heading.textContent=race.tournament||site.name;heading.style.cssText='text-align:center;font-size:18px;margin:0 0 14px;border-bottom:1px solid #aaa;padding-bottom:8px;';
+  const info=document.createElement('div');info.style.cssText='display:grid;grid-template-columns:120px minmax(0,1fr);gap:8px 12px;';
+  for(const [label,value] of [['Track',race.trackTitle||race.trackFile||'—'],['Author',race.trackAuthor||'—'],['Deadline',race.deadline||'—'],['Site',site.url]]){
+   const a=document.createElement('strong'),b=document.createElement('span');a.textContent=label;a.style.color='#c8c8dc';b.textContent=value;b.style.color='#ddd';info.append(a,b);
+  }
+  const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:17px;';
+  const close=()=>{modalOpen=false;shade.remove();};
+  const scoreboard=button('Scoreboard',()=>{close();void showTournamentScoreboard(site,race);});
+  const getTrack=button('Get Track',()=>{close();void loadTournamentTrack(site,race);});
+  const back=button('Back',close);getTrack.style.cssText+='background:#4e5b2b;border-color:#a9bd58;';
+  actions.append(scoreboard,getTrack,back);box.append(heading,info,actions);shade.append(box);document.body.append(shade);
+  shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();close();}});
+  shade.addEventListener('pointerdown',event=>{if(event.target===shade)close();});requestAnimationFrame(()=>getTrack.focus());
+ }
+
+ function showTournaments(){
+  modalOpen=true;
+  let sites=loadTournamentSites(),selected=sites.length?0:-1;
+  const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
+  const box=document.createElement('div');box.style.cssText='width:min(780px,94vw);height:min(520px,84vh);display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:18px 20px;box-shadow:0 22px 70px #000;border-radius:6px;font:13px/1.35 system-ui,Segoe UI,sans-serif;';
+  const heading=document.createElement('h2');heading.textContent='Tournaments';heading.style.cssText='text-align:center;font-size:18px;margin:0 0 12px;border-bottom:1px solid #aaa;padding-bottom:8px;';
+  const body=document.createElement('div');body.style.cssText='display:grid;grid-template-columns:minmax(220px,.85fr) minmax(300px,1.15fr);gap:16px;min-height:0;';
+  const list=document.createElement('div');list.style.cssText='overflow:auto;display:grid;align-content:start;gap:4px;border:1px solid #444;background:#0c0c17;padding:5px;';
+  const editor=document.createElement('div');editor.style.cssText='display:grid;grid-template-rows:auto auto 1fr;gap:7px;align-content:start;';
+  const nameLabel=document.createElement('label');nameLabel.textContent='Tournament name';nameLabel.style.color='#c8c8dc';
+  const nameInput=document.createElement('input');nameInput.style.cssText='box-sizing:border-box;width:100%;padding:8px;background:#0d0d18;border:1px solid #676783;color:#fff;border-radius:4px;';
+  const urlLabel=document.createElement('label');urlLabel.textContent='Web address';urlLabel.style.color='#c8c8dc;margin-top:5px';
+  const urlInput=document.createElement('input');urlInput.placeholder='https://example.org/tournament/';urlInput.style.cssText='box-sizing:border-box;width:100%;padding:8px;background:#0d0d18;border:1px solid #676783;color:#fff;border-radius:4px;';
+  editor.append(nameLabel,nameInput,urlLabel,urlInput);
+  const renderList=()=>{
+   list.replaceChildren();
+   sites.forEach((site,index)=>{const item=button(site.name||site.url,()=>{selected=index;nameInput.value=site.name;urlInput.value=site.url;renderList();});item.style.cssText+='text-align:left;overflow:hidden;text-overflow:ellipsis;';setActive(item,index===selected);list.append(item);});
+   if(selected>=0&&sites[selected]){nameInput.value=sites[selected].name;urlInput.value=sites[selected].url;}
+  };
+  const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:7px;flex-wrap:wrap;margin-top:14px;';
+  const close=()=>{modalOpen=false;shade.remove();};
+  const add=button('Add New',()=>{selected=-1;nameInput.value='';urlInput.value='';renderList();nameInput.focus();});
+  const saveSite=button('Save',()=>{
+   const site={name:nameInput.value.trim(),url:urlInput.value.trim()};if(!site.name||!/^https?:\/\//i.test(site.url)){status.textContent='Tournament needs a name and http(s) address.';status.style.color='#ffbd7a';return;}
+   if(selected>=0)sites[selected]=site;else{sites.push(site);selected=sites.length-1;}saveTournamentSites(sites);renderList();
+  });
+  const remove=button('Remove',()=>{if(selected<0)return;sites.splice(selected,1);selected=Math.min(selected,sites.length-1);saveTournamentSites(sites);renderList();if(selected<0){nameInput.value='';urlInput.value='';}});
+  const connect=button('Connect',async()=>{
+   let site=selected>=0?sites[selected]:null;
+   if(!site&&nameInput.value.trim()&&/^https?:\/\//i.test(urlInput.value.trim()))site={name:nameInput.value.trim(),url:urlInput.value.trim()};
+   if(!site){status.textContent='Select or enter a tournament first.';status.style.color='#ffbd7a';return;}
+   if(!host.fetchUrl){close();await centeredNotice('Tournaments','Network access is unavailable in this build.');return;}
+   connect.disabled=true;connect.textContent='Connecting…';
+   try{
+    const cfg=await host.fetchUrl(blissTournamentUrl(site.url,'tour.cfg')),race=parseBlissTournamentConfig(cfg);
+    if(!race.tournament&&!race.trackFile)throw Error('tour.cfg does not contain Bliss tournament information');
+    close();await showTournamentRace(site,race);
+   }catch(error){connect.disabled=false;connect.textContent='Connect';status.textContent='Tournament connection failed: '+String(error);status.style.color='#ff9b9b';}
+  });
+  const closeButton=button('Close',close);connect.style.cssText+='background:#4e5b2b;border-color:#a9bd58;';
+  actions.append(add,saveSite,remove,connect,closeButton);body.append(list,editor);box.append(heading,body,actions);shade.append(box);document.body.append(shade);
+  shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();close();}});
+  shade.addEventListener('pointerdown',event=>{if(event.target===shade)close();});renderList();requestAnimationFrame(()=>shade.focus());
+ }
+
  function showSceneryGenerator(){
   modalOpen=true;
   const rules=blissSceneryDefaults(core.track.landscape).map(rule=>({...rule}));
