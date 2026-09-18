@@ -282,7 +282,9 @@ export function blissEstimatedTimeCentiseconds(tokens:number,carHandicap=1,racer
  return Math.max(0,blissRoundToEven(tokens*racerWeight*carHandicap));
 }
 export function blissTimey(centiseconds:number){
- let value=Math.max(0,Math.round(centiseconds));
+ // Timey takes a Long in Bliss, so a floating expression is converted with
+ // the same FreeBASIC round-to-even rule before formatting.
+ let value=Math.max(0,blissRoundToEven(centiseconds));
  const c=value%100;value=Math.floor(value/100);
  const s=value%60;value=Math.floor(value/60);
  const m=value%60;const h=Math.floor(value/60);
