@@ -60,9 +60,7 @@ import {runNativeRaceResults,type NativeRaceResultsState,type NativeRaceResultsH
 import type {NativeHighScorePreparationHost} from './native-high-score-preparation.ts';
 import type {Assets} from './types.ts';
 import {blissOriginalSceneryPreview} from './bliss-scenery-preview.ts';
-const ENHANCED_BACKGROUND_ROOT='/site/enhanced-backgrounds';
 const HIRES_MAIN_MENU='/game/hires/main-menu.png';
-const enhancedTrackOverviews=['desert','tropical','alpine','city','country'].map(name=>`${ENHANCED_BACKGROUND_ROOT}/${name}-overview.png`);
 type TextResources={resources:NativeDialogHost['resources']};
 type ScreenResources=NativeEditorHost['screenResources'];
 type RouteResources=NativeEditorHost['routeResources'];
