@@ -176,6 +176,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     customTrackExists:(name:string)=>tauriCore.invoke<boolean>('custom_track_exists',{name}),
     readCustomTrack:(name:string)=>tauriCore.invoke<number[]>('read_custom_track',{name}).then(bytes=>Uint8Array.from(bytes)),
     persistCustomTrack:(name:string,bytes:Uint8Array)=>tauriCore.invoke<string>('write_custom_track',{name,data:Array.from(bytes)}),
+    persistTrackShot:(filename:string,bytes:Uint8Array)=>tauriCore.invoke<string>('write_track_shot',{filename,data:Array.from(bytes)}),
     fetchUrl:(url:string)=>tauriCore.invoke<number[]>('bliss_http_get',{url}).then(bytes=>Uint8Array.from(bytes)),
    }:{};
    await runBrowserBlissEditor({
