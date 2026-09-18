@@ -55,7 +55,8 @@ const OPTION_HELP=[
  ['Ctrl-D','Toggle conflict-warning display'],
  ['Ctrl-G','Display/hide grid'],
  ['Ctrl-R','Redraw track'],
- ['Ctrl-S','Take a track-shot'],
+ ['Ctrl-S','Save track'],
+ ['Ctrl-Shift-S','Take a track-shot'],
  ['Ctrl-T','Toggle terrain affected by paste'],
  ['Ctrl-K','Toggle track affected by paste'],
  ['Ctrl-O','Toggle colouring mode'],
@@ -115,7 +116,7 @@ const SWITCH_TOOL_HELP:Record<string,HoverHelp>={
  manual:{name:'MAN',shortcut:'Ctrl+E',description:'Manual editing: allow raw/conflicting tile combinations Bliss normally prevents.'},
  grid:{name:'GRID',shortcut:'Ctrl+G',description:'Show or completely hide the 30×30 map grid.'},
  colour:{name:'COL',shortcut:'Ctrl+O',description:'Colouring/annotation mode. Paint cell borders/backgrounds instead of editing the track.'},
- shot:{name:'TRK SHOT',shortcut:'Ctrl+S',description:'Export a picture of the complete map or the active selection.'},
+ shot:{name:'TRK SHOT',shortcut:'Ctrl+Shift+S',description:'Export a picture of the complete map or the active selection as PNG, JPEG or BMP.'},
  trk:{name:'TRK',shortcut:'Ctrl+K',description:'Choose whether paste/delete operations affect the track layer.'},
  ter:{name:'TER',shortcut:'Ctrl+T',description:'Choose whether paste/delete operations affect the terrain layer.'},
  debug:{name:'DEB',shortcut:'Ctrl+Q',description:'Show raw track/terrain codes and Bliss debug information.'},
@@ -765,7 +766,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    if(upper==='T'){event.preventDefault();affectTerrain=!affectTerrain;renderMap();renderStatus();return;}
    if(upper==='K'){event.preventDefault();affectTrack=!affectTrack;renderMap();renderStatus();return;}
    if(upper==='R'){event.preventDefault();renderMap();renderStatus();return;}
-   if(upper==='S'){event.preventDefault();void takeTrackShot();return;}
+   if(upper==='S'){event.preventDefault();if(event.shiftKey)void takeTrackShot();else void saveTrack();return;}
    if(upper==='H'){event.preventDefault();status.textContent='Track hash: '+blissTrackHash(core.track).toString(16).toUpperCase().padStart(8,'0');status.style.color='#aee18a';return;}
    if(upper==='O'){event.preventDefault();toggleColouringMode();return;}
   }
@@ -1422,7 +1423,37 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   draw();requestAnimationFrame(()=>shade.focus());
  }
 
+ type TrackShotFormat='png'|'jpeg'|'bmp';
+ function chooseTrackShotFormat():Promise<TrackShotFormat|null>{
+  modalOpen=true;
+  return new Promise(resolve=>{
+   const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
+   const box=document.createElement('div');box.style.cssText='width:min(440px,90vw);background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:20px 22px;box-shadow:0 22px 70px #000;border-radius:6px;font:13px/1.4 system-ui,Segoe UI,sans-serif;text-align:center;';
+   const heading=document.createElement('h2');heading.textContent='Track Shot';heading.style.cssText='font-size:18px;margin:0 0 8px;';
+   const message=document.createElement('p');message.textContent='Choose image format';message.style.cssText='margin:0 0 16px;color:#bbb;';
+   const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;flex-wrap:wrap;';
+   const complete=(format:TrackShotFormat|null)=>{modalOpen=false;shade.remove();overlay.focus();resolve(format);};
+   const png=button('PNG',()=>complete('png')),jpeg=button('JPEG',()=>complete('jpeg')),bmp=button('BMP',()=>complete('bmp')),cancel=button('Cancel',()=>complete(null));
+   png.style.cssText+='min-width:82px;background:#4e5b2b;border-color:#a9bd58;';jpeg.style.minWidth='82px';bmp.style.minWidth='82px';cancel.style.minWidth='82px';
+   actions.append(png,jpeg,bmp,cancel);box.append(heading,message,actions);shade.append(box);document.body.append(shade);
+   shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();complete(null);}});
+   shade.addEventListener('pointerdown',event=>{if(event.target===shade)complete(null);});requestAnimationFrame(()=>png.focus());
+  });
+ }
+ function canvasBmpBlob(canvas:HTMLCanvasElement){
+  const width=canvas.width,height=canvas.height,image=canvas.getContext('2d')!.getImageData(0,0,width,height),rowSize=((width*3+3)>>2)<<2,pixelSize=rowSize*height,fileSize=54+pixelSize;
+  const bytes=new Uint8Array(fileSize),view=new DataView(bytes.buffer);
+  bytes[0]=0x42;bytes[1]=0x4d;view.setUint32(2,fileSize,true);view.setUint32(10,54,true);view.setUint32(14,40,true);view.setInt32(18,width,true);view.setInt32(22,height,true);view.setUint16(26,1,true);view.setUint16(28,24,true);view.setUint32(34,pixelSize,true);
+  for(let y=0;y<height;y++){
+   const sourceY=height-1-y,row=54+y*rowSize;
+   for(let x=0;x<width;x++){
+    const source=(sourceY*width+x)*4,target=row+x*3;bytes[target]=image.data[source+2];bytes[target+1]=image.data[source+1];bytes[target+2]=image.data[source];
+   }
+  }
+  return new Blob([bytes],{type:'image/bmp'});
+ }
  async function takeTrackShot(){
+  const format=await chooseTrackShotFormat();if(!format)return;
   const full=document.createElement('canvas');full.width=BLISS_ORIGINAL_MAP_SIZE;full.height=BLISS_ORIGINAL_MAP_SIZE;
   const fullContext=full.getContext('2d',{alpha:false})!;fullContext.putImageData(blissOriginalMapImageData(core.track,host.resources,host.palette,showGrid),0,0);drawCarMarkers(core.track,fullContext);drawColouring(fullContext);
   const selection=core.selection,shot=document.createElement('canvas');
@@ -1430,9 +1461,13 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    shot.width=selection.width*16;shot.height=selection.height*16;
    shot.getContext('2d',{alpha:false})!.drawImage(full,selection.x*16,selection.y*16,shot.width,shot.height,0,0,shot.width,shot.height);
   }else{shot.width=full.width;shot.height=full.height;shot.getContext('2d',{alpha:false})!.drawImage(full,0,0);}
-  const blob=await new Promise<Blob|null>(resolve=>shot.toBlob(resolve,'image/png'));if(!blob){status.textContent='Could not create track-shot.';return;}
-  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=(host.track.name||'TRACK')+'-trackshot.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-  status.textContent='Track-shot exported'+(selection?' from selected region':'')+'.';status.style.color='#aee18a';
+  let blob:Blob|null=null,extension=format;
+  if(format==='bmp')blob=canvasBmpBlob(shot);
+  else if(format==='jpeg'){extension='jpg';blob=await new Promise<Blob|null>(resolve=>shot.toBlob(resolve,'image/jpeg',.92));}
+  else blob=await new Promise<Blob|null>(resolve=>shot.toBlob(resolve,'image/png'));
+  if(!blob){status.textContent='Could not create track-shot.';status.style.color='#ff9b9b';return;}
+  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=(host.track.name||'TRACK')+'-trackshot.'+extension;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  status.textContent='Track-shot exported as '+extension.toUpperCase()+(selection?' from selected region':'')+'.';status.style.color='#aee18a';
  }
 
  async function createNewTrack(){
