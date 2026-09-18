@@ -146,7 +146,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  let brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,selecting=false,selectionAnchor:{x:number;y:number}|null=null,closed=false,zoom=1;
  let activeArea:EditorArea='grid',paletteCursor=0,lastPlaced:{x:number;y:number}|null=null;
  let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false;
- let selectionTool=false,pasteMode=false,manualHex='',manualHexDeadline=0,modalOpen=false,analysisCarIndex=-1;
+ let selectionTool=false,pasteMode=false,manualHex='',manualHexDeadline=0,modalOpen=false,analysisCarIndex=-1,suppressMapCursor=false;
  const shortcutHelpStorageKey='playstunts-bliss-shortcuts-visible';
  let showShortcutReference=true;
  try{showShortcutReference=localStorage.getItem(shortcutHelpStorageKey)!=='0';}catch{}
@@ -350,6 +350,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const renderMap=()=>{
   context.putImageData(blissOriginalMapImageData(core.track,host.resources,host.palette,showGrid),0,0);
   drawCarMarkers(core.track,context);
+  let brushPreviewShown=false;
   if(pasteMode){
    const preview=core.previewPaste(cellX,cellY,{track:affectTrack,terrain:affectTerrain});
    if(preview){
@@ -360,9 +361,22 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
     const size=core.clipboardSize();if(size){context.strokeStyle='#ffe34d';context.lineWidth=2;context.strokeRect(cellX*16+1,cellY*16+1,size.width*16-2,size.height*16-2);}
     context.restore();
    }
+  }else if(!suppressMapCursor&&page<10&&!core.selection&&!selectionTool){
+   const preview=core.previewPlace(cellX,cellY,brush,allowConflicts);
+   if(preview){
+    const shape=core.definitions.track[brush],width=Math.max(1,shape?.width??1),height=Math.max(1,shape?.height??1);
+    const px=cellX*16,py=cellY*16,pw=Math.min(width,30-cellX)*16,ph=Math.min(height,30-cellY)*16;
+    const ghost=document.createElement('canvas');ghost.width=BLISS_ORIGINAL_MAP_SIZE;ghost.height=BLISS_ORIGINAL_MAP_SIZE;
+    const ghostContext=ghost.getContext('2d',{alpha:false})!;
+    ghostContext.putImageData(blissOriginalMapImageData(preview,host.resources,host.palette,showGrid),0,0);drawCarMarkers(preview,ghostContext);
+    context.save();context.globalAlpha=.78;context.drawImage(ghost,px,py,pw,ph,px,py,pw,ph);context.restore();
+    brushPreviewShown=true;
+   }
   }
   drawConflict();drawDebug();drawSelection();
-  context.save();context.strokeStyle=activeArea==='grid'?'#fff':'rgba(255,255,255,.55)';context.lineWidth=1;context.strokeRect(cellX*16+.5,cellY*16+.5,15,15);context.restore();
+  if(!suppressMapCursor&&!brushPreviewShown){
+   context.save();context.strokeStyle=activeArea==='grid'?'#fff':'rgba(255,255,255,.55)';context.lineWidth=1;context.strokeRect(cellX*16+.5,cellY*16+.5,15,15);context.restore();
+  }
  };
  const updateArea=()=>{
   palettePanel.style.boxShadow=activeArea==='palette'?'0 0 0 2px #879341 inset':'none';
@@ -500,7 +514,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  const selectPaletteCode=(code:number,terrain=page>=10)=>{
   if(terrain)terrainBrush=code;else brush=code;
-  renderPalette();renderStatus();
+  renderPalette();renderMap();renderStatus();
  };
  const mapCoordinates=(event:PointerEvent)=>{
   const rect=map.getBoundingClientRect(),px=(event.clientX-rect.left)*map.width/rect.width,py=(event.clientY-rect.top)*map.height/rect.height;
@@ -628,9 +642,9 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   else if(core.place(cellX,cellY,brush,allowConflicts)){lastPlaced={x:cellX,y:cellY};changed('Element placed');}
  };
  const smartSelect=(key:string,direction:1|-1)=>{
-  const next=smartSelectBliss(core.track,brush,key,direction,lastPlaced,core.definitions);if(next!==brush){brush=next;renderPalette();renderStatus();}
+  const next=smartSelectBliss(core.track,brush,key,direction,lastPlaced,core.definitions);if(next!==brush){brush=next;renderPalette();renderMap();renderStatus();}
  };
- const changeMaterial=()=>{if(page>2)return;const next=changeBlissMaterial(brush);if(next!==brush){brush=next;renderPalette();renderStatus();}};
+ const changeMaterial=()=>{if(page>2)return;const next=changeBlissMaterial(brush);if(next!==brush){brush=next;renderPalette();renderMap();renderStatus();}};
  const findByName=async()=>{
   if(page===11){terrainBrush=terrainBrush===0||terrainBrush>5?1:6;renderPalette();renderStatus();return;}
   const query=await centeredPrompt('Find element','Enter part of a Bliss element name:','');if(query===null)return;
@@ -735,7 +749,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
 
  function transformBrush(operation:BlissTransformOperation,label:string){
   const terrain=page>=10,before=terrain?terrainBrush:brush,next=terrain?transformBlissTerrainCode(before,operation):transformBlissTrackCode(before,operation);
-  if(terrain)terrainBrush=next;else brush=next;renderPalette();renderStatus();
+  if(terrain)terrainBrush=next;else brush=next;renderPalette();renderMap();renderStatus();
   if(next===before){status.textContent=label+': this piece is symmetrical, so its orientation does not change.';status.style.color='#aaa';}
   else{status.textContent=label+' → '+next+' · '+(terrain?('Terrain '+next):(blissElementData[next]?.id||('Element '+next)));status.style.color='#aee18a';}
  }
@@ -1132,11 +1146,12 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   let goFast=false;
   const speedUp=(event:KeyboardEvent)=>{event.preventDefault();event.stopImmediatePropagation();goFast=true;};
   const oldPointerEvents=map.style.pointerEvents;
-  modalOpen=true;map.style.pointerEvents='none';window.addEventListener('keydown',speedUp,true);
+  modalOpen=true;suppressMapCursor=true;map.style.pointerEvents='none';window.addEventListener('keydown',speedUp,true);
   activeArea='grid';pasteMode=false;core.setSelection(null);
 
   try{
    for(const step of trace.steps){
+    cellX=Math.max(0,Math.min(29,step.x));cellY=Math.max(0,Math.min(29,step.y));
     renderMap();
     context.save();
     context.fillStyle='rgba(100,240,240,.52)';
@@ -1145,11 +1160,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
     context.fillRect(step.x*16,step.y*16,Math.max(1,step.width)*16,Math.max(1,step.height)*16);
     context.strokeRect(step.x*16+1,step.y*16+1,Math.max(1,step.width)*16-2,Math.max(1,step.height)*16-2);
     context.restore();
-    cellX=Math.max(0,Math.min(29,step.x));cellY=Math.max(0,Math.min(29,step.y));
     if(!goFast)await new Promise(resolve=>setTimeout(resolve,100));
    }
   }finally{
-   window.removeEventListener('keydown',speedUp,true);map.style.pointerEvents=oldPointerEvents;modalOpen=false;
+   window.removeEventListener('keydown',speedUp,true);map.style.pointerEvents=oldPointerEvents;suppressMapCursor=false;modalOpen=false;
   }
 
   cellX=Math.max(0,Math.min(29,trace.cursor.x));cellY=Math.max(0,Math.min(29,trace.cursor.y));
