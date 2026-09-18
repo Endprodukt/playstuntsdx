@@ -6,6 +6,8 @@ import {blissTransformations,type BlissTransformations} from './bliss-transforma
 import {clearBlissTrackElement,dryBlissTerrain,floodBlissTerrain,lowerBlissTerrain,placeBlissTrackElement,raiseBlissTerrain} from './bliss-edit.ts';
 import {captureBlissRegion,cutBlissRegion,hflipBlissRegion,pasteBlissRegion,rotateBlissRegionClockwise,rotateBlissRegionCounterClockwise,vflipBlissRegion,type BlissRegion} from './bliss-region.ts';
 import {buildBlissClosedCircuit,linkBlissTiles} from './bliss-smart-tools.ts';
+import {analyzeBlissRoute,checkBlissTrack} from './bliss-route.ts';
+import {detectBlissNonStunts,detectBlissTerrainError,findBlissStart} from './bliss-validation.ts';
 
 export interface BlissSelection {x:number;y:number;width:number;height:number}
 
@@ -22,6 +24,11 @@ export class BlissEditorCore {
  serialize(){return encodeBlissTrack(this.track);}
  private change(action:()=>void){const before=cloneBlissTrack(this.track);action();this.history.push(before);this.modified=true;}
  markSaved(){this.modified=false;}
+ analyze(){return analyzeBlissRoute(this.track,this.definitions);}
+ check(){return checkBlissTrack(this.track);}
+ compatibility(){return detectBlissNonStunts(this.track,this.definitions);}
+ terrainError(){return detectBlissTerrainError(this.track);}
+ start(){return findBlissStart(this.track);}
  setSelection(selection:BlissSelection|null){
   if(selection){captureBlissRegion(this.track,selection.x,selection.y,selection.width,selection.height);}
   this.selection=selection?{...selection}:null;
