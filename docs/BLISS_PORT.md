@@ -40,7 +40,7 @@ The normal Track menu's editor entry now opens the first PlayStunts DX Bliss edi
 - F1–F12 palette switching and the Bliss tile shortcut keys
 - Bliss-style shortcut help pages
 - conflict/grid/debug toggles and track hash
-- track information and route-analysis summaries
+- track information and Bliss-style route/path/time analysis
 - track-shot export
 - New / Load / Save / Save As
 - desktop saves physically into `Custom Tracks` and become immediately selectable
@@ -53,9 +53,8 @@ The existing reconstructed original editor remains in the source tree for refere
 
 - live Bliss paste preview/accept workflow instead of immediate paste
 - Bliss colouring/annotation UI (Ctrl+O currently only toggles mode state)
-- metadata editor
-- scenery generator
-- full detailed path/section analysis UI
+- Bliss colouring/annotation editor
+- Follow Path visualisation from the analysis path list
 - Bliss tournament integration is intentionally unresolved for PlayStunts DX
 - test-drive/save-and-race flow
 - reuse the same 2D renderer for the in-race left-side map panel
@@ -66,3 +65,17 @@ The existing reconstructed original editor remains in the source tree for refere
 On the desktop build, `Custom Tracks` is the canonical source for editor-created tracks. The editor writes the physical `.TRK` there and only keeps an in-memory copy for immediate use in the current session. Legacy IndexedDB `.TRK` overlays are purged on desktop startup. The runtime content hash includes `Custom Tracks`, so adding, changing or deleting a track rebuilds the runtime on the next launch instead of resurrecting stale tracks.
 
 The Bliss scenery/landscape (Desert, Tropical, Alpine, City, Country) can be changed at any time without recreating the track.
+
+
+## Bliss parity audit
+
+The scenery generator and track analysis are now checked directly against the
+Bliss 2.6.1 FreeBASIC source. Scenery uses Bliss' original landscape defaults,
+percentage normalization, placement categories, random placement quirks and
+FreeBASIC round-to-even conversions. Track analysis uses the original route
+section/path rules, tile/token length rules, prognosis order, default car
+handicaps and famous-racer time ratios.
+
+The transformation and route-metadata tables embedded in the port were also
+byte-checked against Bliss 2.6.1 `xlation.dat` for all 182 defined track
+elements.
