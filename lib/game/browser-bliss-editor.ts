@@ -96,13 +96,13 @@ const QUICK_TOOL_HELP:readonly HoverHelp[]=[
  {name:'Flip vertically',shortcut:'Shift+F',description:'Selection/paste: flip the block. With no selection the toolbar icon flips the whole track; Shift+F alone flips the current element.'},
  {name:'Rotate clockwise',shortcut:'R',description:'Selection/paste: rotate the block. With no selection the toolbar icon rotates the whole track; R alone rotates the current element.'},
  {name:'Rotate counter-clockwise',shortcut:'Shift+R',description:'Selection/paste: rotate the block. With no selection the toolbar icon rotates the whole track; Shift+R alone rotates the current element.'},
- {name:'Track Information',description:'Bliss metadata editor for title, author and comments. Port still pending.'},
+ {name:'Track Information',description:'Edit the Bliss track title, author, comment and championship information. Creation date and editing time are kept automatically.'},
  {name:'Undo',shortcut:'Ctrl+Z',description:'Undo the previous edit stroke or operation.'},
  {name:'Redo',shortcut:'Ctrl+Y',description:'Redo the last undone edit.'},
  {name:'Help',shortcut:'F1 on palette 1',description:'Show Bliss option keys and tile shortcuts.'},
- {name:'Generate Scenery',description:'Automatic Bliss scenery generator. Port still pending.'},
- {name:'Track Analysis',description:'Analyse route sections, paths and track errors.'},
- {name:'Tournaments',description:'Bliss tournament integration. Not used by PlayStunts DX.'},
+ {name:'Generate Scenery',description:'Open the Bliss automatic scenery generator and configure scenery percentages and placement rules.'},
+ {name:'Track Analysis',description:'Analyse route sections, winning and safe paths, cycles, errors and path lengths.'},
+ {name:'Tournaments',description:'Manage Bliss-compatible tournament sites, connect to tour.cfg, view scoreboards and retrieve the current track.'},
  {name:'Settings',description:'Bliss editor settings. Full settings port still pending.'},
 ];
 const SWITCH_TOOL_HELP:Record<string,HoverHelp>={
@@ -136,8 +136,8 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   try{if(await host.customTrackExists(host.track.name))initialBytes=await host.readCustomTrack(host.track.name);}catch{}
  }
  const core=BlissEditorCore.fromBytes(initialBytes);
- const editorOpenedAt=performance.now();
- let metadataEditingBase=core.metadata()?.metadata.editingTime??0;
+ let editingSessionStarted=performance.now();
+ let metadataEditingBase=Math.max(0,core.metadata()?.metadata.editingTime??0);
  let tool:Tool='place',brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,selecting=false,selectionAnchor:{x:number;y:number}|null=null,closed=false,zoom=1;
  let activeArea:EditorArea='grid',paletteCursor=0,lastPlaced:{x:number;y:number}|null=null;
  let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false;
@@ -233,7 +233,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  quickButton(9,'Flip whole track / selection vertically',()=>toolbarFlip(true));
  quickButton(10,'Rotate whole track / selection clockwise',()=>toolbarRotate(false));
  quickButton(11,'Rotate whole track / selection counter-clockwise',()=>toolbarRotate(true));
- quickButton(12,'Track Information — metadata editing port pending');
+ quickButton(12,'Track Information',()=>showTrackInformation());
  const undoTool=quickButton(13,'Undo',()=>{if(core.undo())changed('Undo');});
  const redoTool=quickButton(14,'Redo',()=>{if(core.redo())changed('Redo');});
  quickButton(15,'Help',()=>showHelp(0));
