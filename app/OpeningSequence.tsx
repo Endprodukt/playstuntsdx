@@ -4,7 +4,11 @@ import {lazy,Suspense,type ComponentProps} from 'react';
 type RuntimeOpeningSequence=typeof import('./OpeningSequenceRuntime').default;
 type OpeningSequenceProps=ComponentProps<RuntimeOpeningSequence>;
 
-const RuntimeOpeningSequence=lazy(()=>import('./OpeningSequenceRuntime'));
+let runtimeOpeningSequencePromise:ReturnType<typeof importRuntimeOpeningSequence>|undefined;
+const importRuntimeOpeningSequence=()=>import('./OpeningSequenceRuntime');
+const loadRuntimeOpeningSequence=()=>runtimeOpeningSequencePromise??=importRuntimeOpeningSequence();
+export const preloadOpeningSequenceRuntime=()=>loadRuntimeOpeningSequence();
+const RuntimeOpeningSequence=lazy(loadRuntimeOpeningSequence);
 
 function LoadingArtwork({embedded=false}:{embedded?:boolean}){
  return <section className={embedded?'launcher-game-session':undefined} aria-busy="true">
