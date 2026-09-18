@@ -229,6 +229,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   }
   render();
  };
+ const zoomPercent=()=>Math.round(initialDistance/distance*100);
 
  const resetView=()=>{
   target.copy(defaultTarget);distance=initialDistance;azimuth=initialAzimuth;elevation=initialElevation;camera.fov=options.initialCamera?.fov??55;camera.updateProjectionMatrix();render();
@@ -239,6 +240,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   render,
   update(source){rebuild(source);render();},
   resetView,
+  zoomPercent,
   cellAt,
   setHover,
   setGhost,
