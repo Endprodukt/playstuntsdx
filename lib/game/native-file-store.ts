@@ -9,11 +9,13 @@ export function nativeFileKey(path:string,name:string,extension:string,current='
  return drive+'\\'+(parts.length?parts.join('\\')+'\\':'')+(name+extension).toUpperCase();
 }
 /** Original resources stay immutable. Writes overlay them in browser storage. */
-export async function createNativeFileStore(original:ReadonlyMap<string,()=>Promise<Uint8Array>>,persistence:NativeFilePersistence){
+export async function createNativeFileStore(original:ReadonlyMap<string,()=>Promise<Uint8Array>>,persistence:NativeFilePersistence,options:{volatileExtensions?:readonly string[]}={}){
  // IndexedDB getAll returns primary-key order. Retain directory slots because
  // the original chooser deliberately leaves exactly128 entries unsorted.
  // Legacy records keep their existing load order; their old creation order is unknown.
- const files=await persistence.all(),orderOf=(file:NativeStoredFile)=>Number.isSafeInteger(file.order)&&file.order!>0?file.order!:0;
+ const volatile=new Set((options.volatileExtensions??[]).map(value=>value.toUpperCase()));
+ const isVolatile=(key:string)=>[...volatile].some(extension=>key.toUpperCase().endsWith(extension));
+ const files=(await persistence.all()).filter(file=>!isVolatile(file.key)),orderOf=(file:NativeStoredFile)=>Number.isSafeInteger(file.order)&&file.order!>0?file.order!:0;
  files.sort((a,b)=>orderOf(a)-orderOf(b));
  const saved=new Map(files.map(file=>[file.key,file.bytes.slice()])),orders=new Map(files.map(file=>[file.key,orderOf(file)]));
  let nextOrder=files.reduce((max,file)=>Math.max(max,orderOf(file)),0)+1;
@@ -29,7 +31,7 @@ export async function createNativeFileStore(original:ReadonlyMap<string,()=>Prom
    // service rejects. Do not persist a multi-dot name the chooser cannot reopen.
    const filename=key.slice(prefix.length);
    if(/[<>|"=:,;\/\[\]]/.test(filename)||filename.indexOf('.')!==filename.lastIndexOf('.'))throw Error('Invalid DOS filename');
-   const file={key,bytes:bytes.slice(),order:orders.get(key)??nextOrder++};await persistence.put(file);saved.set(key,file.bytes);orders.set(key,file.order);},
+   const file={key,bytes:bytes.slice(),order:orders.get(key)??nextOrder++};if(!isVolatile(key))await persistence.put(file);saved.set(key,file.bytes);orders.set(key,file.order);},
  };
 }
 /** Dedicated native save database, separate from the retained DOS reference. */
