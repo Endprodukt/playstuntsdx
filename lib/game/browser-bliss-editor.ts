@@ -2,7 +2,7 @@ import {BlissEditorCore} from './bliss-editor-core.ts';
 import {blissElementData,blissPalettePages} from './bliss-element-data.ts';
 import {blissOriginalMapImageData,blissOriginalPaletteImageData,type BlissOriginalMapResources,BLISS_ORIGINAL_MAP_SIZE} from './bliss-original-map.ts';
 import {encodeBlissTrack} from './bliss-track.ts';
-import {transformBlissTrackCode} from './bliss-transformations.ts';
+import {transformBlissTerrainCode,transformBlissTrackCode,type BlissTransformOperation} from './bliss-transformations.ts';
 
 export interface BrowserBlissEditorHost {
  canvas:HTMLCanvasElement;
@@ -11,6 +11,8 @@ export interface BrowserBlissEditorHost {
  resources:BlissOriginalMapResources;
  writeTrack(path:string,name:string,bytes:Uint8Array):Promise<number>;
  clearScores(path:string,name:string):Promise<void>;
+ exists(path:string,name:string):Promise<boolean>;
+ presets?:readonly {terrain:number[]}[];
 }
 
 type Tool='place'|'erase'|'link'|'flood'|'dry'|'raise'|'lower'|'terrain';
@@ -40,10 +42,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const status=document.createElement('span');status.style.cssText='color:#c8c8c8;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw;';
  top.append(title,name,status);
 
- const main=document.createElement('div');main.style.cssText='display:grid;grid-template-columns:minmax(250px,310px) minmax(0,1fr) minmax(190px,250px);gap:10px;min-height:0;';
+ const main=document.createElement('div');main.style.cssText='display:grid;grid-template-columns:minmax(360px,460px) minmax(0,1fr) minmax(210px,270px);gap:10px;min-height:0;';
  const palettePanel=panel('Track pieces');
- const pageBar=document.createElement('div');pageBar.style.cssText='display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;';
- const paletteGrid=document.createElement('div');paletteGrid.style.cssText='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;align-content:start;overflow:auto;max-height:calc(100vh - 150px);';
+ const pageBar=document.createElement('div');pageBar.style.cssText='display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;';
+ const paletteGrid=document.createElement('div');paletteGrid.style.cssText='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;align-content:start;overflow:auto;max-height:calc(100vh - 155px);padding-right:3px;';
  palettePanel.append(pageBar,paletteGrid);
 
  const mapPanel=panel('30 × 30 track');
@@ -63,11 +65,12 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  for(const [key,label] of [['place','Place'],['erase','Erase'],['link','Auto link'],['flood','Flood'],['dry','Dry'],['raise','Raise'],['lower','Lower'],['terrain','Terrain tile']] as const){
   const control=button(label,()=>chooseTool(key));toolButtons.set(key,control);tools.append(control);
  }
- const transformBox=document.createElement('div');transformBox.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:10px;';
- const rotate=button('Rotate',()=>{brush=transformBlissTrackCode(brush,'clockwise');renderPalette();renderStatus();});
- const flip=button('Flip H',()=>{brush=transformBlissTrackCode(brush,'hflip');renderPalette();renderStatus();});
- transformBox.append(rotate,flip);
- const help=document.createElement('p');help.textContent='Left click/drag edits · Right click erases · Mouse wheel zooms · Ctrl+Z/Y undo/redo · 1–8 select tools · R rotates brush · H flips brush.';help.style.cssText='font-size:11px;line-height:1.35;color:#999;margin:10px 0 0;';
+ const transformBox=document.createElement('div');transformBox.style.cssText='display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:10px;';
+ const rotate=button('Rotate ↻',()=>transformBrush('clockwise','Rotate'));
+ const flipH=button('Flip ↔',()=>transformBrush('hflip','Horizontal flip'));
+ const flipV=button('Flip ↕',()=>transformBrush('vflip','Vertical flip'));
+ transformBox.append(rotate,flipH,flipV);
+ const help=document.createElement('p');help.textContent='Left click/drag edits · Right click erases · Mouse wheel zooms · Ctrl+Z/Y undo/redo · 1–8 select tools · R rotates · H/V flip.';help.style.cssText='font-size:11px;line-height:1.35;color:#999;margin:10px 0 0;';
  toolsPanel.append(tools,transformBox,help);
 
  main.append(palettePanel,mapPanel,toolsPanel);
@@ -81,9 +84,11 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   status.textContent=result.ok?'Track OK — winning path found':'Track check: '+result.reason+' · error '+result.error;
   status.style.color=result.ok?'#aee18a':'#ffbd7a';
  });
+ const newTrackButton=button('New',()=>{void createNewTrack();});
  const save=button('Save',()=>{void saveTrack();});
+ const saveAs=button('Save As',()=>{void saveTrack(true);});
  const done=button('Done',()=>{void finish();});
- footer.append(coords,undo,redo,validate,save,done);
+ footer.append(coords,newTrackButton,undo,redo,validate,save,saveAs,done);
  overlay.append(top,main,footer);document.body.append(overlay);
 
  const context=map.getContext('2d',{alpha:false})!;
@@ -115,22 +120,23 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const renderPalette=()=>{
   pageBar.replaceChildren();
   for(let i=0;i<blissPalettePages.length;i++){
-   const pageButton=button(String(i+1),()=>{page=i;renderPalette();});pageButton.style.padding='4px 7px';setActive(pageButton,page===i);pageBar.append(pageButton);
+   const pageButton=button(String(i+1),()=>{page=i;renderPalette();});pageButton.style.padding='6px 9px';setActive(pageButton,page===i);pageBar.append(pageButton);
   }
   paletteGrid.replaceChildren();
   const terrainPage=page>=10;
-  for(const code of blissPalettePages[page]){
+  const codes=Array.from(new Set(blissPalettePages[page])).filter(code=>terrainPage?code<=18:code>0&&code<253);
+  for(const code of codes){
    const label=terrainPage?('Terrain '+code):(blissElementData[code]?.id||('Element '+code));
    const entry=button('',()=>{
     if(terrainPage){terrainBrush=code;chooseTool('terrain');}
     else{brush=code;chooseTool('place');}
     renderPalette();
    });
-   entry.title=label;entry.style.cssText+='display:grid;grid-template-rows:48px auto;justify-items:center;align-items:center;gap:4px;min-height:76px;padding:5px 3px;text-align:center;overflow:hidden;';
+   entry.title=label;entry.style.cssText+='display:grid;grid-template-rows:88px auto;justify-items:center;align-items:center;gap:6px;min-height:118px;padding:8px 6px;text-align:center;overflow:hidden;';
    const preview=document.createElement('canvas'),image=blissOriginalPaletteImageData(code,terrainPage,host.resources,host.palette);
    preview.width=image.width;preview.height=image.height;preview.getContext('2d',{alpha:false})!.putImageData(image,0,0);
-   preview.style.cssText='width:48px;height:48px;image-rendering:pixelated;display:block;';
-   const caption=document.createElement('span');caption.textContent=code+' · '+label;caption.style.cssText='display:block;width:100%;font-size:9px;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+   preview.style.cssText='width:88px;height:88px;image-rendering:pixelated;display:block;';
+   const caption=document.createElement('span');caption.textContent=code+' · '+label;caption.style.cssText='display:block;width:100%;font-size:11px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
    entry.replaceChildren(preview,caption);
    setActive(entry,code===(terrainPage?terrainBrush:brush));paletteGrid.append(entry);
   }
@@ -160,16 +166,59 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const keyDown=(event:KeyboardEvent)=>{
   if(event.ctrlKey&&(event.code==='KeyZ'||event.code==='KeyY')){event.preventDefault();if(event.code==='KeyZ'){if(core.undo())changed('Undo');}else if(core.redo())changed('Redo');return;}
   if(event.code==='Escape'){event.preventDefault();void finish();return;}
-  if(event.code==='KeyR'){event.preventDefault();brush=transformBlissTrackCode(brush,'clockwise');renderPalette();renderStatus();return;}
-  if(event.code==='KeyH'){event.preventDefault();brush=transformBlissTrackCode(brush,'hflip');renderPalette();renderStatus();return;}
+  if(event.code==='KeyR'){event.preventDefault();transformBrush('clockwise','Rotate');return;}
+  if(event.code==='KeyH'){event.preventDefault();transformBrush('hflip','Horizontal flip');return;}
+  if(event.code==='KeyV'){event.preventDefault();transformBrush('vflip','Vertical flip');return;}
   const keys:Record<string,Tool>={Digit1:'place',Digit2:'erase',Digit3:'link',Digit4:'flood',Digit5:'dry',Digit6:'raise',Digit7:'lower',Digit8:'terrain'};
   if(keys[event.code]){event.preventDefault();chooseTool(keys[event.code]);}
  };
  window.addEventListener('keydown',keyDown,true);
 
- async function saveTrack(){
-  const bytes=encodeBlissTrack(core.track).subarray(0,1802),statusCode=await host.writeTrack(host.track.path,host.track.name,bytes);
+ function transformBrush(operation:BlissTransformOperation,label:string){
+  const terrain=tool==='terrain';
+  const before=terrain?terrainBrush:brush;
+  const next=terrain?transformBlissTerrainCode(before,operation):transformBlissTrackCode(before,operation);
+  if(terrain)terrainBrush=next;else brush=next;
+  renderPalette();renderStatus();
+  if(next===before){
+   status.textContent=label+': this piece is symmetrical, so its orientation does not change.';
+   status.style.color='#aaa';
+  }else{
+   status.textContent=label+' → '+next+' · '+(terrain?('Terrain '+next):(blissElementData[next]?.id||('Element '+next)));
+   status.style.color='#aee18a';
+  }
+ }
+
+ async function createNewTrack(){
+  if(core.modified&&!window.confirm('Discard the current unsaved changes and create a new track?'))return;
+  const names=['Desert','Tropical','Alpine','City','Country'];
+  const current=Math.max(0,Math.min(4,core.track.landscape))+1;
+  const answer=window.prompt('New track environment:\n1 Desert\n2 Tropical\n3 Alpine\n4 City\n5 Country',String(current));
+  if(answer===null)return;
+  const choice=Number.parseInt(answer.trim(),10)-1;
+  if(!Number.isInteger(choice)||choice<0||choice>4){window.alert('Choose a number from 1 to 5.');return;}
+  const preset=host.presets?.[choice]?.terrain;
+  core.newTrack({landscape:choice,format:preset?.[900]??152,terrain:preset});
+  host.track.name='';name.textContent='UNTITLED.TRK';cellX=0;cellY=0;page=0;brush=4;terrainBrush=0;chooseTool('place');
+  changed('New '+names[choice]+' track');
+ }
+
+ function requestedTrackName(force=false){
+  if(!force&&host.track.name)return host.track.name;
+  const entered=window.prompt('Track name (maximum 8 characters):',host.track.name||'NEWTRACK');
+  if(entered===null)return null;
+  const clean=entered.trim().replace(/[^A-Za-z0-9_-]/g,'_').toUpperCase().slice(0,8);
+  if(!clean){window.alert('Please enter a track name.');return null;}
+  return clean;
+ }
+
+ async function saveTrack(forceName=false){
+  const target=requestedTrackName(forceName);if(!target)return false;
+  if((forceName||target!==host.track.name)&&await host.exists(host.track.path,target)&&!window.confirm(target+'.TRK already exists. Overwrite it?'))return false;
+  const bytes=encodeBlissTrack(core.track).subarray(0,1802),statusCode=await host.writeTrack(host.track.path,target,bytes);
   if(statusCode){status.textContent='Save failed · status '+statusCode;status.style.color='#ff9b9b';return false;}
+  if(target!==host.track.name)host.track.name=target;
+  name.textContent=host.track.name+'.TRK';
   await host.clearScores(host.track.path,host.track.name);host.track.raw=Array.from(bytes);core.markSaved();renderStatus();status.textContent='Saved '+host.track.name+'.TRK';status.style.color='#aee18a';return true;
  }
  async function finish(){
