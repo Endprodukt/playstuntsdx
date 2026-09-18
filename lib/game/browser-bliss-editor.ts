@@ -662,6 +662,87 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   shade.addEventListener('pointerdown',event=>{if(event.target===shade)shade.remove();});
  }
 
+ function centeredConfirm(titleText:string,messageText:string,okLabel='OK',cancelLabel='Cancel'):Promise<boolean>{
+  modalOpen=true;
+  return new Promise(resolve=>{
+   const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
+   const box=document.createElement('div');box.style.cssText='width:min(520px,90vw);background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:22px 24px;box-shadow:0 22px 70px #000;text-align:center;border-radius:6px;font:14px/1.45 system-ui,Segoe UI,sans-serif;';
+   const heading=document.createElement('h2');heading.textContent=titleText;heading.style.cssText='font-size:18px;margin:0 0 10px;color:#fff;';
+   const message=document.createElement('p');message.textContent=messageText;message.style.cssText='margin:0 0 18px;color:#ccc;';
+   const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;flex-wrap:wrap;';
+   const complete=(answer:boolean)=>{modalOpen=false;shade.remove();resolve(answer);};
+   const ok=button(okLabel,()=>complete(true)),cancel=button(cancelLabel,()=>complete(false));ok.style.cssText+='min-width:105px;background:#4e5b2b;border-color:#a9bd58;';cancel.style.cssText+='min-width:105px;';
+   actions.append(ok,cancel);box.append(heading,message,actions);shade.append(box);document.body.append(shade);
+   shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();complete(false);}});
+   shade.addEventListener('pointerdown',event=>{if(event.target===shade)complete(false);});
+   requestAnimationFrame(()=>ok.focus());
+  });
+ }
+
+ function centeredPrompt(titleText:string,messageText:string,initial=''):Promise<string|null>{
+  modalOpen=true;
+  return new Promise(resolve=>{
+   const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
+   const box=document.createElement('div');box.style.cssText='width:min(520px,90vw);background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:22px 24px;box-shadow:0 22px 70px #000;border-radius:6px;font:14px/1.45 system-ui,Segoe UI,sans-serif;';
+   const heading=document.createElement('h2');heading.textContent=titleText;heading.style.cssText='text-align:center;font-size:18px;margin:0 0 8px;color:#fff;';
+   const message=document.createElement('p');message.textContent=messageText;message.style.cssText='text-align:center;margin:0 0 12px;color:#ccc;';
+   const input=document.createElement('input');input.value=initial;input.style.cssText='box-sizing:border-box;width:100%;padding:9px 10px;margin-bottom:14px;background:#0d0d18;border:1px solid #676783;color:#fff;border-radius:4px;font:14px ui-monospace,Consolas,monospace;';
+   const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;';
+   const complete=(answer:string|null)=>{modalOpen=false;shade.remove();resolve(answer);};
+   const ok=button('OK',()=>complete(input.value)),cancel=button('Cancel',()=>complete(null));ok.style.cssText+='min-width:105px;background:#4e5b2b;border-color:#a9bd58;';cancel.style.cssText+='min-width:105px;';
+   actions.append(ok,cancel);box.append(heading,message,input,actions);shade.append(box);document.body.append(shade);
+   input.addEventListener('keydown',event=>{if(event.code==='Enter'){event.preventDefault();complete(input.value);}else if(event.code==='Escape'){event.preventDefault();complete(null);}});
+   shade.addEventListener('pointerdown',event=>{if(event.target===shade)complete(null);});
+   requestAnimationFrame(()=>{input.focus();input.select();});
+  });
+ }
+
+ function centeredNotice(titleText:string,messageText:string):Promise<void>{
+  modalOpen=true;
+  return new Promise(resolve=>{
+   const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
+   const box=document.createElement('div');box.style.cssText='width:min(520px,90vw);background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:22px 24px;box-shadow:0 22px 70px #000;text-align:center;border-radius:6px;font:14px/1.45 system-ui,Segoe UI,sans-serif;';
+   const heading=document.createElement('h2');heading.textContent=titleText;heading.style.cssText='font-size:18px;margin:0 0 10px;color:#fff;';
+   const message=document.createElement('p');message.textContent=messageText;message.style.cssText='margin:0 0 18px;color:#ccc;';
+   const complete=()=>{modalOpen=false;shade.remove();resolve();},ok=button('OK',complete);ok.style.cssText+='min-width:105px;background:#4e5b2b;border-color:#a9bd58;';
+   box.append(heading,message,ok);shade.append(box);document.body.append(shade);shade.addEventListener('keydown',event=>{if(event.code==='Escape'||event.code==='Enter'){event.preventDefault();complete();}});requestAnimationFrame(()=>ok.focus());
+  });
+ }
+
+ function selectTerrainPreset(presets:readonly BlissTerrainPreset[]):Promise<BlissTerrainPreset|null>{
+  modalOpen=true;
+  return new Promise(resolve=>{
+   let selected=0;
+   const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
+   const box=document.createElement('div');box.style.cssText='width:min(760px,92vw);height:min(610px,88vh);display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:16px 18px;box-shadow:0 22px 70px #000;border-radius:6px;font:14px/1.35 ui-monospace,Consolas,monospace;';
+   const heading=document.createElement('h2');heading.textContent='Select Terrain';heading.style.cssText='text-align:center;font-size:17px;margin:0 0 12px;border-bottom:1px solid #aaa;padding-bottom:8px;';
+   const body=document.createElement('div');body.style.cssText='display:grid;grid-template-columns:190px minmax(0,1fr);gap:24px;min-height:0;align-items:start;';
+   const previewWrap=document.createElement('div');previewWrap.style.cssText='display:grid;gap:8px;justify-items:center;padding-top:8px;';
+   const preview=document.createElement('canvas');preview.width=480;preview.height=480;preview.style.cssText='width:170px;height:170px;image-rendering:pixelated;border:2px solid #aaa;background:#070707;';
+   const previewName=document.createElement('strong');previewName.style.cssText='text-align:center;color:#dcdcf0;font-size:12px;';
+   previewWrap.append(preview,previewName);
+   const list=document.createElement('div');list.style.cssText='display:grid;align-content:start;overflow:auto;max-height:455px;padding:2px 6px 2px 0;';
+   const controls:HTMLButtonElement[]=[];
+   const redraw=()=>{
+    controls.forEach((control,index)=>{control.style.background=index===selected?'#9a98dd':'transparent';control.style.color=index===selected?'#111':'#c8c8f0';});
+    const preset=presets[selected],track=createBlissTrack(core.track.landscape,preset.format);for(let i=0;i<900;i++)track.terrain[i]=preset.terrain[i]??0;
+    preview.getContext('2d',{alpha:false})!.putImageData(blissOriginalMapImageData(track,host.resources,host.palette,true),0,0);previewName.textContent=preset.name;
+   };
+   presets.forEach((preset,index)=>{
+    const control=button(preset.name,()=>{selected=index;redraw();});control.style.cssText='border:0;border-radius:0;background:transparent;color:#c8c8f0;text-align:left;padding:2px 8px;font:14px/1.15 ui-monospace,Consolas,monospace;cursor:pointer;';
+    control.addEventListener('dblclick',()=>complete(preset));controls.push(control);list.append(control);
+   });
+   body.append(previewWrap,list);
+   const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;padding-top:14px;';
+   const complete=(preset:BlissTerrainPreset|null)=>{modalOpen=false;shade.remove();resolve(preset);};
+   const create=button('Create Track',()=>complete(presets[selected])),cancel=button('Cancel',()=>complete(null));create.style.cssText+='min-width:130px;background:#4e5b2b;border-color:#a9bd58;';cancel.style.cssText+='min-width:105px;';
+   actions.append(create,cancel);box.append(heading,body,actions);shade.append(box);document.body.append(shade);
+   shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();complete(null);}else if(event.code==='Enter'){event.preventDefault();complete(presets[selected]);}else if(event.code==='ArrowDown'){event.preventDefault();selected=Math.min(presets.length-1,selected+1);redraw();controls[selected]?.scrollIntoView({block:'nearest'});}else if(event.code==='ArrowUp'){event.preventDefault();selected=Math.max(0,selected-1);redraw();controls[selected]?.scrollIntoView({block:'nearest'});}});
+   shade.addEventListener('pointerdown',event=>{if(event.target===shade)complete(null);});
+   redraw();requestAnimationFrame(()=>shade.focus());
+  });
+ }
+
  function confirmExitChoice():Promise<'save'|'discard'|'cancel'>{
   modalOpen=true;
   return new Promise(resolve=>{
