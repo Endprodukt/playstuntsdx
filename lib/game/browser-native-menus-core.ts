@@ -88,7 +88,11 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  highResMainMenu.src=HIRES_MAIN_MENU;
  const original=bundledTrackReplays(options.assets.tracks,binary);
  for(const [name,entry] of Object.entries(scores))original.set(nativeFileKey('',name,'.hig'),()=>binary('high-scores/'+entry.file));
- const files=await createNativeFileStore(original,await openNativeFilePersistence());
+ const desktopTauri=!!(window as typeof window&{__TAURI__?:unknown}).__TAURI__;
+ // On desktop, physical files in Custom Tracks are the canonical track source.
+ // Keep .TRK writes only for the current session so deleting a Custom Tracks
+ // file cannot be resurrected by the legacy IndexedDB overlay on the next run.
+ const files=await createNativeFileStore(original,await openNativeFilePersistence(),desktopTauri?{volatileExtensions:['.TRK']}:{});
  const drivingSettings={...(options.settings??{mouse:false,joystick:false,graphics:2})};
  let activeRace:Awaited<ReturnType<typeof createNativeManualRaceRuntime>>|undefined,racePoll:(()=>void|Promise<void>)|undefined;
  const presentHercules=options.hercules?createBrowserHerculesPresenter(options.canvas):undefined;
