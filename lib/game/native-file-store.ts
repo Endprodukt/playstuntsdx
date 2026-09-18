@@ -1,5 +1,5 @@
 export interface NativeStoredFile {key:string;bytes:Uint8Array;order?:number}
-export interface NativeFilePersistence {all():Promise<NativeStoredFile[]>;put(file:NativeStoredFile):Promise<void>;close?():void}
+export interface NativeFilePersistence {all():Promise<NativeStoredFile[]>;put(file:NativeStoredFile):Promise<void>;remove?(key:string):Promise<void>;close?():void}
 /** DOS-style paths within the native game's private virtual drive. */
 export function nativeFileKey(path:string,name:string,extension:string,current='C:\\'){
  let directory=path.replace(/\//g,'\\');
@@ -15,7 +15,12 @@ export async function createNativeFileStore(original:ReadonlyMap<string,()=>Prom
  // Legacy records keep their existing load order; their old creation order is unknown.
  const volatile=new Set((options.volatileExtensions??[]).map(value=>value.toUpperCase()));
  const isVolatile=(key:string)=>[...volatile].some(extension=>key.toUpperCase().endsWith(extension));
- const files=(await persistence.all()).filter(file=>!isVolatile(file.key)),orderOf=(file:NativeStoredFile)=>Number.isSafeInteger(file.order)&&file.order!>0?file.order!:0;
+ const storedFiles=await persistence.all();
+ // Desktop tracks are backed by the physical Custom Tracks folder. Purge old
+ // IndexedDB .TRK records from pre-migration builds so deleting a real file
+ // can never make a hidden browser copy reappear later.
+ if(persistence.remove)await Promise.all(storedFiles.filter(file=>isVolatile(file.key)).map(file=>persistence.remove!(file.key)));
+ const files=storedFiles.filter(file=>!isVolatile(file.key)),orderOf=(file:NativeStoredFile)=>Number.isSafeInteger(file.order)&&file.order!>0?file.order!:0;
  files.sort((a,b)=>orderOf(a)-orderOf(b));
  const saved=new Map(files.map(file=>[file.key,file.bytes.slice()])),orders=new Map(files.map(file=>[file.key,orderOf(file)]));
  let nextOrder=files.reduce((max,file)=>Math.max(max,orderOf(file)),0)+1;
@@ -42,5 +47,6 @@ export async function openNativeFilePersistence():Promise<NativeFilePersistence&
   merge: (files:NativeStoredFile[])=>new Promise<number>((resolve,reject)=>{const transaction=database.transaction('files','readwrite'),store=transaction.objectStore('files');let added=0;for(const file of files){const request=store.getKey(file.key);request.onsuccess=()=>{if(request.result===undefined){store.add(file);added++;}};}transaction.oncomplete=()=>resolve(added);transaction.onerror=()=>reject(transaction.error);transaction.onabort=()=>reject(transaction.error??Error('Import cancelled'));}),
   all:()=>new Promise((resolve,reject)=>{const request=database.transaction('files').objectStore('files').getAll();request.onsuccess=()=>resolve(request.result as NativeStoredFile[]);request.onerror=()=>reject(request.error);}),
   put:file=>new Promise((resolve,reject)=>{const transaction=database.transaction('files','readwrite');transaction.objectStore('files').put(file);transaction.oncomplete=()=>resolve();transaction.onerror=()=>reject(transaction.error);transaction.onabort=()=>reject(transaction.error??Error('Save cancelled'));}),
+  remove:key=>new Promise((resolve,reject)=>{const transaction=database.transaction('files','readwrite');transaction.objectStore('files').delete(key);transaction.oncomplete=()=>resolve();transaction.onerror=()=>reject(transaction.error);transaction.onabort=()=>reject(transaction.error??Error('Delete cancelled'));}),
  };
 }
