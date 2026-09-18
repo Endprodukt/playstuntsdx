@@ -147,6 +147,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  let activeArea:EditorArea='grid',paletteCursor=0,lastPlaced:{x:number;y:number}|null=null;
  let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false;
  let selectionTool=false,pasteMode=false,manualHex='',manualHexDeadline=0,modalOpen=false,analysisCarIndex=-1,suppressMapCursor=false;
+ let helpOverlay:HTMLDivElement|null=null;
  const shortcutHelpStorageKey='playstunts-bliss-shortcuts-visible';
  let showShortcutReference=true;
  try{showShortcutReference=localStorage.getItem(shortcutHelpStorageKey)!=='0';}catch{}
@@ -1323,16 +1324,21 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  }
 
  function showHelp(initial:0|1){
+  if(helpOverlay){helpOverlay.remove();helpOverlay=null;modalOpen=false;overlay.focus();return;}
   let helpPage=initial;
-  const shade=document.createElement('div');shade.style.cssText='position:fixed;inset:0;z-index:2147483640;background:rgba(0,0,0,.72);display:grid;place-items:center;padding:30px;';
+  modalOpen=true;
+  const shade=document.createElement('div');shade.tabIndex=-1;helpOverlay=shade;shade.style.cssText='position:fixed;inset:0;z-index:2147483640;background:rgba(0,0,0,.72);display:grid;place-items:center;padding:30px;';
+  const closeHelp=()=>{if(helpOverlay!==shade)return;helpOverlay=null;modalOpen=false;shade.remove();overlay.focus();};
   const box=document.createElement('div');box.style.cssText='width:min(760px,90vw);max-height:88vh;overflow:auto;background:#1e1e34;border:2px solid #80809a;color:#ddd;padding:18px 22px;box-shadow:0 18px 60px #000;font:14px/1.35 ui-monospace,Consolas,monospace;';
   const heading=document.createElement('h2');heading.style.cssText='text-align:center;font-size:16px;margin:0 0 12px;border-bottom:1px solid #aaa;padding-bottom:8px;';
   const table=document.createElement('div');table.style.cssText='display:grid;grid-template-columns:120px 1fr;column-gap:18px;row-gap:2px;';
   const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;margin-top:16px;';
-  const optionsButton=button('Option keys',()=>{helpPage=0;draw();}),tilesButton=button('Tile shortcuts',()=>{helpPage=1;draw();}),close=button('Back',()=>shade.remove());
+  const optionsButton=button('Option keys',()=>{helpPage=0;draw();}),tilesButton=button('Tile shortcuts',()=>{helpPage=1;draw();}),close=button('Back',closeHelp);
   actions.append(optionsButton,tilesButton,close);box.append(heading,table,actions);shade.append(box);document.body.append(shade);
   const draw=()=>{heading.textContent=helpPage===0?'Help — Option keys':'Help — Tile shortcuts';table.replaceChildren();for(const [keyName,description] of helpPage===0?OPTION_HELP:TILE_HELP){const a=document.createElement('span'),b=document.createElement('span');a.textContent=keyName;a.style.color='#d7d76a';b.textContent=description;b.style.color='#aaaaff';table.append(a,b);}setActive(optionsButton,helpPage===0);setActive(tilesButton,helpPage===1);};
-  shade.addEventListener('pointerdown',event=>{if(event.target===shade)shade.remove();});draw();
+  shade.addEventListener('keydown',event=>{if(event.code==='Escape'||event.code==='F1'){event.preventDefault();event.stopPropagation();closeHelp();}},true);
+  shade.addEventListener('pointerdown',event=>{if(event.target===shade)closeHelp();});
+  draw();requestAnimationFrame(()=>shade.focus());
  }
 
  async function takeTrackShot(){
@@ -1386,7 +1392,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   }
   closed=true;cleanup();resolveDone?.();
  }
- const cleanup=()=>{core.endStroke();manualHexDeadline=0;window.removeEventListener('keydown',keyDown,true);setBlissEditorActive(false);overlay.remove();};
+ const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);setBlissEditorActive(false);overlay.remove();};
  let resolveDone:(()=>void)|undefined;
  for(const marker of Object.values(markerImages))marker.onload=()=>{if(!closed){renderPalette();renderMap();}};
  renderPalette();renderScenery();renderMap();renderStatus();updateArea();overlay.focus();requestAnimationFrame(()=>fitMap());
