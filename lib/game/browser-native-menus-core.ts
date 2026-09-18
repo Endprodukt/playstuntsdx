@@ -180,7 +180,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     fetchUrl:(url:string)=>tauriCore.invoke<number[]>('bliss_http_get',{url}).then(bytes=>Uint8Array.from(bytes)),
    }:{};
    await runBrowserBlissEditor({
-    canvas,track,palette,
+    canvas,track,palette,assets:options.assets,
     resources:{art,terrainNames:terrainNames.names,images:editor.screenResources.images},
     sceneryPreviews,
     writeTrack:editor.writeTrack,clearScores:editor.clearScores,exists:editor.exists,presets,
