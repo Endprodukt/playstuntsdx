@@ -159,7 +159,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
  };
 
  const resize=()=>{
-  const width=Math.max(1,canvas.clientWidth),height=Math.max(1,canvas.clientHeight);
+  const width=Math.max(1,canvas.clientWidth||canvas.width),height=Math.max(1,canvas.clientHeight||canvas.height);
   const pixelWidth=Math.max(1,Math.round(width*renderer.getPixelRatio())),pixelHeight=Math.max(1,Math.round(height*renderer.getPixelRatio()));
   if(canvas.width!==pixelWidth||canvas.height!==pixelHeight)renderer.setSize(width,height,false);
   camera.aspect=width/height;camera.updateProjectionMatrix();
