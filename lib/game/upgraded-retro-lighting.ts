@@ -9,14 +9,14 @@ export type RetroSceneryCaster=THREE.Group|{
 type NormalizedRetroSceneryCaster={source:THREE.Group;caster:THREE.Group;receiver?:THREE.Group;patterned?:boolean};
 
 /** Display-world direction (the race scene mirrors source Z), independent of
- * the car heading and camera. The 70-degree elevation keeps the projection
- * readable while shortening scenery shadows around raised road joins. */
+ * the car heading and camera. At 55 degrees the low car silhouette remains
+ * visible in native-resolution views instead of hiding almost entirely below it. */
 // Parallel sunlight from the forward/right side of the initial road heading.
 // The Sun's ~149.6 million km distance is represented by this world-fixed
 // direction, not by a nearby point light or an enormous scene object.
 // Shadow coverage is antialiased and softly filtered for the upgraded view.
 // The filter is an artistic real-time approximation, not a solar penumbra simulation.
-const SUN_ELEVATION = THREE.MathUtils.degToRad(70);
+const SUN_ELEVATION = THREE.MathUtils.degToRad(55);
 const SUN_AZIMUTH = THREE.MathUtils.degToRad(-45);
 export const RETRO_SUN = new THREE.Vector3(
  Math.cos(SUN_ELEVATION) * Math.cos(SUN_AZIMUTH),
@@ -102,8 +102,10 @@ export function placeRetroShadowCamera(camera: THREE.OrthographicCamera, center:
  const texel = extent / mapSize;
  const dx = Math.round(worldOrigin.x / texel) * texel - worldOrigin.x;
  const dy = Math.round(worldOrigin.y / texel) * texel - worldOrigin.y;
- camera.left += dx + lightCenter.x; camera.right += dx + lightCenter.x;
- camera.bottom += dy + lightCenter.y; camera.top += dy + lightCenter.y;
+ // Apply the texel snap opposite to the moving light-space origin so fixed
+ // world points stay on stable shadow texels instead of snapping backwards.
+ camera.left += lightCenter.x - dx; camera.right += lightCenter.x - dx;
+ camera.bottom += lightCenter.y - dy; camera.top += lightCenter.y - dy;
  camera.updateProjectionMatrix();
  return shadowBiasMatrix.clone().multiply(camera.projectionMatrix).multiply(camera.matrixWorldInverse);
 }
@@ -131,6 +133,9 @@ export function createUpgradedRetroLighting() {
  // RGB stores depth and alpha explicitly identifies a rasterized caster.
  // Uncovered pixels must never be treated as the shadow-camera footprint.
  const depthMaterial = new THREE.MeshDepthMaterial({depthPacking: THREE.RGBDepthPacking, side: THREE.DoubleSide, blending: THREE.NoBlending, toneMapped: false});
+ // Preserve the authored sidedness of car faces. Downward-facing rollover
+ // floors must not cast detached rectangles while the car is upright.
+ const carDepthMaterial=depthMaterial.clone();carDepthMaterial.side=THREE.FrontSide;
  // Some original models use pattern 1 as genuine open space. The windmill's
  // rotating blade variants are built from alternating solid and fully open
  // wedges; a plain depth material would fill those openings into a disk.
@@ -381,13 +386,18 @@ export function createUpgradedRetroLighting() {
      source.traverse(node => {
       if (!(node instanceof THREE.Mesh) || presentationOnlyShadowGeometry(node)) return;
       // The map shares the animated wheel/body geometry, but owns transforms.
-      const mesh = new THREE.Mesh(node.geometry, casterMaterial(node));
+      const materials=Array.isArray(node.material)?node.material:[node.material];
+      const mesh = new THREE.Mesh(node.geometry,materials.some(material=>material.side===THREE.DoubleSide)?casterMaterial(node):carDepthMaterial);
       mesh.matrixAutoUpdate = false; shadow.scene.add(mesh);
       shadow.proxies.push({source: node, mesh});
      });
     }
     source.updateWorldMatrix(true,true);
-    for (const proxy of shadow.proxies){proxy.mesh.matrix.copy(proxy.source.matrixWorld);proxy.mesh.matrixWorld.copy(proxy.source.matrixWorld);}
+    for (const proxy of shadow.proxies){
+     proxy.mesh.visible=proxy.source.visible;
+     for(let parent=proxy.source.parent;parent&&parent!==source;parent=parent.parent)if(!parent.visible){proxy.mesh.visible=false;break;}
+     proxy.mesh.matrix.copy(proxy.source.matrixWorld);proxy.mesh.matrixWorld.copy(proxy.source.matrixWorld);
+    }
     const bounds = new THREE.Box3().setFromObject(source), center = bounds.getCenter(new THREE.Vector3());
     const extent = Math.max(128, Math.ceil(bounds.getSize(new THREE.Vector3()).length()/64)*64);
     shadow.matrix.value.copy(placeRetroShadowCamera(shadow.camera,center,extent));
@@ -475,5 +485,5 @@ export function createUpgradedRetroLighting() {
    renderer.autoClear = oldAutoClear;
   }
  }
- return {apply, drawShadows, dispose() {shadows.forEach(shadow => {shadow.target.dispose();shadow.receiverTarget.dispose();shadow.coverageTarget.dispose();shadow.filterTarget.dispose();});receiverMaterials.forEach(material=>material.dispose());coverageReceiverMaterials.forEach(material=>material.dispose());depthMaterial.dispose();patternedDepthMaterial.dispose();filterMaterial.dispose();filterQuad.geometry.dispose();}};
+ return {apply, drawShadows, dispose() {shadows.forEach(shadow => {shadow.target.dispose();shadow.receiverTarget.dispose();shadow.coverageTarget.dispose();shadow.filterTarget.dispose();});receiverMaterials.forEach(material=>material.dispose());coverageReceiverMaterials.forEach(material=>material.dispose());depthMaterial.dispose();carDepthMaterial.dispose();patternedDepthMaterial.dispose();filterMaterial.dispose();filterQuad.geometry.dispose();}};
 }
