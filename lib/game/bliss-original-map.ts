@@ -34,20 +34,24 @@ export function renderBlissOriginalMap(source:BlissTrack,resources:BlissOriginal
   if(image)drawEditorClippedRaster(pixels,BLISS_ORIGINAL_MAP_SIZE,image,x*16,y*16,'or',clip);
  }
  if(!showGrid){
-  // The original editor sprites carry the grid on the LAST pixel of each
-  // 16×16 cell (15, 31, 47, ...), not on the first pixel of the next cell.
-  // Removing 16, 32, ... duplicated the dark edge instead and produced the
-  // thick horizontal/vertical bars reported in the DX editor.
-  for(let x=BLISS_ORIGINAL_MAP_TILE-1;x<BLISS_ORIGINAL_MAP_SIZE-1;x+=BLISS_ORIGINAL_MAP_TILE){
+  // Original Stunts editor rasters bake the grid into the cell borders. In
+  // practice both sides of a 16px seam can contain grid pixels depending on
+  // the terrain/track sprite, so clearing only x/y=15 left visible stripes.
+  // Repaint BOTH seam columns/rows from the nearest interior pixel on their
+  // own side. This removes the grid without stretching the whole map.
+  for(let seam=BLISS_ORIGINAL_MAP_TILE;seam<BLISS_ORIGINAL_MAP_SIZE;seam+=BLISS_ORIGINAL_MAP_TILE){
+   const left=seam-1,right=seam;
    for(let y=0;y<BLISS_ORIGINAL_MAP_SIZE;y++){
-    const at=y*BLISS_ORIGINAL_MAP_SIZE+x;
-    pixels[at]=pixels[at-1];
+    const row=y*BLISS_ORIGINAL_MAP_SIZE;
+    pixels[row+left]=pixels[row+Math.max(0,left-1)];
+    pixels[row+right]=pixels[row+Math.min(BLISS_ORIGINAL_MAP_SIZE-1,right+1)];
    }
   }
-  for(let y=BLISS_ORIGINAL_MAP_TILE-1;y<BLISS_ORIGINAL_MAP_SIZE-1;y+=BLISS_ORIGINAL_MAP_TILE){
+  for(let seam=BLISS_ORIGINAL_MAP_TILE;seam<BLISS_ORIGINAL_MAP_SIZE;seam+=BLISS_ORIGINAL_MAP_TILE){
+   const top=seam-1,bottom=seam;
    for(let x=0;x<BLISS_ORIGINAL_MAP_SIZE;x++){
-    const at=y*BLISS_ORIGINAL_MAP_SIZE+x;
-    pixels[at]=pixels[at-BLISS_ORIGINAL_MAP_SIZE];
+    pixels[top*BLISS_ORIGINAL_MAP_SIZE+x]=pixels[Math.max(0,top-1)*BLISS_ORIGINAL_MAP_SIZE+x];
+    pixels[bottom*BLISS_ORIGINAL_MAP_SIZE+x]=pixels[Math.min(BLISS_ORIGINAL_MAP_SIZE-1,bottom+1)*BLISS_ORIGINAL_MAP_SIZE+x];
    }
   }
  }
