@@ -273,17 +273,19 @@ def merge_custom_tracks(custom_root: Path, merged: Path) -> dict[str, object]:
         relative = str(track_file.relative_to(custom_root))
         name = track_file.name.upper()
         data = track_file.read_bytes()
-        if len(data) != STUNTS_TRACK_BYTES:
+        if len(data) < STUNTS_TRACK_BYTES or len(data) > 13802:
             skipped.append({
                 "file": relative,
-                "reason": f"invalid Stunts track length ({len(data)} bytes; expected {STUNTS_TRACK_BYTES})",
+                "reason": f"invalid Stunts/Bliss track length ({len(data)} bytes; expected 1802..13802)",
             })
             continue
         if name in used_names:
             skipped.append({"file": relative, "reason": f"duplicate track filename: {name}"})
             continue
 
-        (merged / name).write_bytes(data)
+        # Runtime/gameplay uses the canonical Stunts payload. Preserve any Bliss
+        # metadata tail only in the physical Custom Tracks file.
+        (merged / name).write_bytes(data[:STUNTS_TRACK_BYTES])
         used_names.add(name)
         loaded.append({"file": relative, "name": name})
 
