@@ -192,23 +192,54 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  const selectTrack=async()=>{
   show('track');focusBrowserGameCanvas(canvas);const menuHost:NativeTrackMenuHost={...trackHost,track,configuration,baseline,groundModels:ground.resources,panoramas,loadTrack:async({path,name})=>Array.from(await files.read(path,name,'.trk')),readScores:async(name,path)=>files.exists(path,name,'.hig')?Array.from(await files.read(path,name,'.hig')):null,editTrack:async()=>{await editTrack();show('track');}};
   if(!options.displayMode){
-   const upgraded=new Map(enhancedTrackOverviews.map((source,panorama)=>{const image=new Image();image.decoding='async';image.src=source;return [panorama,image] as const;}));
-   const layer=document.createElement('canvas'),layerContext=layer.getContext('2d')!,mask=document.createElement('canvas'),maskContext=mask.getContext('2d')!;mask.width=320;mask.height=200;
-   const maskImage=maskContext.createImageData(320,200);let backdrop:Uint8Array|undefined,layout:{horizon:number;height:number}|undefined;
+   const [{decodeBlissTrack},{createBlissEditor3DView}]=await Promise.all([import('./bliss-track.ts'),import('./bliss-editor-3d.ts')]);
+   const previewCanvas=document.createElement('canvas');previewCanvas.width=1280;previewCanvas.height=800;
+   const baselineView=new DataView(baseline.buffer,baseline.byteOffset,baseline.byteLength),d=0x2d1a0,signed=(at:number)=>baselineView.getInt16(d+at,true);
+   const originalCamera={
+    position:[signed(0x8f6),signed(0x8f8),-signed(0x8fa)] as [number,number,number],
+    target:[signed(0x8fc),signed(0x8fe),-signed(0x900)] as [number,number,number],
+    fov:2*Math.atan(100/120)*180/Math.PI
+   };
+   let preview:ReturnType<typeof createBlissEditor3DView>|undefined,previewRaw:number[]|undefined;
+   const ensurePreview=()=>{
+    if(previewRaw===track.raw&&preview)return preview;
+    const decoded=decodeBlissTrack(Uint8Array.from(track.raw));
+    if(!preview)preview=createBlissEditor3DView(previewCanvas,options.assets,decoded,{initialCamera:originalCamera});
+    else{preview.update(decoded);preview.resetView();}
+    previewRaw=track.raw;return preview;
+   };
    const presentTrack=()=>{
     paint();if(!options.graphics)return;options.graphics.refresh=presentTrack;
-    const image=upgraded.get(track.raw[900]&7);
-    if(!options.graphics.enabled||!backdrop||!layout||!image?.complete||!image.naturalWidth)return;
-    if(layer.width!==canvas.width||layer.height!==canvas.height){layer.width=canvas.width;layer.height=canvas.height;}
-    maskImage.data.fill(0);const top=Math.max(0,layout.horizon-layout.height),bottom=Math.min(100,layout.horizon);
-    for(let y=top;y<bottom;y++)for(let x=0;x<320;x++){const i=y*320+x;if(pixels[i]===backdrop[i])maskImage.data[i*4+3]=255;}
-    maskContext.putImageData(maskImage,0,0);layerContext.setTransform(1,0,0,1,0,0);layerContext.clearRect(0,0,layer.width,layer.height);
-    layerContext.imageSmoothingEnabled=true;layerContext.imageSmoothingQuality='high';layerContext.drawImage(image,0,top*canvas.height/200,canvas.width,(bottom-top)*canvas.height/200);
-    layerContext.globalCompositeOperation='destination-in';layerContext.imageSmoothingEnabled=false;layerContext.drawImage(mask,0,0,layer.width,layer.height);layerContext.globalCompositeOperation='source-over';
-    context.drawImage(layer,0,0);
+    if(!options.graphics.enabled)return;
+    const view=ensurePreview();view.render();
+    // Keep the original title/high-score area and the Load/Edit/Drive buttons.
+    // Only replace the perspective map itself with the high-resolution 3D view.
+    const sourceY=40*4,sourceH=128*4,destY=40*canvas.height/200,destH=128*canvas.height/200;
+    context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';
+    context.drawImage(previewCanvas,0,sourceY,1280,sourceH,0,destY,canvas.width,destH);
+    context.imageSmoothingEnabled=false;
    };
-   upgraded.forEach(image=>{image.onload=()=>options.graphics?.refresh?.();});menuHost.captureOverviewBackdrop=(captured,capturedLayout)=>{backdrop=captured;layout=capturedLayout;};menuHost.present=presentTrack;
-   try{return await runNativeTrackMenu(menuHost);}finally{upgraded.forEach(image=>{image.src='';});layer.width=layer.height=1;if(options.graphics?.refresh===presentTrack)options.graphics.refresh=undefined;}
+   let drag:'orbit'|'pan'|null=null,lastX=0,lastY=0;
+   const inMap=(event:{clientX:number;clientY:number})=>{const r=canvas.getBoundingClientRect(),y=(event.clientY-r.top)*200/r.height;return y>=40&&y<168;};
+   const pointerDown=(event:PointerEvent)=>{
+    if(!options.graphics?.enabled||!inMap(event)||!event.ctrlKey||(event.button!==0&&event.button!==2))return;
+    event.preventDefault();event.stopPropagation();drag=event.button===0?'orbit':'pan';lastX=event.clientX;lastY=event.clientY;canvas.setPointerCapture(event.pointerId);
+   };
+   const pointerMove=(event:PointerEvent)=>{
+    if(!drag||!preview)return;event.preventDefault();const dx=event.clientX-lastX,dy=event.clientY-lastY;lastX=event.clientX;lastY=event.clientY;
+    if(drag==='orbit')preview.orbit(dx,dy);else preview.pan(dx,dy);presentTrack();
+   };
+   const pointerUp=(event:PointerEvent)=>{drag=null;if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);};
+   const wheel=(event:WheelEvent)=>{
+    if(!options.graphics?.enabled||!inMap(event))return;
+    event.preventDefault();const view=ensurePreview();view.dolly(event.deltaY,event.clientX,event.clientY);presentTrack();
+   };
+   canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
+   menuHost.present=presentTrack;
+   try{return await runNativeTrackMenu(menuHost);}finally{
+    canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerup',pointerUp,true);canvas.removeEventListener('pointercancel',pointerUp,true);canvas.removeEventListener('wheel',wheel,true);
+    preview?.close();preview=undefined;previewCanvas.width=previewCanvas.height=1;if(options.graphics?.refresh===presentTrack)options.graphics.refresh=undefined;
+   }
   }
   const display=await prepareBrowserNativeTrackDisplay({catalog:await loadBrowserOriginalResourceCatalog()},options.displayMode,options.hercules),{owner}=display;
   const present=()=>{pixels.set(display.pixels());paint(display.palette,display);};menuHost.present=present;
