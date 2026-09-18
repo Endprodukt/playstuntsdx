@@ -96,9 +96,14 @@ export function getNextBlissVector(
   if(terrainAt(source,slot.x,slot.y)!==6||terrainAt(source,x,y)===6)error=21;
  }
 
+ // FreeBASIC booleans are -1 for true. The original code subtracts
+ // (cisalt <> 0), which therefore ADDS one for an offset connector.
+ // Using JavaScript's 1 for true here mirrored the offset and broke route
+ // analysis for many curves/splits.
+ const bool=(value:boolean)=>value?-1:0;
  if(bearing===0||bearing===2){
-  if(x-(next.cisalt[entry]!==0?1:0)!==slot.x-(current.cisalt[bearing]!==0?1:0))error=81;
- }else if(y-(next.cisalt[entry]!==0?1:0)!==slot.y-(current.cisalt[bearing]!==0?1:0))error=81;
+  if(x-bool(next.cisalt[entry]!==0)!==slot.x-bool(current.cisalt[bearing]!==0))error=81;
+ }else if(y-bool(next.cisalt[entry]!==0)!==slot.y-bool(current.cisalt[bearing]!==0))error=81;
 
  if(slot.origin!==entry||current.entity===116||current.entity===104){
   if(nextShape.width===1&&nextShape.height===1&&next.ctype[entry]===1&&next.ctype[bearing]===2){
