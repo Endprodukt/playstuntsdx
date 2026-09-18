@@ -60,3 +60,9 @@ The existing reconstructed original editor remains in the source tree for refere
 - test-drive/save-and-race flow
 - reuse the same 2D renderer for the in-race left-side map panel
 - regression tests against Bliss 2.6.1 for route/error edge cases
+
+## Custom track persistence
+
+On the desktop build, `Custom Tracks` is the canonical source for editor-created tracks. The editor writes the physical `.TRK` there and only keeps an in-memory copy for immediate use in the current session. Legacy IndexedDB `.TRK` overlays are purged on desktop startup. The runtime content hash includes `Custom Tracks`, so adding, changing or deleting a track rebuilds the runtime on the next launch instead of resurrecting stale tracks.
+
+The Bliss scenery/landscape (Desert, Tropical, Alpine, City, Country) can be changed at any time without recreating the track.
