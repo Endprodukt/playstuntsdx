@@ -117,6 +117,8 @@ const EDITOR_BINDING_ACTIONS:readonly EditorBindingAction[]=[
  {id:'moveDown',group:'Editing & navigation',description:'Move cursor down',defaultBinding:'ArrowDown'},
  {id:'moveLeft',group:'Editing & navigation',description:'Move cursor left',defaultBinding:'ArrowLeft'},
  {id:'moveRight',group:'Editing & navigation',description:'Move cursor right',defaultBinding:'ArrowRight'},
+ {id:'view2D',group:'Editing & navigation',description:'Switch to 2D view',defaultBinding:null},
+ {id:'view3D',group:'Editing & navigation',description:'Switch to 3D view',defaultBinding:null},
  {id:'toggleDebug',group:'Editing & navigation',description:'Toggle debug mode',defaultBinding:'Ctrl+KeyQ'},
  {id:'toggleManual',group:'Editing & navigation',description:'Allow/disallow conflict generation',defaultBinding:'Ctrl+KeyE'},
  {id:'toggleWarnings',group:'Editing & navigation',description:'Toggle conflict-warning display',defaultBinding:'Ctrl+KeyD'},
@@ -393,12 +395,14 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  addSwitch('ter','TER',()=>{affectTerrain=!affectTerrain;renderMap();renderStatus();});
  addSwitch('debug','DEB',()=>{debugMode=!debugMode;renderMap();renderStatus();});
 
- const shortcutReference=document.createElement('section');shortcutReference.style.cssText='min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);align-content:start;border-top:1px solid #343447;padding-top:9px;';
+ const shortcutReference=document.createElement('section');shortcutReference.style.cssText='min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;align-content:start;border-top:1px solid #343447;padding-top:9px;';
  const shortcutHeader=document.createElement('div');shortcutHeader.style.cssText='display:flex;align-items:center;align-self:start;gap:8px;margin-bottom:7px;';
  const shortcutTitle=document.createElement('strong');shortcutTitle.textContent='Shortcuts';shortcutTitle.style.cssText='font-size:11px;color:#eee;margin-right:auto;';
  const shortcutToggle=button('',()=>{showShortcutReference=!showShortcutReference;renderShortcutReference();try{localStorage.setItem(shortcutHelpStorageKey,showShortcutReference?'1':'0');}catch{}});
  shortcutToggle.style.cssText+='padding:4px 7px;font-size:10px;';
  const shortcutList=document.createElement('div');shortcutList.style.cssText='min-height:0;overflow:auto;padding-right:3px;scrollbar-gutter:stable;';
+ const shortcutReset=button('Reset Shortcuts',()=>{editorBindings={...EDITOR_BINDING_DEFAULTS};persistBindings();rebindingAction=null;renderShortcutReference();status.textContent='Shortcuts reset to defaults.';status.style.color='#aee18a';});
+ shortcutReset.style.cssText+='margin-top:8px;width:100%;padding:6px 8px;font-size:10px;';
  const bindingLabel=(binding:string|null)=>{
   if(!binding)return 'Unbound';
   const parts=binding.split('+'),tail=parts.pop()??'';
@@ -437,12 +441,12 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const renderShortcutReference=()=>{
   shortcutList.replaceChildren();
   if(showShortcutReference){appendShortcutGroup('Editing & navigation');appendShortcutGroup('Track piece shortcuts');appendShortcutGroup('Mouse');}
-  shortcutList.style.display=showShortcutReference?'block':'none';
-  shortcutReference.style.gridTemplateRows=showShortcutReference?'auto minmax(0,1fr)':'auto 0';
+  shortcutList.style.display=showShortcutReference?'block':'none';shortcutReset.style.display=showShortcutReference?'block':'none';
+  shortcutReference.style.gridTemplateRows=showShortcutReference?'auto minmax(0,1fr) auto':'auto 0 0';
   shortcutToggle.textContent=showShortcutReference?'Hide':'Show';
   shortcutToggle.title=(showShortcutReference?'Hide':'Show')+' shortcut reference';
  };
- shortcutHeader.append(shortcutTitle,shortcutToggle);shortcutReference.append(shortcutHeader,shortcutList);renderShortcutReference();
+ shortcutHeader.append(shortcutTitle,shortcutToggle);shortcutReference.append(shortcutHeader,shortcutList,shortcutReset);renderShortcutReference();
  toolsPanel.append(quick,switches,shortcutReference);
 
  main.append(palettePanel,mapPanel,toolsPanel);
@@ -731,7 +735,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    if(!editor3D){const module=await import('./bliss-editor-3d.ts');editor3D=module.createBlissEditor3DView(map3D,host.assets,core.track);}
    else editor3D.update(core.track);
    requestAnimationFrame(()=>editor3D?.render());
-   status.textContent='3D view · Ctrl + Left drag orbit · Ctrl + Middle/Right drag move · Wheel / Ctrl+Wheel dolly';
+   status.textContent='3D view · Ctrl + Left drag orbit · Ctrl + Right drag move · Wheel / Ctrl+Wheel dolly';
    status.style.color='#aee18a';
   }else{editor3D?.setHover(null);editor3D?.setGhost(null,0,false,0);renderMap();requestAnimationFrame(()=>fitMap());}
  }
@@ -839,7 +843,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  map3D.addEventListener('pointerdown',event=>{
   if(viewMode!=='3d'||!editor3D)return;
-  if(event.ctrlKey&&(event.button===0||event.button===1||event.button===2)){
+  if(event.ctrlKey&&(event.button===0||event.button===2)){
    event.preventDefault();view3DDrag=event.button===0?'orbit':'pan';view3DLastX=event.clientX;view3DLastY=event.clientY;map3D.setPointerCapture(event.pointerId);return;
   }
   const cell=update3DCell(event);if(!cell)return;
@@ -999,6 +1003,8 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    case 'moveDown': if(activeArea==='palette')movePalette(0,1);else moveCursor(0,1,shiftHeld);return true;
    case 'moveLeft': if(activeArea==='palette')movePalette(-1,0);else moveCursor(-1,0,shiftHeld);return true;
    case 'moveRight': if(activeArea==='palette')movePalette(1,0);else moveCursor(1,0,shiftHeld);return true;
+   case 'view2D': void setViewMode('2d');return true;
+   case 'view3D': void setViewMode('3d');return true;
    case 'toggleDebug': debugMode=!debugMode;renderMap();renderStatus();return true;
    case 'toggleManual': allowConflicts=!allowConflicts;renderStatus();return true;
    case 'toggleWarnings': showConflicts=!showConflicts;renderMap();renderStatus();return true;
@@ -1197,8 +1203,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    showShortcutReference=shortcuts.checked;persistEditorSettings();try{localStorage.setItem(shortcutHelpStorageKey,showShortcutReference?'1':'0');}catch{}
    renderShortcutReference();close();status.textContent='Editor settings saved.';status.style.color='#aee18a';
   });
-  const resetShortcuts=button('Reset Shortcuts',()=>{editorBindings={...EDITOR_BINDING_DEFAULTS};persistBindings();rebindingAction=null;renderShortcutReference();status.textContent='Shortcuts reset to defaults.';status.style.color='#aee18a';});
-  const cancel=button('Cancel',close);saveSettings.style.cssText+='min-width:105px;background:#4e5b2b;border-color:#a9bd58;';resetShortcuts.style.minWidth='105px';cancel.style.minWidth='105px';actions.append(saveSettings,resetShortcuts,cancel);
+  const cancel=button('Cancel',close);saveSettings.style.cssText+='min-width:105px;background:#4e5b2b;border-color:#a9bd58;';cancel.style.minWidth='105px';actions.append(saveSettings,cancel);
   box.append(heading,form,actions);shade.append(box);document.body.append(shade);
   const syncQuality=()=>{const jpeg=format.value==='jpeg';quality.disabled=!jpeg;qualityValue.style.opacity=jpeg?'1':'.45';quality.style.opacity=jpeg?'1':'.45';};format.addEventListener('change',syncQuality);syncQuality();
   shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();close();}});shade.addEventListener('pointerdown',event=>{if(event.target===shade)close();});requestAnimationFrame(()=>format.focus());
