@@ -12,6 +12,7 @@ import {blissTerrainPresets,type BlissTerrainPreset} from './bliss-terrain-prese
 import {setBlissTrackMetadata,type BlissMetadata} from './bliss-metadata.ts';
 import {blissSceneryAvailability,blissSceneryDefaults,blissSceneryTargetCount,type BlissSceneryPlacement,type BlissSceneryRule} from './bliss-scenery-generator.ts';
 import {blissTournamentUrl,parseBlissScoreboard,parseBlissTournamentConfig,type BlissTournamentRace} from './bliss-tournaments.ts';
+import {blissEstimatedTimeCentiseconds,blissTimey} from './bliss-route.ts';
 
 export interface BrowserBlissEditorHost {
  canvas:HTMLCanvasElement;
@@ -1036,50 +1037,63 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   try{analysis=core.analyze();}catch(error){void centeredNotice('Track Analysis','Analysis failed: '+String(error));return;}
   if(!analysis.sections.length){void centeredNotice('Track Analysis','A start/finish line is required before the track can be analysed.');return;}
   if(analysis.tooComplex){void centeredNotice('Track Analysis','Track too complex. Bliss supports up to 254 sections and 1000 paths.');return;}
-  const pathLength=(path:(typeof analysis.paths)[number])=>path.sections.reduce((sum,section)=>sum+(analysis.sections[section]?.length??0),0);
-  const lengths=analysis.paths.map(pathLength),winning=analysis.paths.map((path,index)=>({path,index,length:lengths[index]})).filter(row=>row.path.finishes);
-  const safe=winning.filter(row=>row.path.error===0),cycles=analysis.sections.slice(1).filter(section=>section.cycle).length;
-  const shortest=winning.reduce<typeof winning[number]|null>((best,row)=>!best||row.length<best.length?row:best,null);
+  if(!analysis.paths.length){void centeredNotice('Track Analysis','Track has no valid path.');return;}
+
+  const tileLengths=analysis.paths.map((_,index)=>core.pathLength(analysis,index,false));
+  const tokenLengths=analysis.paths.map((_,index)=>core.pathLength(analysis,index,true));
+  const winning=analysis.paths.map((path,index)=>({path,index,tiles:tileLengths[index],tokens:tokenLengths[index]})).filter(row=>row.path.finishes);
+  const safe=winning.filter(row=>row.path.error===0);
+  const cycles=analysis.paths.filter(path=>path.error===82).length;
+  const shortestWinning=winning.length?Math.min(...winning.map(row=>row.tiles)):0;
+  const shortestSafe=safe.length?Math.min(...safe.map(row=>row.tiles)):0;
+  const fastestWinning=winning.length?Math.min(...winning.map(row=>row.tokens)):0;
+  const fastestSafe=safe.length?Math.min(...safe.map(row=>row.tokens)):0;
+  const estimated=(tokens:number)=>blissTimey(blissEstimatedTimeCentiseconds(tokens,1));
+
   modalOpen=true;
   const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
-  const box=document.createElement('div');box.style.cssText='width:min(720px,92vw);max-height:86vh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:18px 20px;box-shadow:0 22px 70px #000;border-radius:6px;font:13px/1.4 system-ui,Segoe UI,sans-serif;';
+  const box=document.createElement('div');box.style.cssText='width:min(780px,94vw);max-height:88vh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:18px 20px;box-shadow:0 22px 70px #000;border-radius:6px;font:13px/1.4 system-ui,Segoe UI,sans-serif;';
   const heading=document.createElement('h2');heading.textContent='Track Analysis';heading.style.cssText='text-align:center;font-size:18px;margin:0 0 12px;border-bottom:1px solid #aaa;padding-bottom:8px;';
   const body=document.createElement('div');body.style.cssText='overflow:auto;';
   let page:'summary'|'paths'='summary';
   const draw=()=>{
    body.replaceChildren();
    if(page==='summary'){
-    const table=document.createElement('div');table.style.cssText='display:grid;grid-template-columns:210px minmax(0,1fr);gap:8px 14px;';
+    const table=document.createElement('div');table.style.cssText='display:grid;grid-template-columns:230px minmax(0,1fr);gap:8px 14px;';
     const rows:[string,string][]=[
-     ['Sections',String(Math.max(0,analysis.sections.length-1))],
-     ['Paths',String(analysis.paths.length)],
+     ['Total paths',String(analysis.paths.length)],
      ['Winning paths',String(winning.length)],
-     ['Safe winning paths',String(safe.length)],
+     ['Shortest winning path',winning.length?shortestWinning+' tiles':'none'],
+     ['Estimated winning time',winning.length?estimated(fastestWinning)+' ('+fastestWinning+' tokens)':'—'],
+     ['Safe paths',String(safe.length)],
+     ['Shortest safe path',safe.length?shortestSafe+' tiles':'none'],
+     ['Estimated safe time',safe.length?estimated(fastestSafe)+' ('+fastestSafe+' tokens)':'—'],
      ['Cycles',String(cycles)],
-     ['Shortest winning path',shortest?shortest.length+' tiles':'none'],
      ['Route errors / warnings',String(analysis.errors.length)],
     ];
     for(const [label,value] of rows){const a=document.createElement('strong'),b=document.createElement('span');a.textContent=label;a.style.color='#c8c8dc';b.textContent=value;b.style.color='#ddd';table.append(a,b);}
-    const note=document.createElement('p');note.textContent='Safe paths contain no Bliss warning. The opponent chooses the shortest winning path by tile count.';note.style.cssText='margin:16px 0 0;color:#aaa;';
-    body.append(table,note);
+    const prognosis=document.createElement('p');
+    const fatal=analysis.paths.some(path=>path.error>=70&&path.error<=79);
+    prognosis.textContent=winning.length?(fatal?'Prognosis: track contains a path-flow error.':'Prognosis: at least one winning path is available.'):'Prognosis: no winning path.';
+    prognosis.style.cssText='margin:16px 0 0;color:'+(winning.length?'#b9d88c':'#ffbd7a')+';';
+    const note=document.createElement('p');note.textContent='Opponent path = shortest winning path by Stunts tile count. Fastest = lowest Bliss weighted token count. Time uses Bliss default Porsche March Indy calibration (7.2955).';note.style.cssText='margin:8px 0 0;color:#aaa;';
+    body.append(table,prognosis,note);
    }else{
     const table=document.createElement('div');table.style.cssText='display:grid;gap:4px;';
     analysis.paths.forEach((path,index)=>{
-     const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:42px 90px 90px 90px minmax(120px,1fr);gap:8px;padding:7px 8px;border:1px solid #3d3d55;background:#111126;';
-     const values=[
-      '#'+(index+1),
-      lengths[index]+' tiles',
-      path.finishes?'winning':'open',
-      path.error===0?'safe':('error '+path.error),
-      shortest?.index===index?'Opponent choice':'',
-     ];
+     const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:48px 92px 115px 92px 105px minmax(120px,1fr);gap:8px;padding:7px 8px;border:1px solid #3d3d55;background:#111126;';
+     const labels:string[]=[];
+     if(path.finishes&&tileLengths[index]===shortestWinning)labels.push("opp's path");
+     if(path.finishes&&tokenLengths[index]===fastestWinning)labels.push('Fastest');
+     const statusText=path.finishes?(path.error===0?'Complete, safe':'Complete, with warnings'):(path.error===72?'Incomplete, wrong way':path.error===82?'Incomplete, cyclic':'Incomplete');
+     const values=['#'+(index+1),tileLengths[index]+' tiles',estimated(tokenLengths[index]),tokenLengths[index]+' tokens',statusText,labels.join(' · ')];
      values.forEach((value,column)=>{const span=document.createElement(column===0?'strong':'span');span.textContent=value;row.append(span);});table.append(row);
     });
     body.append(table);
    }
   };
   const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;margin-top:14px;';
-  const pathsButton=button('See paths',()=>{page=page==='summary'?'paths':'summary';pathsButton.textContent=page==='summary'?'See paths':'Summary';draw();});
+  const pathsButton=button('See paths',()=>{page=page==='summary'?'paths':'summary';pathsButton.textContent=page==='summary'?'See paths':'Main page';draw();});
   const close=()=>{modalOpen=false;shade.remove();},closeButton=button('Close',close);
   actions.append(pathsButton,closeButton);box.append(heading,body,actions);shade.append(box);document.body.append(shade);draw();
   shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();close();}});
