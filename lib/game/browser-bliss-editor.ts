@@ -320,10 +320,21 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const mapPanel=panel('30 × 30 track');
  mapPanel.style.display='grid';mapPanel.style.gridTemplateRows='auto auto minmax(0,1fr)';mapPanel.style.placeItems='stretch';
  const zoomBar=document.createElement('div');zoomBar.style.cssText='display:flex;justify-content:center;align-items:center;gap:5px;margin:-2px 0 8px;flex-wrap:wrap;';
- const view2D=button('2D',()=>{void setViewMode('2d');}),view3D=button('3D',()=>{void setViewMode('3d');});
+ const viewSwitch=document.createElement('label');viewSwitch.style.cssText='display:inline-flex;align-items:center;gap:6px;padding:2px 6px;border:1px solid #4a4a5d;border-radius:999px;background:#171722;color:#bbb;font-size:11px;cursor:pointer;user-select:none;';
+ const view2D=document.createElement('span');view2D.textContent='2D';view2D.style.fontWeight='700';
+ const viewToggle=document.createElement('input');viewToggle.type='checkbox';viewToggle.setAttribute('aria-label','Switch between 2D and 3D editor view');viewToggle.style.cssText='position:absolute;opacity:0;pointer-events:none;';
+ const viewTrack=document.createElement('span');viewTrack.style.cssText='position:relative;display:inline-block;width:34px;height:18px;border-radius:999px;background:#3b3b49;border:1px solid #5f5f72;box-sizing:border-box;';
+ const viewKnob=document.createElement('span');viewKnob.style.cssText='position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#d8d66d;transition:transform .12s ease;';
+ viewTrack.append(viewKnob);
+ const view3D=document.createElement('span');view3D.textContent='3D';view3D.style.fontWeight='700';
+ viewSwitch.append(view2D,viewToggle,viewTrack,view3D);
+ viewToggle.addEventListener('change',()=>{void setViewMode(viewToggle.checked?'3d':'2d');});
+ view2D.addEventListener('click',event=>{event.preventDefault();viewToggle.checked=false;void setViewMode('2d');});
+ view3D.addEventListener('click',event=>{event.preventDefault();viewToggle.checked=true;void setViewMode('3d');});
  const zoomOut=button('−',()=>setZoom(zoom-.25)),zoomReset=button('100%',()=>setZoom(1)),zoomIn=button('+',()=>setZoom(zoom+.25)),zoomFit=button('Fit',()=>fitMap());
- zoomOut.title='Zoom out';zoomIn.title='Zoom in';zoomReset.title='Actual size';zoomFit.title='Fit map to editor';view2D.title='2D top-down editor';view3D.title='3D editor view';
- for(const control of [view2D,view3D,zoomOut,zoomReset,zoomIn,zoomFit])control.style.padding='4px 8px';
+ zoomOut.title='Zoom out';zoomIn.title='Zoom in';zoomReset.title='Actual size';zoomFit.title='Fit map to editor';
+ for(const control of [zoomOut,zoomReset,zoomIn,zoomFit])control.style.padding='4px 8px';
+ zoomBar.append(viewSwitch,zoomOut,zoomReset,zoomIn,zoomFit);
  const mapWrap=document.createElement('div');mapWrap.style.cssText='min-height:0;min-width:0;display:grid;place-items:center;overflow:auto;background:#050505;border-radius:4px;position:relative;';
  const map=document.createElement('canvas');map.width=BLISS_ORIGINAL_MAP_SIZE;map.height=BLISS_ORIGINAL_MAP_SIZE;map.style.cssText='grid-area:1/1;display:block;image-rendering:pixelated;width:480px;height:480px;max-width:none;max-height:none;cursor:crosshair;box-shadow:0 0 0 1px #333;flex:none;';
  const map3D=document.createElement('canvas');map3D.style.cssText='grid-area:1/1;display:none;width:100%;height:100%;min-width:0;min-height:320px;align-self:stretch;justify-self:stretch;cursor:crosshair;background:#111;';
@@ -712,7 +723,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   renderPalette();renderMap();renderStatus();
  };
  async function setViewMode(mode:'2d'|'3d'){
-  viewMode=mode;setActive(view2D,mode==='2d');setActive(view3D,mode==='3d');
+  viewMode=mode;viewToggle.checked=mode==='3d';viewKnob.style.transform=mode==='3d'?'translateX(16px)':'translateX(0)';view2D.style.color=mode==='2d'?'#fff':'#777';view3D.style.color=mode==='3d'?'#fff':'#777';
   map.style.display=mode==='2d'?'block':'none';map3D.style.display=mode==='3d'?'block':'none';
   for(const control of [zoomOut,zoomReset,zoomIn,zoomFit])control.style.display=mode==='2d'?'inline-block':'none';
   mapWrap.style.overflow=mode==='2d'?'auto':'hidden';
@@ -1870,6 +1881,6 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);window.removeEventListener('pointerdown',capturePointerBinding,true);window.removeEventListener('wheel',captureWheelBinding,true);editor3D?.close();editor3D=undefined;setBlissEditorActive(false);overlay.remove();};
  let resolveDone:(()=>void)|undefined;
  for(const marker of Object.values(markerImages))marker.onload=()=>{if(!closed){renderPalette();renderMap();}};
- renderPalette();renderScenery();renderMap();renderStatus();updateArea();setActive(view2D,true);setActive(view3D,false);overlay.focus();requestAnimationFrame(()=>fitMap());
+ renderPalette();renderScenery();renderMap();renderStatus();updateArea();viewToggle.checked=false;viewKnob.style.transform='translateX(0)';view2D.style.color='#fff';view3D.style.color='#777';overlay.focus();requestAnimationFrame(()=>fitMap());
  await new Promise<void>(resolve=>{resolveDone=resolve;});cleanup();
 }
