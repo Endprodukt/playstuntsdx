@@ -17,5 +17,8 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force public/game/mt32-local | Out-Null
           Set-Content -Path public/game/mt32-local/bootstrap.mjs -Value "export {};"
+          @('track-materials','track-render-models','terrain-objects','track-objects','collision-planes') | ForEach-Object {
+            Set-Content -Path ("public/game/" + $_ + ".json") -Value "{}"
+          }
       - run: npm run desktop:web:build
       - run: cargo check --manifest-path src-tauri/Cargo.toml
