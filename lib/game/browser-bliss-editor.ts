@@ -545,8 +545,12 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(ok)changed(counter?'Whole track rotated counter-clockwise':'Whole track rotated clockwise');
  };
  const checkTrack=()=>{
-  const result=core.check();status.textContent=result.ok?'Track OK — winning path found':'Track check: '+result.reason+' · error '+result.error;status.style.color=result.ok?'#aee18a':'#ffbd7a';
-  if(result.point){cellX=result.point.x;cellY=result.point.y;renderMap();}
+  try{
+   const result=core.check();status.textContent=result.ok?'Track OK — winning path found':'Track check: '+result.reason+' · error '+result.error;status.style.color=result.ok?'#aee18a':'#ffbd7a';
+   if(result.point){cellX=result.point.x;cellY=result.point.y;renderMap();}
+  }catch(error){
+   status.textContent='Track check failed: '+String(error);status.style.color='#ff9b9b';
+  }
  };
  const wholeSelection=()=>{const s=core.selection;if(s&&s.x===0&&s.y===0&&s.width===30&&s.height===30)core.setSelection(null);else core.setSelection({x:0,y:0,width:30,height:30});renderMap();renderStatus();};
  const deleteAtCursor=()=>{
