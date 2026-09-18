@@ -1,7 +1,7 @@
 import {createBlissTrack} from '../lib/game/bliss-track.ts';
 import {buildBlissClosedCircuit} from '../lib/game/bliss-smart-tools.ts';
 import {placeBlissTrackElement} from '../lib/game/bliss-edit.ts';
-import {analyzeBlissRoute,checkBlissTrack} from '../lib/game/bliss-route.ts';
+import {analyzeBlissRoute,blissPathLength,checkBlissTrack} from '../lib/game/bliss-route.ts';
 import {blissTransformations} from '../lib/game/bliss-transformations.ts';
 
 const track=createBlissTrack(4,152);
@@ -31,7 +31,7 @@ const splitAnalysis=analyzeBlissRoute(splitTrack);
 const winning=splitAnalysis.paths.filter(path=>path.finishes);
 console.log('SPLIT',JSON.stringify({
  sections:splitAnalysis.sections.length-1,
- paths:splitAnalysis.paths.map(path=>({finishes:path.finishes,error:path.error,sections:path.sections,length:path.sections.reduce((sum,section)=>sum+(splitAnalysis.sections[section]?.length??0),0)})),
+ paths:splitAnalysis.paths.map((path,index)=>({finishes:path.finishes,error:path.error,sections:path.sections,tiles:blissPathLength(splitTrack,splitAnalysis,index),tokens:blissPathLength(splitTrack,splitAnalysis,index,true)})),
  errors:splitAnalysis.errors,
  tooComplex:splitAnalysis.tooComplex,
 },null,2));
