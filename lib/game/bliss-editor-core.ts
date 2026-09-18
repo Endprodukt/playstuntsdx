@@ -93,6 +93,7 @@ export class BlissEditorCore {
   const preview=cloneBlissTrack(this.track);pasteBlissRegion(preview,x,y,this.clipboard,options);return preview;
  }
  clipboardSize(){return this.clipboard?{width:this.clipboard.width,height:this.clipboard.height}:null;}
+ clearClipboard(){this.clipboard=null;}
  hflipSelection(){if(!this.selection)return false;const s=this.selection,region=hflipBlissRegion(captureBlissRegion(this.track,s.x,s.y,s.width,s.height),this.definitions);this.change(()=>pasteBlissRegion(this.track,s.x,s.y,region));return true;}
  vflipSelection(){if(!this.selection)return false;const s=this.selection,region=vflipBlissRegion(captureBlissRegion(this.track,s.x,s.y,s.width,s.height),this.definitions);this.change(()=>pasteBlissRegion(this.track,s.x,s.y,region));return true;}
  rotateSelectionClockwise(){if(!this.selection)return false;const s=this.selection;if(s.width!==s.height)throw Error('In-place Bliss rotation requires a square selection');const region=rotateBlissRegionClockwise(captureBlissRegion(this.track,s.x,s.y,s.width,s.height),this.definitions);this.change(()=>pasteBlissRegion(this.track,s.x,s.y,region));return true;}
