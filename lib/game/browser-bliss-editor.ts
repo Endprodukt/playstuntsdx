@@ -591,7 +591,8 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const insertAtCursor=()=>{
   if(pasteMode){commitPaste();return;}
   if(activeArea==='palette'){
-   const codes=pageCodes(page),code=codes[paletteCursor];if(code!==undefined)selectPaletteCode(code,page>=10);activeArea='grid';updateArea();return;
+   const code=pageSlots(page)[paletteCursor],valid=page<10?(code>0&&code<253):page===11?(code===1||code===6):(code<=18);
+   if(valid)selectPaletteCode(code,page>=10);activeArea='grid';updateArea();return;
   }
   if(core.selection){if(core.buildClosedCircuit(brush))changed('Closed circuit created');else{status.textContent='This brush cannot create a closed circuit.';status.style.color='#ffbd7a';}return;}
   if(page===11){status.textContent='Bliss F12 terrain brushes are mouse-only.';status.style.color='#ffbd7a';return;}
