@@ -97,6 +97,23 @@ type EditorBindingAction={
  smartKey?:string;
 };
 const EDITOR_BINDING_ACTIONS:readonly EditorBindingAction[]=[
+ {id:'exit',group:'Editing & navigation',description:'Exit editor / cancel paste',defaultBinding:'Escape'},
+ {id:'palette1',group:'Editing & navigation',description:'Palette page 1 / Help when already on page 1',defaultBinding:'F1'},
+ {id:'palette2',group:'Editing & navigation',description:'Palette page 2',defaultBinding:'F2'},
+ {id:'palette3',group:'Editing & navigation',description:'Palette page 3',defaultBinding:'F3'},
+ {id:'palette4',group:'Editing & navigation',description:'Palette page 4',defaultBinding:'F4'},
+ {id:'palette5',group:'Editing & navigation',description:'Palette page 5',defaultBinding:'F5'},
+ {id:'palette6',group:'Editing & navigation',description:'Palette page 6',defaultBinding:'F6'},
+ {id:'palette7',group:'Editing & navigation',description:'Palette page 7',defaultBinding:'F7'},
+ {id:'palette8',group:'Editing & navigation',description:'Palette page 8',defaultBinding:'F8'},
+ {id:'palette9',group:'Editing & navigation',description:'Palette page 9',defaultBinding:'F9'},
+ {id:'palette10',group:'Editing & navigation',description:'Palette page 10',defaultBinding:'F10'},
+ {id:'palette11',group:'Editing & navigation',description:'Palette page 11',defaultBinding:'F11'},
+ {id:'palette12',group:'Editing & navigation',description:'Palette page 12',defaultBinding:'F12'},
+ {id:'moveUp',group:'Editing & navigation',description:'Move cursor up',defaultBinding:'ArrowUp'},
+ {id:'moveDown',group:'Editing & navigation',description:'Move cursor down',defaultBinding:'ArrowDown'},
+ {id:'moveLeft',group:'Editing & navigation',description:'Move cursor left',defaultBinding:'ArrowLeft'},
+ {id:'moveRight',group:'Editing & navigation',description:'Move cursor right',defaultBinding:'ArrowRight'},
  {id:'toggleDebug',group:'Editing & navigation',description:'Toggle debug mode',defaultBinding:'Ctrl+KeyQ'},
  {id:'toggleManual',group:'Editing & navigation',description:'Allow/disallow conflict generation',defaultBinding:'Ctrl+KeyE'},
  {id:'toggleWarnings',group:'Editing & navigation',description:'Toggle conflict-warning display',defaultBinding:'Ctrl+KeyD'},
@@ -136,6 +153,9 @@ const EDITOR_BINDING_ACTIONS:readonly EditorBindingAction[]=[
  {id:'smartK',group:'Track piece shortcuts',description:'Crossroad',defaultBinding:'KeyK',smartKey:'K'},
  {id:'smartL',group:'Track piece shortcuts',description:'Loop',defaultBinding:'KeyL',smartKey:'L'},
  {id:'material',group:'Track piece shortcuts',description:'Change material',defaultBinding:'KeyM'},
+ {id:'fillerSide',group:'Track piece shortcuts',description:'Side filler',defaultBinding:'KeyX'},
+ {id:'fillerBottom',group:'Track piece shortcuts',description:'Bottom filler',defaultBinding:'KeyY'},
+ {id:'fillerCorner',group:'Track piece shortcuts',description:'Corner filler',defaultBinding:'KeyZ'},
  {id:'smartN',group:'Track piece shortcuts',description:'Scenery',defaultBinding:'KeyN',smartKey:'N'},
  {id:'smartO',group:'Track piece shortcuts',description:'Start/Finish line',defaultBinding:'KeyO',smartKey:'O'},
  {id:'smartQ',group:'Track piece shortcuts',description:'Corner',defaultBinding:'KeyQ',smartKey:'Q'},
@@ -704,33 +724,53 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   changed();
  };
  const pointerDown=(event:PointerEvent)=>{
+  const binding=pointerBinding(event),action=actionForBinding(binding);
+  if(!action){if(defaultOwnsBinding(binding)){event.preventDefault();event.stopPropagation();}return;}
   event.preventDefault();activeArea='grid';map.setPointerCapture(event.pointerId);
   const p=mapCoordinates(event);cellX=p.x;cellY=p.y;
-  if(event.button===1){if(colouringMode)showColourDialog();else pickAtCursor();return;}
-  if(pasteMode){
-   if(event.button===0)commitPaste();
-   else if(event.button===2){pasteMode=false;renderMap();renderStatus();}
+  if(pasteMode&&(action.id==='paint'||action.id==='erase')){
+   if(action.id==='paint')commitPaste();else{pasteMode=false;renderMap();renderStatus();}
    return;
   }
-  if(!colouringMode&&(event.ctrlKey||selectionTool)&&event.button===0){selecting=true;selectionAnchor={x:p.x,y:p.y};setSelectionFrom(selectionAnchor,p);return;}
-  painting=true;core.beginStroke();apply(event,event.button===2);
+  if(action.id==='selectDrag'&&!colouringMode){selecting=true;selectionAnchor={x:p.x,y:p.y};setSelectionFrom(selectionAnchor,p);return;}
+  if(action.id==='paint'||action.id==='erase'){
+   painting=true;activePaintAction=action.id;core.beginStroke();apply(event,action.id==='erase');return;
+  }
+  executeBoundAction(action,event.shiftKey);
  };
  const pointerMove=(event:PointerEvent)=>{
   const p=mapCoordinates(event);if(p.x===cellX&&p.y===cellY)return;cellX=p.x;cellY=p.y;
   if(selecting&&selectionAnchor){setSelectionFrom(selectionAnchor,p);return;}
   if(pasteMode){renderMap();renderStatus();return;}
-  if(painting&&(event.buttons&3))apply(event,(event.buttons&2)!==0);else{renderMap();renderStatus();}
+  if(painting&&activePaintAction)apply(event,activePaintAction==='erase');else{renderMap();renderStatus();}
  };
  const pointerUp=(event:PointerEvent)=>{
   if(painting)core.endStroke();
-  painting=false;
+  painting=false;activePaintAction=null;
   if(selecting&&selectionTool)selectionTool=false;
   selecting=false;selectionAnchor=null;
   if(map.hasPointerCapture(event.pointerId))map.releasePointerCapture(event.pointerId);
   renderStatus();
  };
+ const capturePointerBinding=(event:PointerEvent)=>{
+  if(!rebindingAction)return;
+  event.preventDefault();event.stopImmediatePropagation();
+  const target=rebindingAction;rebindingAction=null;assignBinding(target,pointerBinding(event));
+ };
+ const captureWheelBinding=(event:WheelEvent)=>{
+  if(!rebindingAction)return;
+  event.preventDefault();event.stopImmediatePropagation();
+  const target=rebindingAction;rebindingAction=null;assignBinding(target,wheelBinding(event));
+ };
+ const wheelInput=(event:WheelEvent)=>{
+  const binding=wheelBinding(event),action=actionForBinding(binding);
+  if(action){event.preventDefault();executeBoundAction(action,event.shiftKey);return;}
+  if(defaultOwnsBinding(binding)){event.preventDefault();return;}
+ };
+ window.addEventListener('pointerdown',capturePointerBinding,true);
+ window.addEventListener('wheel',captureWheelBinding,{capture:true,passive:false});
  map.addEventListener('pointerdown',pointerDown);map.addEventListener('pointermove',pointerMove);map.addEventListener('pointerup',pointerUp);map.addEventListener('pointercancel',pointerUp);map.addEventListener('contextmenu',event=>event.preventDefault());
- map.addEventListener('wheel',event=>{event.preventDefault();setZoom(zoom+(event.deltaY<0?.25:-.25));},{passive:false});
+ map.addEventListener('wheel',wheelInput,{passive:false});
 
  const choosePage=(index:number)=>{
   page=Math.max(0,Math.min(11,index));paletteCursor=0;activeArea='palette';
@@ -842,9 +882,67 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   }
  };
 
+ const executeBoundAction=(action:EditorBindingAction,shiftHeld=false)=>{
+  if(action.smartKey){smartSelect(action.smartKey,shiftHeld?-1:1);return true;}
+  switch(action.id){
+   case 'exit': if(pasteMode){pasteMode=false;renderMap();renderStatus();}else void finish();return true;
+   case 'palette1': if(page===0)showHelp(0);else choosePage(0);return true;
+   case 'palette2':case 'palette3':case 'palette4':case 'palette5':case 'palette6':case 'palette7':case 'palette8':case 'palette9':case 'palette10':case 'palette11':case 'palette12':
+    choosePage(Number(action.id.slice(7))-1);return true;
+   case 'moveUp': if(activeArea==='palette')movePalette(0,-1);else moveCursor(0,-1,shiftHeld);return true;
+   case 'moveDown': if(activeArea==='palette')movePalette(0,1);else moveCursor(0,1,shiftHeld);return true;
+   case 'moveLeft': if(activeArea==='palette')movePalette(-1,0);else moveCursor(-1,0,shiftHeld);return true;
+   case 'moveRight': if(activeArea==='palette')movePalette(1,0);else moveCursor(1,0,shiftHeld);return true;
+   case 'toggleDebug': debugMode=!debugMode;renderMap();renderStatus();return true;
+   case 'toggleManual': allowConflicts=!allowConflicts;renderStatus();return true;
+   case 'toggleWarnings': showConflicts=!showConflicts;renderMap();renderStatus();return true;
+   case 'toggleGrid': showGrid=!showGrid;renderMap();renderStatus();return true;
+   case 'redraw': renderMap();renderStatus();return true;
+   case 'save': void saveTrack();return true;
+   case 'trackShot': void takeTrackShot();return true;
+   case 'toggleTerrain': affectTerrain=!affectTerrain;renderMap();renderStatus();return true;
+   case 'toggleTrack': affectTrack=!affectTrack;renderMap();renderStatus();return true;
+   case 'toggleColour': toggleColouringMode();return true;
+   case 'selectAll': wholeSelection();return true;
+   case 'copy': copySelection();return true;
+   case 'cut': cutSelection();return true;
+   case 'paste': startPaste();return true;
+   case 'flipHorizontal': flip(false);return true;
+   case 'flipVertical': flip(true);return true;
+   case 'rotateClockwise': rotate(false);return true;
+   case 'rotateCounter': rotate(true);return true;
+   case 'undo': if(core.undo())changed('Undo');return true;
+   case 'redo': if(core.redo())changed('Redo');return true;
+   case 'link': {const linked=core.link(cellX,cellY);if(linked!==null){brush=linked;changed('Tiles linked');}else{status.textContent='No compatible tile link at cursor.';status.style.color='#ffbd7a';}return true;}
+   case 'check': checkTrack();return true;
+   case 'switchArea': activeArea=activeArea==='grid'?'palette':'grid';selectionAnchor=null;updateArea();return true;
+   case 'insert': insertAtCursor();return true;
+   case 'delete': deleteAtCursor();return true;
+   case 'pick':case 'mousePick': if(colouringMode&&action.id==='mousePick')showColourDialog();else pickAtCursor();return true;
+   case 'manualHex': startManualHex();return true;
+   case 'find': void findByName();return true;
+   case 'material': changeMaterial();return true;
+   case 'fillerSide': brush=255;renderPalette();renderMap();renderStatus();return true;
+   case 'fillerBottom': brush=254;renderPalette();renderMap();renderStatus();return true;
+   case 'fillerCorner': brush=253;renderPalette();renderMap();renderStatus();return true;
+   case 'zoomIn': setZoom(zoom+.25);return true;
+   case 'zoomOut': setZoom(zoom-.25);return true;
+   case 'scrollUp': mapWrap.scrollBy({top:-90,behavior:'auto'});return true;
+   case 'scrollDown': mapWrap.scrollBy({top:90,behavior:'auto'});return true;
+  }
+  return false;
+ };
+
  const keyDown=(event:KeyboardEvent)=>{
-  if(modalOpen||event.defaultPrevented)return;
+  if(event.defaultPrevented)return;
   const code=event.code,key=event.key;
+  if(rebindingAction){
+   event.preventDefault();event.stopImmediatePropagation();
+   if(code==='Escape'){rebindingAction=null;renderShortcutReference();status.textContent='Shortcut change cancelled.';status.style.color='#aaa';return;}
+   if(['ControlLeft','ControlRight','ShiftLeft','ShiftRight','AltLeft','AltRight','MetaLeft','MetaRight'].includes(code)){status.textContent='Press a key together with any modifiers you want to use.';return;}
+   const target=rebindingAction;rebindingAction=null;assignBinding(target,keyboardBinding(event));return;
+  }
+  if(modalOpen)return;
 
   if(manualHexDeadline){
    event.preventDefault();event.stopImmediatePropagation();
@@ -857,6 +955,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    }
    manualHexDeadline=0;manualHex='';renderPalette();renderStatus();return;
   }
+
+  const binding=keyboardBinding(event),boundAction=actionForBinding(binding);
+  if(boundAction){event.preventDefault();event.stopImmediatePropagation();executeBoundAction(boundAction,event.shiftKey);return;}
+  if(defaultOwnsBinding(binding)){event.preventDefault();event.stopImmediatePropagation();return;}
 
   if(/^F([1-9]|1[0-2])$/.test(code)){
    event.preventDefault();const n=Number(code.slice(1));
@@ -985,7 +1087,8 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    showShortcutReference=shortcuts.checked;persistEditorSettings();try{localStorage.setItem(shortcutHelpStorageKey,showShortcutReference?'1':'0');}catch{}
    renderShortcutReference();close();status.textContent='Editor settings saved.';status.style.color='#aee18a';
   });
-  const cancel=button('Cancel',close);saveSettings.style.cssText+='min-width:105px;background:#4e5b2b;border-color:#a9bd58;';cancel.style.minWidth='105px';actions.append(saveSettings,cancel);
+  const resetShortcuts=button('Reset Shortcuts',()=>{editorBindings={...EDITOR_BINDING_DEFAULTS};persistBindings();rebindingAction=null;renderShortcutReference();status.textContent='Shortcuts reset to defaults.';status.style.color='#aee18a';});
+  const cancel=button('Cancel',close);saveSettings.style.cssText+='min-width:105px;background:#4e5b2b;border-color:#a9bd58;';resetShortcuts.style.minWidth='105px';cancel.style.minWidth='105px';actions.append(saveSettings,resetShortcuts,cancel);
   box.append(heading,form,actions);shade.append(box);document.body.append(shade);
   const syncQuality=()=>{const jpeg=format.value==='jpeg';quality.disabled=!jpeg;qualityValue.style.opacity=jpeg?'1':'.45';quality.style.opacity=jpeg?'1':'.45';};format.addEventListener('change',syncQuality);syncQuality();
   shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();close();}});shade.addEventListener('pointerdown',event=>{if(event.target===shade)close();});requestAnimationFrame(()=>format.focus());
@@ -1652,7 +1755,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   }
   closed=true;cleanup();resolveDone?.();
  }
- const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);setBlissEditorActive(false);overlay.remove();};
+ const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);window.removeEventListener('pointerdown',capturePointerBinding,true);window.removeEventListener('wheel',captureWheelBinding,true);setBlissEditorActive(false);overlay.remove();};
  let resolveDone:(()=>void)|undefined;
  for(const marker of Object.values(markerImages))marker.onload=()=>{if(!closed){renderPalette();renderMap();}};
  renderPalette();renderScenery();renderMap();renderStatus();updateArea();overlay.focus();requestAnimationFrame(()=>fitMap());
