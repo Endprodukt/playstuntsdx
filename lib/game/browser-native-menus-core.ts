@@ -46,6 +46,7 @@ import {runNativeOpponentMenu,type NativeOpponentHost} from './native-opponent-r
 import {runNativeOptions,type NativeOptionsHost} from './native-options-runtime.ts';
 import {runNativeTrackMenu,type NativeTrackMenuHost} from './native-track-runtime.ts';
 import {runNativeEditor,type NativeEditorHost} from './native-editor-runtime.ts';
+import {runBrowserBlissEditor} from './browser-bliss-editor.ts';
 import {createBrowserMenuInput} from './browser-menu-input.ts';
 import {createNativeFileStore,openNativeFilePersistence,nativeFileKey} from './native-file-store.ts';
 import {createNativeEditorFileWrites} from './native-editor-file-writes.ts';
@@ -149,13 +150,14 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   await runNativeOpponentMenu(opponentHost,display.presentation);
  };
  const editTrack=async()=>{
-  show('editor');if(!options.displayMode)return runNativeEditor(editor);
-  const display=await prepareBrowserNativeEditorDisplay({catalog:await loadBrowserOriginalResourceCatalog()},options.displayMode,{...editor.screenResources,art,terrainNames:terrainNames.names},options.hercules),{owner}=display;
-  const present=()=>{pixels.set(display.pixels());paint(display.palette,display);},editPath:NativeDialogHost['editPath']=(path,length,timeout,field)=>editNativeDisplayPath({memory:owner.memory,d:owner.d,mode:owner.mode,drawing:owner.drawing,present,counters:input.counters,keyboard:input.keyboard},path,length,timeout,field,0xe800);
-  const displayHost={...editor,memory:owner.memory,d:owner.d,mode:owner.mode,drawing:owner.drawing,capture:(retain:boolean)=>captureNativeDisplayDialogBackground(owner,retain),present,editPath};
-  const nativeDialogs=createNativeDisplayDialogRuntime(displayHost,0xe800,{enumerate:host.enumerate,editPath}),dialogs={file:nativeDialogs.file,dialog(resource:string,mode:number,selected=0,border=4,disabled?:ReadonlyArray<number>){const m=owner.memory(),at=border===4?0x4ec2:0x4ec0;return nativeDialogs.dialog(resource,mode,selected,border===4||border===1?(m[owner.d+at]|m[owner.d+at+1]<<8):border,disabled);}};
-  try{await runNativeEditor({...editor,present,saveName:state=>editNativeDisplaySaveName(displayHost,state,'Track',0xe800)},createNativeDisplayEditorPresentation(display,dialogs,present));}
-  finally{display.release();}
+  show('editor');input.setActive(false);
+  try{
+   await runBrowserBlissEditor({
+    canvas,track,palette,
+    resources:{art,terrainNames:terrainNames.names,images:editor.screenResources.images},
+    writeTrack:editor.writeTrack,clearScores:editor.clearScores,
+   });
+  }finally{input.setActive(true);await input.release();}
  };
  const selectTrack=async()=>{
   show('track');focusBrowserGameCanvas(canvas);const menuHost:NativeTrackMenuHost={...trackHost,track,configuration,baseline,groundModels:ground.resources,panoramas,loadTrack:async({path,name})=>Array.from(await files.read(path,name,'.trk')),readScores:async(name,path)=>files.exists(path,name,'.hig')?Array.from(await files.read(path,name,'.hig')):null,editTrack:async()=>{await editTrack();show('track');}};
