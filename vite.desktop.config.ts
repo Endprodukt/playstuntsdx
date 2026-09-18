@@ -102,11 +102,13 @@ function prepareDesktopStaticAssets(): Plugin {
   return {
     name: 'playstunts-dx-prepare-desktop-static-assets',
     closeBundle() {
-      const muntSource = path.join(root, 'public', 'game', 'mt32-local');
+      const publicMunt = path.join(root, 'public', 'game', 'mt32-local');
+      const vendorMunt = path.join(root, 'vendor', 'runtime', 'game', 'mt32-local');
+      const muntSource = existsSync(path.join(publicMunt, 'bootstrap.mjs')) ? publicMunt : vendorMunt;
       const muntTarget = path.join(root, 'dist-desktop', 'mt32-local');
       const bootstrap = path.join(muntSource, 'bootstrap.mjs');
       if (!existsSync(bootstrap)) {
-        throw new Error(`Desktop MT-32 runtime is missing: ${bootstrap}. Generate the local Munt runtime before building the portable app.`);
+        throw new Error(`Desktop MT-32 runtime is missing from both public/game/mt32-local and vendor/runtime/game/mt32-local.`);
       }
 
       rmSync(muntTarget, { recursive: true, force: true });
