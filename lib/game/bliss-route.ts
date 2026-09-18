@@ -362,6 +362,56 @@ export function summarizeBlissTrackAnalysis(
  };
 }
 
+
+export interface BlissPathTraceStep {
+ x:number;y:number;width:number;height:number;code:number;section:number;
+}
+export interface BlissPathTrace {
+ steps:BlissPathTraceStep[];
+ cursor:BlissPoint;
+ stoppedOnError:boolean;
+}
+
+/** Behavioural port of Bliss FollowPath without drawing/sleep side effects.
+ * The UI can replay these steps to reproduce Bliss' cyan path animation. */
+export function traceBlissPath(
+ source:BlissTrack,
+ analysis:BlissRouteAnalysis,
+ pathIndex:number,
+ stopError=0,
+ definitions:BlissTransformations=blissTransformations,
+ elements:readonly BlissElementData[]=blissElementData,
+):BlissPathTrace{
+ const path=analysis.paths[pathIndex];
+ if(!path||!path.sections.length)return {steps:[],cursor:{x:0,y:0},stoppedOnError:false};
+ const first=analysis.sections[path.sections[0]];
+ if(first?.final&&same(first.final,first.initial)&&!first.finishes)return {steps:[],cursor:{...first.initial},stoppedOnError:false};
+
+ const steps:BlissPathTraceStep[]=[];
+ let justStarted=true,last:BlissPoint={...first.initial};
+
+ for(const sectionNumber of path.sections){
+  const section=analysis.sections[sectionNumber];if(!section||!section.final)continue;
+  let slot:BlissTrackVector={x:section.initial.x,y:section.initial.y,bearing:section.bearing,origin:0,error:0};
+
+  for(let guard=0;guard<10000;guard++){
+   if(same(slot,section.final)&&!justStarted){last={x:slot.x,y:slot.y};break;}
+   if(!inside(slot.x,slot.y)){last={x:slot.x,y:slot.y};break;}
+
+   const code=trackAt(source,slot.x,slot.y),shape=definitions.track[code];
+   steps.push({x:slot.x,y:slot.y,width:shape?.width??1,height:shape?.height??1,code,section:sectionNumber});
+
+   const old={...slot};
+   slot=getNextBlissVector(source,slot,false,definitions,elements);
+   if(stopError&&slot.error===stopError){
+    return {steps,cursor:{x:old.x,y:old.y},stoppedOnError:true};
+   }
+   last={x:slot.x,y:slot.y};justStarted=false;
+  }
+ }
+ return {steps,cursor:last,stoppedOnError:false};
+}
+
 export interface BlissTrackCheck {
  ok:boolean;error:number;point?:BlissPoint;path?:number;
  reason:'ok'|'terrain'|'start'|'complex'|'flow'|'warning'|'open';
