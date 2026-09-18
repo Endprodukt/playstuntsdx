@@ -743,20 +743,21 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const x=Math.min(a.x,b.x),y=Math.min(a.y,b.y),width=Math.abs(a.x-b.x)+1,height=Math.abs(a.y-b.y)+1;
   core.setSelection({x,y,width,height});renderMap();renderStatus();
  };
+ const colourCell=(x:number,y:number,eraseColour=false)=>{
+  const current=core.metadata(),now=new Date(),metadata:BlissMetadata=current?{...current.metadata}:{
+   title:'',author:'Anonymous',comment:'',championship:'',year:now.getFullYear(),month:now.getMonth()+1,day:now.getDate(),tool:'PlayStunts DX',toolVersion:100,editingTime:0,
+  };
+  const old=metadata.colours,border=old?new Uint16Array(old.border):new Uint16Array(900),background=old?new Uint16Array(old.background):new Uint16Array(900);
+  if(!old){border.fill(BLISS_TRANSPARENT_COLOUR);background.fill(BLISS_TRANSPARENT_COLOUR);}
+  const index=y*30+x;
+  if(eraseColour){border[index]=BLISS_TRANSPARENT_COLOUR;background[index]=BLISS_TRANSPARENT_COLOUR;}
+  else{border[index]=borderColour;background[index]=backgroundColour;}
+  metadata.colours={border,background};metadata.tool='PlayStunts DX';metadata.toolVersion=100;
+  core.setMetadata(metadata,'binary');renderMap();renderStatus();
+ };
  const apply=(event:PointerEvent,forceErase=false)=>{
   const p=mapCoordinates(event);cellX=p.x;cellY=p.y;activeArea='grid';
-  if(colouringMode){
-   const current=core.metadata(),now=new Date(),metadata:BlissMetadata=current?{...current.metadata}:{
-    title:'',author:'Anonymous',comment:'',championship:'',year:now.getFullYear(),month:now.getMonth()+1,day:now.getDate(),tool:'PlayStunts DX',toolVersion:100,editingTime:0,
-   };
-   const old=metadata.colours,border=old?new Uint16Array(old.border):new Uint16Array(900),background=old?new Uint16Array(old.background):new Uint16Array(900);
-   if(!old){border.fill(BLISS_TRANSPARENT_COLOUR);background.fill(BLISS_TRANSPARENT_COLOUR);}
-   const index=p.y*30+p.x;
-   if(forceErase||event.button===2){border[index]=BLISS_TRANSPARENT_COLOUR;background[index]=BLISS_TRANSPARENT_COLOUR;}
-   else{border[index]=borderColour;background[index]=backgroundColour;}
-   metadata.colours={border,background};metadata.tool='PlayStunts DX';metadata.toolVersion=100;
-   core.setMetadata(metadata,'binary');renderMap();renderStatus();return;
-  }
+  if(colouringMode){colourCell(p.x,p.y,forceErase||event.button===2);return;}
   if(page===11){
    // Bliss F12 has no separate Flood/Dry/Raise/Lower tools: the selected
    // Water/Mountain brush plus the mouse button defines the operation.
@@ -826,7 +827,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  map.addEventListener('pointerdown',pointerDown);map.addEventListener('pointermove',pointerMove);map.addEventListener('pointerup',pointerUp);map.addEventListener('pointercancel',pointerUp);map.addEventListener('contextmenu',event=>event.preventDefault());
  map.addEventListener('wheel',wheelInput,{passive:false});
 
- let view3DDrag:'orbit'|'pan'|null=null,view3DLastX=0,view3DLastY=0;
+ let view3DDrag:'orbit'|'pan'|null=null,view3DLastX=0,view3DLastY=0,view3DPaint:'paint'|'erase'|null=null,view3DLastPaintCell='';
  const update3DCell=(event:PointerEvent)=>{
   const cell=editor3D?.cellAt(event.clientX,event.clientY)??null;
   if(cell){
@@ -844,8 +845,12 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const cell=update3DCell(event);if(!cell)return;
   const action=actionForBinding(pointerBinding(event));if(!action)return;
   event.preventDefault();
-  if(action.id==='paint'){insertAtCursor();return;}
-  if(action.id==='erase'){deleteAtCursor();return;}
+  if(action.id==='paint'||action.id==='erase'){
+   if(colouringMode){
+    view3DPaint=action.id;view3DLastPaintCell=cell.x+','+cell.y;core.beginStroke();colourCell(cell.x,cell.y,action.id==='erase');return;
+   }
+   if(action.id==='paint')insertAtCursor();else deleteAtCursor();return;
+  }
   if(action.id==='mousePick'||action.id==='pick'){pickAtCursor();editor3D.update(core.track);return;}
   executeBoundAction(action,event.shiftKey);
  });
@@ -855,9 +860,13 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    const dx=event.clientX-view3DLastX,dy=event.clientY-view3DLastY;view3DLastX=event.clientX;view3DLastY=event.clientY;
    if(view3DDrag==='orbit')editor3D.orbit(dx,dy);else editor3D.pan(dx,dy);return;
   }
-  update3DCell(event);
+  const cell=update3DCell(event);
+  if(view3DPaint&&cell){
+   const key=cell.x+','+cell.y;
+   if(key!==view3DLastPaintCell){view3DLastPaintCell=key;colourCell(cell.x,cell.y,view3DPaint==='erase');}
+  }
  });
- const end3DDrag=(event:PointerEvent)=>{view3DDrag=null;if(map3D.hasPointerCapture(event.pointerId))map3D.releasePointerCapture(event.pointerId);};
+ const end3DDrag=(event:PointerEvent)=>{if(view3DPaint)core.endStroke();view3DPaint=null;view3DLastPaintCell='';view3DDrag=null;if(map3D.hasPointerCapture(event.pointerId))map3D.releasePointerCapture(event.pointerId);};
  map3D.addEventListener('pointerup',end3DDrag);map3D.addEventListener('pointercancel',end3DDrag);map3D.addEventListener('contextmenu',event=>event.preventDefault());
  map3D.addEventListener('wheel',event=>{
   if(viewMode!=='3d'||!editor3D)return;
