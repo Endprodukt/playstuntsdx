@@ -162,24 +162,28 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  quickButton(9,'Flip whole track / selection vertically',()=>toolbarFlip(true));
  quickButton(10,'Rotate whole track / selection clockwise',()=>toolbarRotate(false));
  quickButton(11,'Rotate whole track / selection counter-clockwise',()=>toolbarRotate(true));
- quickButton(12,'Track Information',()=>showTrackInfo());
+ quickButton(12,'Track Information — metadata editing port pending');
  quickButton(13,'Undo',()=>{if(core.undo())changed('Undo');});
  quickButton(14,'Redo',()=>{if(core.redo())changed('Redo');});
  quickButton(15,'Help',()=>showHelp(0));
  quickButton(16,'Generate Scenery — port pending');
  quickButton(17,'Track Analysis',()=>showTrackAnalysis());
  quickButton(18,'Tournaments — not used by PlayStunts DX');
- quickButton(19,'Editor Settings',()=>showEditorSettings());
+ quickButton(19,'Editor Settings — full Bliss settings port pending');
 
- const switches=document.createElement('div');switches.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:10px;';
+ const switches=document.createElement('div');switches.style.cssText='display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:10px;';
  const switchButtons=new Map<string,HTMLButtonElement>();
- const addSwitch=(id:string,label:string,action:()=>void)=>{const b=button(label,action);switchButtons.set(id,b);switches.append(b);};
- addSwitch('conflicts','Conflicts',()=>{showConflicts=!showConflicts;renderMap();renderStatus();});
- addSwitch('allow','Mix tiles',()=>{allowConflicts=!allowConflicts;renderStatus();});
- addSwitch('grid','Grid',()=>{showGrid=!showGrid;renderMap();renderStatus();});
- addSwitch('trk','Paste TRK',()=>{affectTrack=!affectTrack;renderStatus();});
- addSwitch('ter','Paste TER',()=>{affectTerrain=!affectTerrain;renderStatus();});
- addSwitch('debug','Debug',()=>{debugMode=!debugMode;renderMap();renderStatus();});
+ const addSwitch=(id:string,label:string,action:()=>void)=>{const b=button(label,action);b.title=label;switchButtons.set(id,b);switches.append(b);return b;};
+ addSwitch('clip','CLIP',()=>{core.clearClipboard();pasteMode=false;renderMap();renderStatus();status.textContent='Clipboard cleared.';});
+ addSwitch('warn','WAR',()=>{showConflicts=!showConflicts;renderMap();renderStatus();});
+ addSwitch('manual','MAN',()=>{allowConflicts=!allowConflicts;renderStatus();});
+ addSwitch('grid','GRID',()=>{showGrid=!showGrid;renderMap();renderStatus();});
+ const colourSwitch=addSwitch('colour','COL',()=>{status.textContent='Bliss colouring mode is not ported yet.';status.style.color='#ffbd7a';});
+ colourSwitch.disabled=true;colourSwitch.style.opacity='.35';colourSwitch.style.cursor='not-allowed';
+ addSwitch('shot','TRK SHOT',()=>void takeTrackShot());
+ addSwitch('trk','TRK',()=>{affectTrack=!affectTrack;renderMap();renderStatus();});
+ addSwitch('ter','TER',()=>{affectTerrain=!affectTerrain;renderMap();renderStatus();});
+ addSwitch('debug','DEB',()=>{debugMode=!debugMode;renderMap();renderStatus();});
 
  const terrainTools=document.createElement('div');terrainTools.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:10px;';
  const toolButtons=new Map<Tool,HTMLButtonElement>();
@@ -264,7 +268,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   coords.textContent='Cell '+(cellX+1)+','+(cellY+1)+(selection?' · selection '+selection.width+'×'+selection.height:'')+' · '+(activeArea==='grid'?'GRID':'PALETTE');
   undo.disabled=!core.history.canUndo;redo.disabled=!core.history.canRedo;
   for(const [id,b] of switchButtons){
-   const active=id==='conflicts'?showConflicts:id==='allow'?allowConflicts:id==='grid'?showGrid:id==='trk'?affectTrack:id==='ter'?affectTerrain:debugMode;
+   const active=id==='clip'?!!core.clipboardSize():id==='warn'?showConflicts:id==='manual'?allowConflicts:id==='grid'?showGrid:id==='trk'?affectTrack:id==='ter'?affectTerrain:id==='debug'?debugMode:false;
    setActive(b,active);
   }
  };
@@ -424,7 +428,8 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const wholeSelection=()=>{const s=core.selection;if(s&&s.x===0&&s.y===0&&s.width===30&&s.height===30)core.setSelection(null);else core.setSelection({x:0,y:0,width:30,height:30});renderMap();renderStatus();};
  const deleteAtCursor=()=>{
   if(core.selection){if(core.deleteSelection({track:affectTrack,terrain:affectTerrain}))changed('Selection deleted');return;}
-  if(page>=10){if(core.paintTerrain(cellX,cellY,0))changed('Terrain deleted');}
+  if(page===10){if(core.paintTerrain(cellX,cellY,0))changed('Terrain deleted');}
+  else if(page===11){status.textContent='Bliss F12 terrain brushes are mouse-only.';status.style.color='#ffbd7a';}
   else if(core.clear(cellX,cellY,allowConflicts))changed('Element deleted');
  };
  const insertAtCursor=()=>{
@@ -575,20 +580,6 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   shade.addEventListener('pointerdown',event=>{if(event.target===shade)shade.remove();});
  }
 
- function showTrackInfo(){
-  const metadata=core.metadata()?.metadata,start=core.start(),hash=blissTrackHash(core.track).toString(16).toUpperCase().padStart(8,'0');
-  showTextModal('Track Information',[
-   'File: '+(host.track.name||'UNTITLED')+'.TRK',
-   'Landscape: '+core.track.landscape,
-   'Format: '+core.track.format,
-   'Hash: '+hash,
-   'Start: '+(start.error?'error '+start.error:(start.x+1)+','+(start.y+1)),
-   'Title: '+(metadata?.title||'—'),
-   'Author: '+(metadata?.author||'—'),
-   'Comment: '+(metadata?.comment||'—'),
-  ]);
- }
-
  function showTrackAnalysis(){
   const analysis=core.analyze();
   const finishing=analysis.paths.filter(path=>path.finishes).length;
@@ -599,17 +590,6 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    'Errors: '+analysis.errors.length,
    'Too complex: '+(analysis.tooComplex?'yes':'no'),
    analysis.errors.length?'First error: '+analysis.errors[0].error+' at '+(analysis.errors[0].x+1)+','+(analysis.errors[0].y+1):'No route errors detected.',
-  ]);
- }
-
- function showEditorSettings(){
-  showTextModal('Editor Settings',[
-   'Conflict generation: '+(allowConflicts?'on':'off')+' (Ctrl+E)',
-   'Conflict warnings: '+(showConflicts?'on':'off')+' (Ctrl+D)',
-   'Grid: '+(showGrid?'on':'off')+' (Ctrl+G)',
-   'Paste track layer: '+(affectTrack?'on':'off')+' (Ctrl+K)',
-   'Paste terrain layer: '+(affectTerrain?'on':'off')+' (Ctrl+T)',
-   'Debug mode: '+(debugMode?'on':'off')+' (Ctrl+Q)',
   ]);
  }
 
