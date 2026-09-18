@@ -33,7 +33,18 @@ export const BLISS_SCENERY_GROUPS=Object.freeze([
 const index=(x:number,y:number)=>y*30+x;
 const isScenery=(code:number)=>code>=0x97&&code<=0xb2;
 const isRoadCode=(code:number)=>(code>0&&code<0x97)||code>=0xfd;
-const randomIndex=(length:number,random:()=>number)=>Math.max(0,Math.min(length-1,Math.floor(random()*length)));
+
+/** FreeBASIC's implicit floating -> integer conversion uses round-to-even.
+ * This matters in Bliss because Menu_Scenery stores percentage calculations
+ * directly into Short/UByte variables. */
+export function blissRoundToEven(value:number){
+ if(!Number.isFinite(value))return 0;
+ const low=Math.floor(value),high=Math.ceil(value);
+ const dl=value-low,dh=high-value;
+ if(dl<dh)return low;
+ if(dh<dl)return high;
+ return (low&1)===0?low:high;
+}
 
 function sourceForAvailability(source:BlissTrack,eraseExisting:boolean){
  const result=cloneBlissTrack(source);
@@ -42,12 +53,13 @@ function sourceForAvailability(source:BlissTrack,eraseExisting:boolean){
 }
 
 /** Bliss classifies every free cell once before generation:
- *  -1 unavailable, 1 open field, 2 water, 10..13 by-road with orientation. */
+ *  -1 unavailable, 1 open field, 2 water, 10..13 by-road with orientation.
+ * Neighbour order is exactly S, N, E, W from Menu_Scenery. */
 function blissSceneryMap(source:BlissTrack,eraseExisting:boolean){
  const track=sourceForAvailability(source,eraseExisting),map=new Int16Array(900);
  map.fill(-1);
  let openfield=0,water=0,byRoad=0;
- const neighbour=[[0,1],[0,-1],[1,0],[-1,0]] as const; // source order: S,N,E,W
+ const neighbour=[[0,1],[0,-1],[1,0],[-1,0]] as const;
  for(let y=0;y<30;y++)for(let x=0;x<30;x++){
   const at=index(x,y),land=track.terrain[at],code=track.track[at];
   if(land>=1&&land<=5){
@@ -56,11 +68,12 @@ function blissSceneryMap(source:BlissTrack,eraseExisting:boolean){
   }
   if(land>=7)continue;
   if(code!==0)continue;
+
   let direction=-1;
   for(let n=0;n<4;n++){
    const nx=x+neighbour[n][0],ny=y+neighbour[n][1];
-   if(nx<0||nx>=30||ny<0||ny>=30)continue;
-   if(isRoadCode(track.track[index(nx,ny)])){direction=n;break;}
+   const neighbourCode=nx>=0&&nx<30&&ny>=0&&ny<30?track.track[index(nx,ny)]:0;
+   if(isRoadCode(neighbourCode)){direction=n;break;}
   }
   if(direction>=0){map[at]=10+direction;byRoad++;}
   else{map[at]=1;openfield++;}
@@ -72,21 +85,25 @@ export function blissSceneryAvailability(source:BlissTrack,eraseExisting=false){
  return blissSceneryMap(source,eraseExisting).availability;
 }
 
-/** FreeBASIC rounds floating -> integer assignment. Menu_Scenery then subtracts
- * one before its inclusive For 1 To amount loop. Keep that exact quirk. */
+/** Exact Menu_Scenery count conversion:
+ *   amount = available * percent / 100 - 1
+ * where assignment to Short performs FreeBASIC round-to-even.
+ * For j = 1 To amount then places exactly max(0, amount) primary objects.
+ */
 export function blissSceneryTargetCount(available:number,percent:number){
- return Math.max(0,Math.round(available*Math.max(0,Math.min(100,percent))/100)-1);
+ const p=Math.max(0,Math.min(100,percent));
+ return Math.max(0,blissRoundToEven(available*p/100-1));
 }
 
 /** Exact defaults and ordering from Bliss 2.6.1 Menu_Scenery. */
 export function blissSceneryDefaults(landscape:number):BlissSceneryRule[]{
  const percent=Array(10).fill(0) as number[];
  switch(Math.max(0,Math.min(4,landscape))){
-  case 0: percent[1]=20;percent[6]=5;break; // Desert
-  case 1: percent[2]=20;percent[4]=7;percent[6]=6;percent[8]=3;percent[9]=10;break; // Tropical
-  case 2: percent[0]=20;percent[4]=5;percent[5]=8;break; // Alpine
-  case 3: percent[0]=15;percent[4]=15;percent[6]=7;percent[8]=9;percent[9]=10;percent[3]=2;break; // City
-  case 4: percent[0]=15;percent[3]=5;percent[5]=7;percent[6]=3;percent[7]=8;percent[9]=5;break; // Country
+  case 0: percent[1]=20;percent[6]=5;break;
+  case 1: percent[2]=20;percent[4]=7;percent[6]=6;percent[8]=3;percent[9]=10;break;
+  case 2: percent[0]=20;percent[4]=5;percent[5]=8;break;
+  case 3: percent[0]=15;percent[4]=15;percent[6]=7;percent[8]=9;percent[9]=10;percent[3]=2;break;
+  case 4: percent[0]=15;percent[3]=5;percent[5]=7;percent[6]=3;percent[7]=8;percent[9]=5;break;
  }
  return BLISS_SCENERY_GROUPS.map((group,i)=>({
   name:group.name,baseCode:group.baseCode,percent:percent[i],
@@ -94,24 +111,22 @@ export function blissSceneryDefaults(landscape:number):BlissSceneryRule[]{
  }));
 }
 
-const chooseAndRemove=(cells:number[],random:()=>number)=>{
- if(!cells.length)return -1;
- const which=randomIndex(cells.length,random),at=cells[which];
- cells[which]=cells[cells.length-1];cells.pop();return at;
-};
+function placeVariant(result:BlissTrack,at:number,rule:BlissSceneryRule,ruleIndex:number,from:number,mapValue:number,random:()=>number){
+ let code=rule.baseCode;
+ if(ruleIndex===9)code+=Math.floor(random()*4);
+ else if(ruleIndex>=4&&from===10)code+=Math.max(0,mapValue-10);
+ else if(ruleIndex>=4)code+=Math.floor(random()*4);
+ result.track[at]=code;
+}
 
+/** Line-for-line behavioural port of Bliss' generation loop.
+ * The apparently odd fallback behaviour for "Everywhere" is intentional:
+ * Bliss may also place scenery on by-road/water cells while it keeps looking
+ * for the primary open-field cell for the same loop iteration. */
 export function generateBlissScenery(source:BlissTrack,config:BlissSceneryGeneratorConfig){
  const random=config.random??Math.random;
  const {track:result,map,availability}=blissSceneryMap(source,config.eraseExisting);
 
- const cellsFor=(from:number,to:number)=>{
-  const cells:number[]=[];
-  for(let i=0;i<900;i++)if(map[i]>=from&&map[i]<=to)cells.push(i);
-  return cells;
- };
-
- // Bliss does road/water first, then open field. Percentages are percentages
- // of the initially available cells, not literal object counts.
  for(let round=1;round<=2;round++){
   for(let i=0;i<config.rules.length&&i<10;i++){
    const rule=config.rules[i];
@@ -119,20 +134,32 @@ export function generateBlissScenery(source:BlissTrack,config:BlissSceneryGenera
    if(rule.placement==='everywhere'){from=1;to=1;available=availability.openfield;}
    else if(i===9||rule.placement==='on-water'){from=2;to=2;available=availability.water;}
    else{from=10;to=13;available=availability.byRoad;}
-   if((from===1&&round!==2)||(from!==1&&round!==1))continue;
 
+   if((from===1&&round!==2)||(from!==1&&round!==1))continue;
    const amount=blissSceneryTargetCount(available,rule.percent);
-   const candidates=cellsFor(from,to);
-   for(let placed=0;placed<amount&&candidates.length;placed++){
-    const at=chooseAndRemove(candidates,random);if(at<0)break;
-    const orientation=map[at]-10;
-    let code=rule.baseCode;
-    // The first four scenery types have no rotations. Ships always randomise.
-    // Road-side directional scenery uses the source's baseCode + map direction.
-    if(i===9)code+=Math.floor(random()*4);
-    else if(i>=4&&from===10)code+=Math.max(0,orientation);
-    else if(i>=4)code+=Math.floor(random()*4);
-    result.track[at]=code;map[at]=-1;
+
+   for(let j=1;j<=amount;j++){
+    // Valid Bliss percentages guarantee eventual success. Keep a generous
+    // guard so malformed caller configs cannot hang PlayStunts DX forever.
+    let guard=0;
+    for(;;){
+     if(++guard>250000)break;
+     const x=Math.floor(random()*30),y=Math.floor(random()*30),at=index(x,y),value=map[at];
+     if(value>=from&&value<=to){
+      placeVariant(result,at,rule,i,from,value,random);
+      map[at]=-1;
+      break;
+     }
+     if(from===1&&value>=10){
+      // Exact Bliss quirk: place, but do not consume the cell and do not end
+      // this iteration. Another random cell is still sought for open field.
+      let code=rule.baseCode;
+      if(i>=4)code+=Math.floor(random()*4);
+      result.track[at]=code;
+     }else if(i===9&&from===1&&value===2){
+      result.track[at]=rule.baseCode+Math.floor(random()*4);
+     }
+    }
    }
   }
  }
