@@ -171,10 +171,8 @@ const EDITOR_BINDING_ACTIONS:readonly EditorBindingAction[]=[
  {id:'smartW',group:'Track piece shortcuts',description:'Corkscrew',defaultBinding:'KeyW',smartKey:'W'},
  {id:'orbit3D',group:'3D camera',description:'Orbit camera (drag)',defaultBinding:'Ctrl+Mouse0',context:'3d'},
  {id:'pan3D',group:'3D camera',description:'Move / pan camera (drag)',defaultBinding:'Ctrl+Mouse2',context:'3d'},
- {id:'dollyIn3D',group:'3D camera',description:'Dolly / zoom in',defaultBinding:'WheelUp',context:'3d'},
- {id:'dollyOut3D',group:'3D camera',description:'Dolly / zoom out',defaultBinding:'WheelDown',context:'3d'},
- {id:'dollyIn3DCtrl',group:'3D camera',description:'Dolly / zoom in (Ctrl)',defaultBinding:'Ctrl+WheelUp',context:'3d'},
- {id:'dollyOut3DCtrl',group:'3D camera',description:'Dolly / zoom out (Ctrl)',defaultBinding:'Ctrl+WheelDown',context:'3d'},
+ {id:'dollyIn3D',group:'3D camera',description:'3D zoom in',defaultBinding:'WheelUp',context:'3d'},
+ {id:'dollyOut3D',group:'3D camera',description:'3D zoom out',defaultBinding:'WheelDown',context:'3d'},
  {id:'paint',group:'Mouse',description:'Place / paint',defaultBinding:'Mouse0'},
  {id:'erase',group:'Mouse',description:'Delete / erase',defaultBinding:'Mouse2'},
  {id:'mousePick',group:'Mouse',description:'Pick element / colour dialog',defaultBinding:'Mouse1'},
@@ -882,9 +880,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  map3D.addEventListener('pointerup',end3DDrag);map3D.addEventListener('pointercancel',end3DDrag);map3D.addEventListener('contextmenu',event=>event.preventDefault());
  map3D.addEventListener('wheel',event=>{
   if(viewMode!=='3d'||!editor3D)return;
-  const binding=wheelBinding(event),cameraAction=actionForBinding(binding,'3d');
-  if(cameraAction?.id==='dollyIn3D'||cameraAction?.id==='dollyIn3DCtrl'){event.preventDefault();editor3D.dolly(-Math.max(40,Math.abs(event.deltaY)),event.clientX,event.clientY);return;}
-  if(cameraAction?.id==='dollyOut3D'||cameraAction?.id==='dollyOut3DCtrl'){event.preventDefault();editor3D.dolly(Math.max(40,Math.abs(event.deltaY)),event.clientX,event.clientY);return;}
+  const binding=wheelBinding(event),plainBinding=event.ctrlKey?[event.deltaY<0?'WheelUp':'WheelDown'].join(''):binding;
+  const cameraAction=actionForBinding(binding,'3d')??actionForBinding(plainBinding,'3d');
+  if(cameraAction?.id==='dollyIn3D'){event.preventDefault();editor3D.dolly(-Math.max(40,Math.abs(event.deltaY)),event.clientX,event.clientY);return;}
+  if(cameraAction?.id==='dollyOut3D'){event.preventDefault();editor3D.dolly(Math.max(40,Math.abs(event.deltaY)),event.clientX,event.clientY);return;}
   const action=actionForBinding(binding);
   if(action?.id==='zoomIn'||action?.id==='zoomOut'){event.preventDefault();editor3D.dolly(action.id==='zoomIn'?-120:120,event.clientX,event.clientY);return;}
   if(action){event.preventDefault();executeBoundAction(action,event.shiftKey);}
