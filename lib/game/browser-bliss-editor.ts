@@ -338,7 +338,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  viewToggle.addEventListener('change',()=>{void setViewMode(viewToggle.checked?'3d':'2d');});
  view2D.addEventListener('click',event=>{event.preventDefault();viewToggle.checked=false;void setViewMode('2d');});
  view3D.addEventListener('click',event=>{event.preventDefault();viewToggle.checked=true;void setViewMode('3d');});
- const zoomOut=button('−',()=>setZoom(zoom-.25)),zoomReset=button('100%',()=>setZoom(1)),zoomIn=button('+',()=>setZoom(zoom+.25)),zoomFit=button('Fit',()=>fitMap());
+ const zoomOut=button('−',()=>{if(viewMode==='3d')editor3D?.dolly(120,map3D.getBoundingClientRect().left+map3D.clientWidth/2,map3D.getBoundingClientRect().top+map3D.clientHeight/2);else setZoom(zoom-.25);}),zoomReset=button('100%',()=>{if(viewMode==='3d')void reset3DView();else setZoom(1);}),zoomIn=button('+',()=>{if(viewMode==='3d')editor3D?.dolly(-120,map3D.getBoundingClientRect().left+map3D.clientWidth/2,map3D.getBoundingClientRect().top+map3D.clientHeight/2);else setZoom(zoom+.25);}),zoomFit=button('Fit',()=>fitMap());
  zoomOut.title='Zoom out';zoomIn.title='Zoom in';zoomReset.title='Actual size';zoomFit.title='Fit map to editor';
  for(const control of [zoomOut,zoomReset,zoomIn,zoomFit])control.style.padding='4px 8px';
  zoomBar.append(viewSwitch,zoomOut,zoomReset,zoomIn,zoomFit);
@@ -731,10 +731,15 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(terrain)terrainBrush=code;else brush=code;
   renderPalette();renderMap();renderStatus();
  };
- async function setViewMode(mode:'2d'|'3d'){
+ async function reset3DView(){
+  if(!editor3D)return;
+  editor3D.resetView();editor3D.render();
+ }
+  async function setViewMode(mode:'2d'|'3d'){
   viewMode=mode;viewToggle.checked=mode==='3d';viewKnob.style.transform=mode==='3d'?'translateX(16px)':'translateX(0)';view2D.style.color=mode==='2d'?'#fff':'#777';view3D.style.color=mode==='3d'?'#fff':'#777';
   map.style.display=mode==='2d'?'block':'none';map3D.style.display=mode==='3d'?'block':'none';
-  for(const control of [zoomOut,zoomReset,zoomIn,zoomFit])control.style.display=mode==='2d'?'inline-block':'none';
+  for(const control of [zoomOut,zoomReset,zoomIn])control.style.display='inline-block';
+  zoomFit.style.display=mode==='2d'?'inline-block':'none';
   mapWrap.style.overflow=mode==='2d'?'auto':'hidden';
   if(mode==='3d'){
    if(!editor3D){const module=await import('./bliss-editor-3d.ts');editor3D=module.createBlissEditor3DView(map3D,host.assets,core.track);}
