@@ -65,11 +65,15 @@ Reference: Bliss 2.6.1 behaviour/source-derived routines already ported into thi
 - Auto-link: source-derived LinkTiles port.
 - Closed circuit / Enter on selection: source-derived BuildClosedCircuit port, including repeated-corner switching logic.
 - Check Track / C: source-derived start, terrain, route-section and path validation.
-- Track Analysis: real route/path/error analysis is active with sections, winning/safe paths, cycles, tile lengths, opponent shortest-path choice, and a See Paths dialog. Bliss' source-specific racer-time coefficient/calibration tables are still pending.
+- Track Analysis: GenerateSections/SolveSection/SolvePath/GetNext and PathLength are ported from the supplied Bliss 2.6.1 source. Winning/safe paths, cycles, exact tile lengths, weighted token lengths, opponent shortest-path choice, fastest weighted path and default Porsche March Indy time calibration are active. The optional famous-racer See Times page is still pending.
 
 ## Advanced menu tools
 - Track Information: functional title/author/comment/championship editor with creation date and accumulated editing time. Metadata is preserved in Bliss one-file tracks.
-- Automatic scenery generator: functional percentages, Everywhere/By the road/On water placement, by-road-first generation, orientation, and keep/erase-existing modes. The manual does not publish Bliss' exact per-landscape default percentage table, so the current default percentages remain a DX reconstruction pending the authoritative source constants.
+- Automatic scenery generator: now ported from the supplied Bliss 2.6.1 source, including exact object order/codes, landscape defaults, percentage semantics, Everywhere/By the road/On water classification, by-road-first generation and the source count rule. The UI shows the calculated object count and includes Set Everything to Zero.
 - Tournaments: functional Bliss-compatible tournament list, Add/Save/Remove/Connect flow, tour.cfg parsing, race details, scoreboard parsing, and Get Track. Tournament definitions persist locally.
 - Full Settings dialog remains pending.
 
+
+## Authoritative source data
+
+The editor now uses element connectivity/length/material/entity metadata extracted from the user-supplied Bliss 2.6.1 `xlation.dat`, replacing the earlier reconstructed/truncated table. Route analysis and scenery generation are regression-tested against source-derived behavior.
