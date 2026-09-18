@@ -130,7 +130,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  let tool:Tool='place',brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,selecting=false,selectionAnchor:{x:number;y:number}|null=null,closed=false,zoom=1;
  let activeArea:EditorArea='grid',paletteCursor=0,lastPlaced:{x:number;y:number}|null=null;
  let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false;
- let selectionTool=false,pasteMode=false,manualHex='',manualHexDeadline=0;
+ let selectionTool=false,pasteMode=false,manualHex='',manualHexDeadline=0,modalOpen=false;
 
  const overlay=document.createElement('div');overlay.tabIndex=-1;overlay.style.cssText='position:fixed;inset:0;z-index:2147483000;background:#090909;color:#ddd;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:10px;padding:12px;box-sizing:border-box;font-family:system-ui,Segoe UI,sans-serif;';
  const top=document.createElement('div');top.style.cssText='display:flex;align-items:center;gap:8px;min-width:0;';
@@ -578,7 +578,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const movePalette=(dx:number,dy:number)=>{const codes=pageCodes(page);if(!codes.length)return;paletteCursor=Math.max(0,Math.min(codes.length-1,paletteCursor+dx+dy*4));renderPalette();renderStatus();};
 
  const keyDown=(event:KeyboardEvent)=>{
-  if(event.defaultPrevented)return;
+  if(modalOpen||event.defaultPrevented)return;
   const code=event.code,key=event.key;
 
   if(manualHexDeadline){
@@ -661,6 +661,26 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const body=document.createElement('div');for(const row of rows){const line=document.createElement('div');line.textContent=row;line.style.margin='3px 0';body.append(line);}
   const close=button('Back',()=>shade.remove());close.style.marginTop='14px';box.append(heading,body,close);shade.append(box);document.body.append(shade);
   shade.addEventListener('pointerdown',event=>{if(event.target===shade)shade.remove();});
+ }
+
+ function confirmExitChoice():Promise<'save'|'discard'|'cancel'>{
+  modalOpen=true;
+  return new Promise(resolve=>{
+   const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
+   const box=document.createElement('div');box.style.cssText='width:min(520px,90vw);background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:22px 24px;box-shadow:0 22px 70px #000;text-align:center;border-radius:6px;font:14px/1.45 system-ui,Segoe UI,sans-serif;';
+   const heading=document.createElement('h2');heading.textContent='Unsaved track';heading.style.cssText='font-size:18px;margin:0 0 10px;color:#fff;';
+   const message=document.createElement('p');message.textContent='Save changes to '+(host.track.name||'UNTITLED')+'.TRK before leaving the Bliss editor?';message.style.cssText='margin:0 0 18px;color:#ccc;';
+   const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;flex-wrap:wrap;';
+   const complete=(choice:'save'|'discard'|'cancel')=>{modalOpen=false;shade.remove();resolve(choice);};
+   const saveChoice=button('Save',()=>complete('save')),discard=button("Don't Save",()=>complete('discard')),cancel=button('Cancel',()=>complete('cancel'));
+   saveChoice.style.cssText+='min-width:105px;background:#4e5b2b;border-color:#a9bd58;';
+   discard.style.cssText+='min-width:105px;';
+   cancel.style.cssText+='min-width:105px;';
+   actions.append(saveChoice,discard,cancel);box.append(heading,message,actions);shade.append(box);document.body.append(shade);
+   shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();complete('cancel');}});
+   shade.addEventListener('pointerdown',event=>{if(event.target===shade)complete('cancel');});
+   requestAnimationFrame(()=>saveChoice.focus());
+  });
  }
 
  async function loadTrack(){
@@ -754,7 +774,12 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   status.textContent=customLocation?'Saved to '+customLocation:'Saved '+host.track.name+'.TRK';status.style.color='#aee18a';return true;
  }
  async function finish(){
-  if(closed)return;if(core.modified){const choice=window.confirm('Save changes to '+(host.track.name||'UNTITLED')+'.TRK before leaving the Bliss editor?');if(choice&&!await saveTrack())return;}
+  if(closed)return;
+  if(core.modified){
+   const choice=await confirmExitChoice();
+   if(choice==='cancel')return;
+   if(choice==='save'&&!await saveTrack())return;
+  }
   closed=true;cleanup();resolveDone?.();
  }
  const cleanup=()=>{core.endStroke();manualHexDeadline=0;window.removeEventListener('keydown',keyDown,true);setBlissEditorActive(false);overlay.remove();};
