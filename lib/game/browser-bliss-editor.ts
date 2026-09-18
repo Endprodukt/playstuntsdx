@@ -219,11 +219,9 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(!action){control.setAttribute('aria-disabled','true');control.style.opacity='.35';control.style.cursor='help';}
   quick.append(control);return control;
  };
- // Keep Bliss' original 4×5 toolbar order so muscle memory carries over.
- quickButton(0,'New Track',()=>void createNewTrack());
- quickButton(1,'Save Track',()=>void saveTrack());
- quickButton(2,'Load Track',()=>void loadTrack());
- quickButton(3,'Exit Bliss editor',()=>void finish());
+ // File operations live in the footer in PlayStunts DX to avoid duplicate
+ // New/Save/Load/Exit controls. The remaining Bliss icons keep their original
+ // sprite positions and order.
  quickButton(4,'Select — same as holding Ctrl',()=>{selectionTool=true;activeArea='grid';updateArea();status.textContent='Selection tool active — drag a region.';});
  quickButton(5,'Copy',()=>copySelection());
  quickButton(6,'Cut',()=>cutSelection());
@@ -269,13 +267,16 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const footer=document.createElement('div');footer.style.cssText='display:flex;align-items:center;gap:7px;min-width:0;';
  const coords=document.createElement('span');coords.style.cssText='font-size:11px;color:#888;margin-right:auto;';
  const newTrackButton=button('New',()=>{void createNewTrack();});
+ const loadTrackButton=button('Load',()=>{void loadTrack();});
  const undo=button('Undo',()=>{if(core.undo())changed('Undo');});
  const redo=button('Redo',()=>{if(core.redo())changed('Redo');});
  const validate=button('Check track',()=>checkTrack());
  const save=button('Save',()=>{void saveTrack();});
  const saveAs=button('Save As',()=>{void saveTrack(true);});
  const done=button('Done',()=>{void finish();});
- footer.append(coords,newTrackButton,undo,redo,validate,save,saveAs,done);
+ newTrackButton.title='Create a new track from a terrain preset';
+ loadTrackButton.title='Load an existing track';
+ footer.append(coords,newTrackButton,loadTrackButton,undo,redo,validate,save,saveAs,done);
  overlay.append(top,main,footer);setBlissEditorActive(true);document.body.append(overlay);
 
  const context=map.getContext('2d',{alpha:false})!;
