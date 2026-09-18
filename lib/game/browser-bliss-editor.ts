@@ -8,12 +8,14 @@ import {changeBlissMaterial,findBlissElementByName,smartSelectBliss} from './bli
 import {transformBlissTerrainCode,transformBlissTrackCode,type BlissTransformOperation} from './bliss-transformations.ts';
 import {BLISS_TOOL_ICON_COLUMNS,BLISS_TOOL_ICON_SIZE,BLISS_TOOL_ICON_SPRITE} from './bliss-tool-icons.ts';
 import {setBlissEditorActive} from './bliss-editor-presence.ts';
+import {blissTerrainPresets,type BlissTerrainPreset} from './bliss-terrain-presets.ts';
 
 export interface BrowserBlissEditorHost {
  canvas:HTMLCanvasElement;
  track:{name:string;path:string;raw:number[]};
  palette:ReadonlyArray<number>;
  resources:BlissOriginalMapResources;
+ sceneryPreviews?:readonly {width:number;height:number;rgba:Uint8ClampedArray}[];
  writeTrack(path:string,name:string,bytes:Uint8Array):Promise<number>;
  clearScores(path:string,name:string):Promise<void>;
  exists(path:string,name:string):Promise<boolean>;
