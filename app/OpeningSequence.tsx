@@ -4,8 +4,8 @@ import {lazy,Suspense,type ComponentProps} from 'react';
 type RuntimeOpeningSequence=typeof import('./OpeningSequenceRuntime').default;
 type OpeningSequenceProps=ComponentProps<RuntimeOpeningSequence>;
 
-let runtimeOpeningSequencePromise:ReturnType<typeof importRuntimeOpeningSequence>|undefined;
 const importRuntimeOpeningSequence=()=>import('./OpeningSequenceRuntime');
+let runtimeOpeningSequencePromise:ReturnType<typeof importRuntimeOpeningSequence>|undefined;
 const loadRuntimeOpeningSequence=()=>runtimeOpeningSequencePromise??=importRuntimeOpeningSequence();
 export const preloadOpeningSequenceRuntime=()=>loadRuntimeOpeningSequence();
 const RuntimeOpeningSequence=lazy(loadRuntimeOpeningSequence);
