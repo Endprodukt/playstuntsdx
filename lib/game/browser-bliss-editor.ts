@@ -14,9 +14,12 @@ import {blissRoundToEven,blissSceneryAvailability,blissSceneryDefaults,type Blis
 import {blissTournamentUrl,parseBlissScoreboard,parseBlissTournamentConfig,type BlissTournamentRace} from './bliss-tournaments.ts';
 import {blissEstimatedTimeCentiseconds,blissTimey,summarizeBlissTrackAnalysis,traceBlissPath,type BlissRouteAnalysis} from './bliss-route.ts';
 import {BLISS_PLAYER_CARD_ICON,BLISS_OPPONENT_CARD_ICON} from './bliss-card-icons.ts';
+import type {Assets} from './types.ts';
+import type {BlissEditor3DView} from './bliss-editor-3d.ts';
 
 export interface BrowserBlissEditorHost {
  canvas:HTMLCanvasElement;
+ assets:Assets;
  track:{name:string;path:string;raw:number[]};
  palette:ReadonlyArray<number>;
  resources:BlissOriginalMapResources;
@@ -233,6 +236,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  let brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,activePaintAction:'paint'|'erase'|null=null,selecting=false,selectionAnchor:{x:number;y:number}|null=null,closed=false,zoom=1;
  let activeArea:EditorArea='grid',paletteCursor=0,lastPlaced:{x:number;y:number}|null=null;
+ let viewMode:'2d'|'3d'='2d',editor3D:BlissEditor3DView|undefined;
  let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false,colouringMode=false;
  let selectionTool=false,pasteMode=false,manualHex='',manualHexDeadline=0,modalOpen=false,analysisCarIndex=-1,suppressMapCursor=false;
  let helpOverlay:HTMLDivElement|null=null;
@@ -315,13 +319,15 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
 
  const mapPanel=panel('30 × 30 track');
  mapPanel.style.display='grid';mapPanel.style.gridTemplateRows='auto auto minmax(0,1fr)';mapPanel.style.placeItems='stretch';
- const zoomBar=document.createElement('div');zoomBar.style.cssText='display:flex;justify-content:center;align-items:center;gap:5px;margin:-2px 0 8px;';
+ const zoomBar=document.createElement('div');zoomBar.style.cssText='display:flex;justify-content:center;align-items:center;gap:5px;margin:-2px 0 8px;flex-wrap:wrap;';
+ const view2D=button('2D',()=>{void setViewMode('2d');}),view3D=button('3D',()=>{void setViewMode('3d');});
  const zoomOut=button('−',()=>setZoom(zoom-.25)),zoomReset=button('100%',()=>setZoom(1)),zoomIn=button('+',()=>setZoom(zoom+.25)),zoomFit=button('Fit',()=>fitMap());
- zoomOut.title='Zoom out';zoomIn.title='Zoom in';zoomReset.title='Actual size';zoomFit.title='Fit map to editor';
- for(const control of [zoomOut,zoomReset,zoomIn,zoomFit])control.style.padding='4px 8px';
- const mapWrap=document.createElement('div');mapWrap.style.cssText='min-height:0;min-width:0;display:grid;place-items:center;overflow:auto;background:#050505;border-radius:4px;';
- const map=document.createElement('canvas');map.width=BLISS_ORIGINAL_MAP_SIZE;map.height=BLISS_ORIGINAL_MAP_SIZE;map.style.cssText='display:block;image-rendering:pixelated;width:480px;height:480px;max-width:none;max-height:none;cursor:crosshair;box-shadow:0 0 0 1px #333;flex:none;';
- mapWrap.append(map);mapPanel.append(zoomBar,mapWrap);
+ zoomOut.title='Zoom out';zoomIn.title='Zoom in';zoomReset.title='Actual size';zoomFit.title='Fit map to editor';view2D.title='2D top-down editor';view3D.title='3D editor view';
+ for(const control of [view2D,view3D,zoomOut,zoomReset,zoomIn,zoomFit])control.style.padding='4px 8px';
+ const mapWrap=document.createElement('div');mapWrap.style.cssText='min-height:0;min-width:0;display:grid;place-items:center;overflow:auto;background:#050505;border-radius:4px;position:relative;';
+ const map=document.createElement('canvas');map.width=BLISS_ORIGINAL_MAP_SIZE;map.height=BLISS_ORIGINAL_MAP_SIZE;map.style.cssText='grid-area:1/1;display:block;image-rendering:pixelated;width:480px;height:480px;max-width:none;max-height:none;cursor:crosshair;box-shadow:0 0 0 1px #333;flex:none;';
+ const map3D=document.createElement('canvas');map3D.style.cssText='grid-area:1/1;display:none;width:100%;height:100%;min-width:0;min-height:320px;align-self:stretch;justify-self:stretch;cursor:crosshair;background:#111;';
+ mapWrap.append(map,map3D);mapPanel.append(zoomBar,mapWrap);
 
  const toolsPanel=panel('Bliss tools');
  toolsPanel.style.display='grid';toolsPanel.style.gridTemplateRows='auto auto auto minmax(0,1fr)';toolsPanel.style.gap='10px';toolsPanel.style.minHeight='0';
@@ -573,7 +579,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  const changed=(message='')=>{
   const bytes=encodeBlissTrack(core.track).subarray(0,1802);host.track.raw=Array.from(bytes);
-  renderMap();renderPalette();renderScenery();renderStatus();if(message)status.textContent=message+' · '+status.textContent;
+  renderMap();renderPalette();renderScenery();renderStatus();if(viewMode==='3d')editor3D?.update(core.track);if(message)status.textContent=message+' · '+status.textContent;
  };
  const paletteLabels=['Paved','Dirt','Ice','Stunts','Banked','Splits','Highway','Elevated','Spins','Scenery','Terrain tiles','Terrain brush'] as const;
  const markerImages:{[key:number]:HTMLImageElement}={2:new Image(),3:new Image()};
@@ -704,6 +710,19 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(terrain)terrainBrush=code;else brush=code;
   renderPalette();renderMap();renderStatus();
  };
+ async function setViewMode(mode:'2d'|'3d'){
+  viewMode=mode;setActive(view2D,mode==='2d');setActive(view3D,mode==='3d');
+  map.style.display=mode==='2d'?'block':'none';map3D.style.display=mode==='3d'?'block':'none';
+  for(const control of [zoomOut,zoomReset,zoomIn,zoomFit])control.style.display=mode==='2d'?'inline-block':'none';
+  mapWrap.style.overflow=mode==='2d'?'auto':'hidden';
+  if(mode==='3d'){
+   if(!editor3D){const module=await import('./bliss-editor-3d.ts');editor3D=module.createBlissEditor3DView(map3D,host.assets,core.track);}
+   else editor3D.update(core.track);
+   requestAnimationFrame(()=>editor3D?.render());
+   status.textContent='3D view · Ctrl + Left drag orbit · Ctrl + Right drag pan · Wheel dolly';
+   status.style.color='#aee18a';
+  }else{editor3D?.setHover(null);renderMap();requestAnimationFrame(()=>fitMap());}
+ }
  const mapCoordinates=(event:PointerEvent)=>{
   const rect=map.getBoundingClientRect(),px=(event.clientX-rect.left)*map.width/rect.width,py=(event.clientY-rect.top)*map.height/rect.height;
   return {x:Math.max(0,Math.min(29,Math.floor(px/16))),y:Math.max(0,Math.min(29,Math.floor(py/16))),vx:Math.max(0,Math.min(30,Math.round(px/16))),vy:Math.max(0,Math.min(30,Math.round(py/16)))};
@@ -794,6 +813,43 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  window.addEventListener('wheel',captureWheelBinding,{capture:true,passive:false});
  map.addEventListener('pointerdown',pointerDown);map.addEventListener('pointermove',pointerMove);map.addEventListener('pointerup',pointerUp);map.addEventListener('pointercancel',pointerUp);map.addEventListener('contextmenu',event=>event.preventDefault());
  map.addEventListener('wheel',wheelInput,{passive:false});
+
+ let view3DDrag:'orbit'|'pan'|null=null,view3DLastX=0,view3DLastY=0;
+ const update3DCell=(event:PointerEvent)=>{
+  const cell=editor3D?.cellAt(event.clientX,event.clientY)??null;
+  if(cell){cellX=cell.x;cellY=cell.y;activeArea='grid';editor3D?.setHover(cell);renderStatus();}
+  else editor3D?.setHover(null);
+  return cell;
+ };
+ map3D.addEventListener('pointerdown',event=>{
+  if(viewMode!=='3d'||!editor3D)return;
+  if(event.ctrlKey&&(event.button===0||event.button===2)){
+   event.preventDefault();view3DDrag=event.button===0?'orbit':'pan';view3DLastX=event.clientX;view3DLastY=event.clientY;map3D.setPointerCapture(event.pointerId);return;
+  }
+  const cell=update3DCell(event);if(!cell)return;
+  const action=actionForBinding(pointerBinding(event));if(!action)return;
+  event.preventDefault();
+  if(action.id==='paint'){insertAtCursor();return;}
+  if(action.id==='erase'){deleteAtCursor();return;}
+  if(action.id==='mousePick'||action.id==='pick'){pickAtCursor();editor3D.update(core.track);return;}
+  executeBoundAction(action,event.shiftKey);
+ });
+ map3D.addEventListener('pointermove',event=>{
+  if(viewMode!=='3d'||!editor3D)return;
+  if(view3DDrag){
+   const dx=event.clientX-view3DLastX,dy=event.clientY-view3DLastY;view3DLastX=event.clientX;view3DLastY=event.clientY;
+   if(view3DDrag==='orbit')editor3D.orbit(dx,dy);else editor3D.pan(dx,dy);return;
+  }
+  update3DCell(event);
+ });
+ const end3DDrag=(event:PointerEvent)=>{view3DDrag=null;if(map3D.hasPointerCapture(event.pointerId))map3D.releasePointerCapture(event.pointerId);};
+ map3D.addEventListener('pointerup',end3DDrag);map3D.addEventListener('pointercancel',end3DDrag);map3D.addEventListener('contextmenu',event=>event.preventDefault());
+ map3D.addEventListener('wheel',event=>{
+  if(viewMode!=='3d'||!editor3D)return;
+  const action=actionForBinding(wheelBinding(event));
+  if(action?.id==='zoomIn'||action?.id==='zoomOut'){event.preventDefault();editor3D.dolly(action.id==='zoomIn'?-120:120,event.clientX,event.clientY);return;}
+  if(action){event.preventDefault();executeBoundAction(action,event.shiftKey);}
+ },{passive:false});
 
  const choosePage=(index:number)=>{
   page=Math.max(0,Math.min(11,index));paletteCursor=0;activeArea='palette';
@@ -1807,9 +1863,9 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   }
   closed=true;cleanup();resolveDone?.();
  }
- const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);window.removeEventListener('pointerdown',capturePointerBinding,true);window.removeEventListener('wheel',captureWheelBinding,true);setBlissEditorActive(false);overlay.remove();};
+ const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);window.removeEventListener('pointerdown',capturePointerBinding,true);window.removeEventListener('wheel',captureWheelBinding,true);editor3D?.close();editor3D=undefined;setBlissEditorActive(false);overlay.remove();};
  let resolveDone:(()=>void)|undefined;
  for(const marker of Object.values(markerImages))marker.onload=()=>{if(!closed){renderPalette();renderMap();}};
- renderPalette();renderScenery();renderMap();renderStatus();updateArea();overlay.focus();requestAnimationFrame(()=>fitMap());
+ renderPalette();renderScenery();renderMap();renderStatus();updateArea();setActive(view2D,true);setActive(view3D,false);overlay.focus();requestAnimationFrame(()=>fitMap());
  await new Promise<void>(resolve=>{resolveDone=resolve;});cleanup();
 }
