@@ -11,6 +11,7 @@ import {setBlissEditorActive} from './bliss-editor-presence.ts';
 import {blissTerrainPresets,type BlissTerrainPreset} from './bliss-terrain-presets.ts';
 import {setBlissTrackMetadata,type BlissMetadata} from './bliss-metadata.ts';
 import {blissSceneryDefaults,type BlissSceneryPlacement,type BlissSceneryRule} from './bliss-scenery-generator.ts';
+import {blissTournamentUrl,parseBlissScoreboard,parseBlissTournamentConfig,type BlissTournamentRace} from './bliss-tournaments.ts';
 
 export interface BrowserBlissEditorHost {
  canvas:HTMLCanvasElement;
@@ -251,7 +252,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  quickButton(15,'Help',()=>showHelp(0));
  quickButton(16,'Generate Scenery',()=>showSceneryGenerator());
  quickButton(17,'Track Analysis — paths/errors; racer time estimates pending',()=>showTrackAnalysis());
- quickButton(18,'Tournaments — not used by PlayStunts DX');
+ quickButton(18,'Tournaments',()=>showTournaments());
  quickButton(19,'Editor Settings — full Bliss settings port pending');
 
  const switches=document.createElement('div');switches.style.cssText='display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:10px;';
