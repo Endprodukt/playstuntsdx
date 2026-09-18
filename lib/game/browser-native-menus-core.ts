@@ -150,10 +150,15 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   show('editor');input.setActive(false);
   try{
    const {runBrowserBlissEditor}=await import('./browser-bliss-editor.ts');
+   const tauriCore=(window as typeof window&{__TAURI__?:{core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}}}).__TAURI__?.core;
+   const customTracks=tauriCore?{
+    customTrackExists:(name:string)=>tauriCore.invoke<boolean>('custom_track_exists',{name}),
+    persistCustomTrack:(name:string,bytes:Uint8Array)=>tauriCore.invoke<string>('write_custom_track',{name,data:Array.from(bytes)}),
+   }:{};
    await runBrowserBlissEditor({
     canvas,track,palette,
     resources:{art,terrainNames:terrainNames.names,images:editor.screenResources.images},
-    writeTrack:editor.writeTrack,clearScores:editor.clearScores,exists:editor.exists,presets,
+    writeTrack:editor.writeTrack,clearScores:editor.clearScores,exists:editor.exists,presets,...customTracks,
    });
   }finally{input.setActive(true);await input.release();}
  };
