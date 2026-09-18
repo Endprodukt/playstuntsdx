@@ -18,10 +18,9 @@ export async function interactNativeFileDialog(host:NativeFileDialogServices&{in
   }else{
    const input=await host.input();
    if(input.wheelDelta){
-    // Wheel scrolling is list-only: use the original scroll-up/down hit targets,
-    // never keyboard Up/Down, because keyboard Up may enter the path field.
+    // Wheel scrolling moves a complete seven-row page and never enters the path field.
     hoverLock={x:input.x,y:input.y};
-    reply={key:0,buttons:1,hit:input.wheelDelta<0?1:9};
+    reply={key:input.wheelDelta<0?0x4900:0x5100,buttons:0,hit:-1};
    }else{
     if(hoverLock&&(input.x!==hoverLock.x||input.y!==hoverLock.y))hoverLock=null;
     const hit=input.mouseActive&&!hoverLock?presentation!.hits.findIndex(r=>input.x>=r.left&&input.x<=r.right&&input.y>=r.top&&input.y<=r.bottom):-1;
