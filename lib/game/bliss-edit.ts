@@ -66,3 +66,104 @@ export function dryBlissTerrain(source:BlissTrack,x:number,y:number){
  if(x>0&&y<30)update(x-1,y,v=>v===1?2:v>=3&&v<=5?0:v);
  if(x<30&&y>0)update(x,y-1,v=>v===1?4:[2,3,5].includes(v)?0:v);
 }
+
+
+const terrainAt=(source:BlissTrack,x:number,y:number)=>source.terrain[blissCellIndex(x,y)];
+const setTerrain=(source:BlissTrack,x:number,y:number,value:number)=>{if(inside(x,y))source.terrain[blissCellIndex(x,y)]=value;};
+const vertex=(x:number,y:number)=>{if(!Number.isInteger(x)||!Number.isInteger(y)||x<0||x>BLISS_TRACK_SIZE||y<0||y>BLISS_TRACK_SIZE)throw Error(`Terrain vertex out of range: ${x},${y}`);};
+
+/** Port of Bliss RaiseTerrain. x/y are terrain-vertex coordinates (0..30). */
+export function raiseBlissTerrain(source:BlissTrack,x:number,y:number){
+ vertex(x,y);
+ const raise=(vx:number,vy:number)=>{
+  if(vx<BLISS_TRACK_SIZE&&vy<BLISS_TRACK_SIZE){
+   const cx=vx,cy=vy,v=terrainAt(source,cx,cy);
+   if(v<=5)setTerrain(source,cx,cy,11);
+   else if(v===9)setTerrain(source,cx,cy,16);
+   else if(v===10)setTerrain(source,cx,cy,18);
+   else if(v===12)setTerrain(source,cx,cy,8);
+   else if(v===13){setTerrain(source,cx,cy,6);raise(vx+1,vy);raise(vx,vy+1);}
+   else if(v===14)setTerrain(source,cx,cy,7);
+   else if(v===17)setTerrain(source,cx,cy,6);
+  }
+  if(vx>0&&vy>0){
+   const cx=vx-1,cy=vy-1,v=terrainAt(source,cx,cy);
+   if(v<=5)setTerrain(source,cx,cy,13);
+   else if(v===7)setTerrain(source,cx,cy,18);
+   else if(v===8)setTerrain(source,cx,cy,16);
+   else if(v===11){setTerrain(source,cx,cy,6);raise(vx-1,vy);raise(vx,vy-1);}
+   else if(v===12)setTerrain(source,cx,cy,9);
+   else if(v===14)setTerrain(source,cx,cy,10);
+   else if(v===15)setTerrain(source,cx,cy,6);
+  }
+  if(vx>0&&vy<BLISS_TRACK_SIZE){
+   const cx=vx-1,cy=vy,v=terrainAt(source,cx,cy);
+   if(v<=5)setTerrain(source,cx,cy,14);
+   else if(v===8)setTerrain(source,cx,cy,15);
+   else if(v===9)setTerrain(source,cx,cy,17);
+   else if(v===11)setTerrain(source,cx,cy,7);
+   else if(v===12){setTerrain(source,cx,cy,6);raise(vx-1,vy);raise(vx,vy+1);}
+   else if(v===13)setTerrain(source,cx,cy,10);
+   else if(v===16)setTerrain(source,cx,cy,6);
+  }
+  if(vx<BLISS_TRACK_SIZE&&vy>0){
+   const cx=vx,cy=vy-1,v=terrainAt(source,cx,cy);
+   if(v<=5)setTerrain(source,cx,cy,12);
+   else if(v===7)setTerrain(source,cx,cy,15);
+   else if(v===10)setTerrain(source,cx,cy,17);
+   else if(v===11)setTerrain(source,cx,cy,8);
+   else if(v===13)setTerrain(source,cx,cy,9);
+   else if(v===14){setTerrain(source,cx,cy,6);raise(vx,vy-1);raise(vx+1,vy);}
+   else if(v===18)setTerrain(source,cx,cy,6);
+  }
+ };
+ raise(x,y);
+}
+
+/** Port of Bliss LowerTerrain. x/y are terrain-vertex coordinates (0..30). */
+export function lowerBlissTerrain(source:BlissTrack,x:number,y:number){
+ vertex(x,y);
+ const lower=(vx:number,vy:number)=>{
+  if(vx<BLISS_TRACK_SIZE&&vy<BLISS_TRACK_SIZE){
+   const cx=vx,cy=vy,v=terrainAt(source,cx,cy);
+   if(v===6)setTerrain(source,cx,cy,17);
+   else if(v===7)setTerrain(source,cx,cy,14);
+   else if(v===8)setTerrain(source,cx,cy,12);
+   else if(v===11)setTerrain(source,cx,cy,0);
+   else if(v===15){setTerrain(source,cx,cy,0);lower(vx+1,vy);lower(vx,vy+1);}
+   else if(v===16)setTerrain(source,cx,cy,9);
+   else if(v===18)setTerrain(source,cx,cy,10);
+  }
+  if(vx>0&&vy>0){
+   const cx=vx-1,cy=vy-1,v=terrainAt(source,cx,cy);
+   if(v===6)setTerrain(source,cx,cy,15);
+   else if(v===9)setTerrain(source,cx,cy,12);
+   else if(v===10)setTerrain(source,cx,cy,14);
+   else if(v===13)setTerrain(source,cx,cy,0);
+   else if(v===16)setTerrain(source,cx,cy,8);
+   else if(v===17){setTerrain(source,cx,cy,0);lower(vx,vy-1);lower(vx-1,vy);}
+   else if(v===18)setTerrain(source,cx,cy,7);
+  }
+  if(vx>0&&vy<BLISS_TRACK_SIZE){
+   const cx=vx-1,cy=vy,v=terrainAt(source,cx,cy);
+   if(v===6)setTerrain(source,cx,cy,16);
+   else if(v===7)setTerrain(source,cx,cy,11);
+   else if(v===10)setTerrain(source,cx,cy,13);
+   else if(v===14)setTerrain(source,cx,cy,0);
+   else if(v===15)setTerrain(source,cx,cy,8);
+   else if(v===17)setTerrain(source,cx,cy,9);
+   else if(v===18){setTerrain(source,cx,cy,0);lower(vx-1,vy);lower(vx,vy+1);}
+  }
+  if(vx<BLISS_TRACK_SIZE&&vy>0){
+   const cx=vx,cy=vy-1,v=terrainAt(source,cx,cy);
+   if(v===6)setTerrain(source,cx,cy,18);
+   else if(v===8)setTerrain(source,cx,cy,11);
+   else if(v===9)setTerrain(source,cx,cy,13);
+   else if(v===12)setTerrain(source,cx,cy,0);
+   else if(v===15)setTerrain(source,cx,cy,7);
+   else if(v===16){setTerrain(source,cx,cy,0);lower(vx+1,vy);lower(vx,vy-1);}
+   else if(v===17)setTerrain(source,cx,cy,10);
+  }
+ };
+ lower(x,y);
+}
