@@ -197,14 +197,28 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  mapWrap.append(map);mapPanel.append(zoomBar,mapWrap);
 
  const toolsPanel=panel('Bliss tools');
+ const toolHint=document.createElement('div');toolHint.style.cssText='min-height:54px;margin:0 0 8px;padding:7px 8px;border:1px solid #34344a;background:#0c0c17;color:#bdbdd0;border-radius:4px;font:11px/1.35 system-ui,Segoe UI,sans-serif;';
+ const defaultToolHint='Hover a Bliss tool to see what it does and its shortcut.';
+ const showToolHint=(help:HoverHelp)=>{
+  const shortcut=help.shortcut?(' · Shortcut: '+help.shortcut):'';
+  toolHint.innerHTML='<strong style="color:#fff">'+help.name+'</strong><span style="color:#d6c95f">'+shortcut+'</span><br><span>'+help.description+'</span>';
+ };
+ const clearToolHint=()=>{toolHint.textContent=defaultToolHint;};
+ clearToolHint();
+ const attachHoverHelp=(control:HTMLElement,help:HoverHelp)=>{
+  const show=()=>showToolHint(help),hide=()=>clearToolHint();
+  control.addEventListener('mouseenter',show);control.addEventListener('focus',show);
+  control.addEventListener('mouseleave',hide);control.addEventListener('blur',hide);
+ };
  const quick=document.createElement('div');quick.style.cssText='display:grid;grid-template-columns:repeat(4,48px);gap:4px;justify-content:center;padding:6px;background:#17172a;border:1px solid #303047;border-radius:5px;';
  const quickButton=(icon:number,titleText:string,action?:()=>void)=>{
-  const control=button('',()=>action?.());control.title=titleText;control.setAttribute('aria-label',titleText);
+  const help=QUICK_TOOL_HELP[icon]??{name:titleText,description:titleText};
+  const control=button('',()=>action?.());control.title=help.name+(help.shortcut?' ('+help.shortcut+')':'');control.setAttribute('aria-label',control.title);
   control.style.cssText+='width:48px;height:48px;padding:1px;display:grid;place-items:center;background:#222238;border-color:#4a4a64;';
   const image=document.createElement('span'),column=icon%BLISS_TOOL_ICON_COLUMNS,row=Math.floor(icon/BLISS_TOOL_ICON_COLUMNS);
   image.style.cssText='display:block;width:'+BLISS_TOOL_ICON_SIZE+'px;height:'+BLISS_TOOL_ICON_SIZE+'px;background-image:url("'+BLISS_TOOL_ICON_SPRITE+'");background-repeat:no-repeat;background-size:'+(BLISS_TOOL_ICON_SIZE*BLISS_TOOL_ICON_COLUMNS)+'px '+(BLISS_TOOL_ICON_SIZE*5)+'px;background-position:-'+(column*BLISS_TOOL_ICON_SIZE)+'px -'+(row*BLISS_TOOL_ICON_SIZE)+'px;image-rendering:pixelated;';
-  control.replaceChildren(image);
-  if(!action){control.disabled=true;control.style.opacity='.35';control.style.cursor='not-allowed';}
+  control.replaceChildren(image);attachHoverHelp(control,help);
+  if(!action){control.setAttribute('aria-disabled','true');control.style.opacity='.35';control.style.cursor='help';}
   quick.append(control);return control;
  };
  // Keep Bliss' original 4×5 toolbar order so muscle memory carries over.
@@ -231,7 +245,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
 
  const switches=document.createElement('div');switches.style.cssText='display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:10px;';
  const switchButtons=new Map<string,HTMLButtonElement>();
- const addSwitch=(id:string,label:string,action:()=>void)=>{const b=button(label,action);b.title=label;switchButtons.set(id,b);switches.append(b);return b;};
+ const addSwitch=(id:string,label:string,action:()=>void)=>{const b=button(label,action),help=SWITCH_TOOL_HELP[id]??{name:label,description:label};b.title=help.name+(help.shortcut?' ('+help.shortcut+')':'');attachHoverHelp(b,help);switchButtons.set(id,b);switches.append(b);return b;};
  addSwitch('clip','CLIP',()=>{core.clearClipboard();pasteMode=false;renderMap();renderStatus();status.textContent='Clipboard cleared.';});
  addSwitch('warn','WAR',()=>{showConflicts=!showConflicts;renderMap();renderStatus();});
  addSwitch('manual','MAN',()=>{allowConflicts=!allowConflicts;renderStatus();});
@@ -247,10 +261,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const toolButtons=new Map<Tool,HTMLButtonElement>();
  const chooseTool=(next:Tool)=>{tool=next;for(const [key,value] of toolButtons)setActive(value,key===tool);renderStatus();};
  for(const [key,label] of [['place','Place'],['erase','Erase'],['link','Auto link'],['flood','Flood'],['dry','Dry'],['raise','Raise'],['lower','Lower'],['terrain','Terrain tile']] as const){
-  const control=button(label,()=>chooseTool(key));toolButtons.set(key,control);terrainTools.append(control);
+  const control=button(label,()=>chooseTool(key)),help=EDIT_TOOL_HELP[key];control.title=help.name+(help.shortcut?' ('+help.shortcut+')':'');attachHoverHelp(control,help);toolButtons.set(key,control);terrainTools.append(control);
  }
  const help=document.createElement('p');help.textContent='Bliss keys are active: F/Shift+F, R/Shift+R, F1–F12, Ctrl+C/X/V/W, arrows, Tab, Enter, Del, P, U, C and tile shortcuts.';help.style.cssText='font-size:11px;line-height:1.35;color:#999;margin:10px 0 0;';
- toolsPanel.append(quick,switches,terrainTools,help);
+ toolsPanel.append(quick,toolHint,switches,terrainTools,help);
 
  main.append(palettePanel,mapPanel,toolsPanel);
 
