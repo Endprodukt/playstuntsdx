@@ -20,7 +20,13 @@ export interface BlissTransform {
 
 const unpack=(row:readonly number[]):BlissTransform=>({x:row[0],y:row[1],width:row[2],height:row[3],hflip:row[4],vflip:row[5],clockwise:row[6],counterClockwise:row[7]});
 const empty:BlissTransform=Object.freeze({x:0,y:0,width:0,height:0,hflip:0,vflip:0,clockwise:0,counterClockwise:0});
-export const blissTrackTransforms:readonly BlissTransform[]=Object.freeze([...BLISS_TRACK_BASIC.map(unpack),...Array.from({length:256-BLISS_TRACK_BASIC.length},()=>empty)]);
+const trackTransforms:BlissTransform[]=[...BLISS_TRACK_BASIC.map(unpack),...Array.from({length:256-BLISS_TRACK_BASIC.length},()=>empty)];
+// xlation.dat leaves 0xB6..0xFC undefined, but the three continuation
+// cells have real icon/flip identities even though rotation fixes relocate them.
+trackTransforms[253]=Object.freeze({x:7,y:14,width:1,height:1,hflip:253,vflip:253,clockwise:0,counterClockwise:0});
+trackTransforms[254]=Object.freeze({x:8,y:14,width:1,height:1,hflip:254,vflip:254,clockwise:0,counterClockwise:0});
+trackTransforms[255]=Object.freeze({x:9,y:14,width:1,height:1,hflip:255,vflip:255,clockwise:0,counterClockwise:0});
+export const blissTrackTransforms:readonly BlissTransform[]=Object.freeze(trackTransforms);
 export const blissTerrainTransforms:readonly BlissTransform[]=Object.freeze(BLISS_TERRAIN_BASIC.map(unpack));
 export const blissTransformations=Object.freeze({track:blissTrackTransforms,terrain:blissTerrainTransforms});
 export type BlissTransformations=typeof blissTransformations;
