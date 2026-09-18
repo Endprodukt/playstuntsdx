@@ -243,8 +243,8 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const savePath='';
   const targetIsCustom=host.customTrackExists?await host.customTrackExists(target):false;
   const targetExists=await host.exists(savePath,target);
-  if(targetExists&&!targetIsCustom&&target!==host.track.name){
-   window.alert(target+'.TRK is already a supplied track. Choose another name for the custom track.');
+  if(host.customTrackExists&&targetExists&&!targetIsCustom){
+   window.alert(target+'.TRK is a supplied track and cannot be replaced through Custom Tracks. Choose another name.');
    return false;
   }
   if(targetIsCustom&&(forceName||target!==host.track.name)&&!window.confirm(target+'.TRK already exists in Custom Tracks. Overwrite it?'))return false;
