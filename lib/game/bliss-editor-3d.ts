@@ -5,7 +5,7 @@ import terrainObjects from '../../public/game/terrain-objects.json';
 import {createTrackModel,createTrackModelFactory,type TrackMaterials} from './track-model.ts';
 import {trackRenderPlacement} from './track-render-placement.ts';
 import {hillRenderSelection} from './hill-render-selection.ts';
-import type {Assets,Shape} from './types.ts';
+import type {Assets} from './types.ts';
 import type {BlissTrack} from './bliss-track.ts';
 import {BLISS_TRANSPARENT_COLOUR,blissTrackMetadata} from './bliss-metadata.ts';
 
@@ -68,18 +68,6 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
  );
  hover.rotation.x=-Math.PI/2;hover.position.y=12;hover.visible=false;scene.add(hover);
 
- const sceneryShape=(shape:Shape,sourceId:number,paint:number)=>{
-  // Palm/cactus/pine models include a flat grass receiver in the original
-  // shape. The editor already renders the terrain below them, so keeping that
-  // receiver produces a mismatched square around the plant.
-  if(sourceId<0x93||sourceId>0x95)return shape;
-  const primitives=shape.primitives.filter(primitive=>{
-   const material=primitive.materials[paint]??primitive.materials[0];
-   return material!==101&&material!==102;
-  });
-  return primitives.length===shape.primitives.length?shape:{...shape,primitives};
- };
-
  const makeGhost=(model:THREE.Object3D)=>{
   model.traverse(node=>{
    const drawable=node as THREE.Mesh|THREE.Line;
@@ -108,8 +96,8 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
    if(descriptor){
     const parts=[descriptor,...(descriptor.overlay?[(trackRenderModels as Record<string,typeof descriptor>)[String(descriptor.overlay)]]:[])].filter(Boolean);
     for(const part of parts){
-     if(!part?.shape)continue;const [group,name]=part.shape.split('.'),sourceShape=assets.shapes[group]?.[name];if(!sourceShape)continue;
-     const placement=trackRenderPlacement(part,cell.x,row,terrainCode===6?450:18,0),paint=part.paint===255?0:placement.paint,shape=sceneryShape(sourceShape,code,paint);
+     if(!part?.shape)continue;const [group,name]=part.shape.split('.'),shape=assets.shapes[group]?.[name];if(!shape)continue;
+     const placement=trackRenderPlacement(part,cell.x,row,terrainCode===6?450:18,0),paint=part.paint===255?0:placement.paint;
      const model=makeGhost(createTrackModel(shape,materials,paint,false,2));model.position.set(...placement.position);model.rotation.y=placement.rotation;ghostRoot.add(model);
     }
    }
@@ -180,10 +168,10 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
    const parts=[descriptor,...(descriptor.overlay?[(trackRenderModels as Record<string,typeof descriptor>)[String(descriptor.overlay)]]:[])].filter(Boolean);
    for(const part of parts){
     if(!part?.shape)continue;
-    const [group,name]=part.shape.split('.'),sourceShape=assets.shapes[group]?.[name];
-    if(!sourceShape)continue;
+    const [group,name]=part.shape.split('.'),shape=assets.shapes[group]?.[name];
+    if(!shape)continue;
     const placement=trackRenderPlacement(part,x,row,terrain===6?450:0,0);
-    const paint=part.paint===255?0:placement.paint,shape=sceneryShape(sourceShape,sourceId,paint);
+    const paint=part.paint===255?0:placement.paint;
     const model=modelFactory(shape,paint);
     model.position.set(...placement.position);model.rotation.y=placement.rotation;content.add(model);
    }
