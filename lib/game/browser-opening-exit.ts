@@ -16,8 +16,20 @@ export async function confirmBrowserOpeningExit(canvas:HTMLCanvasElement,signal:
  try{
   focusBrowserGameCanvas(canvas);
   if(native){
-   const {owner}=native,present=()=>native.present(),m=owner.memory(),v=new DataView(m.buffer,m.byteOffset,m.byteLength);
-   const dialogs=createNativeDisplayDialogRuntime({...input,input:input.read,memory:()=>owner.memory(),d:owner.d,mode:owner.mode,drawing:owner.drawing,resources,present,capture:retain=>captureNativeDisplayDialogBackground(owner,retain)},0xe800);
+   const {owner}=native,m=owner.memory(),v=new DataView(m.buffer,m.byteOffset,m.byteLength),context=canvas.getContext('2d')!;
+   const saved=document.createElement('canvas'),dialogFrame=document.createElement('canvas');saved.width=dialogFrame.width=canvas.width;saved.height=dialogFrame.height=canvas.height;
+   const savedContext=saved.getContext('2d')!,dialogContext=dialogFrame.getContext('2d')!;savedContext.drawImage(canvas,0,0);
+   const presentDialog=(bounds:readonly number[]|null)=>{
+    if(!bounds){context.setTransform(1,0,0,1,0,0);context.drawImage(saved,0,0);return;}
+    // Native dialog drawing owns the original framebuffer. Capture only the
+    // dialog rectangle, then put the already visible high-res opening frame
+    // back underneath it so Escape never reveals the low-res title card.
+    native.present();dialogContext.setTransform(1,0,0,1,0,0);dialogContext.clearRect(0,0,dialogFrame.width,dialogFrame.height);dialogContext.drawImage(canvas,0,0);
+    context.setTransform(1,0,0,1,0,0);context.drawImage(saved,0,0);context.imageSmoothingEnabled=false;
+    const [left,right,top,bottom]=bounds,sx=canvas.width/320,sy=canvas.height/200;
+    context.drawImage(dialogFrame,left*sx,top*sy,(right-left)*sx,(bottom-top)*sy,left*sx,top*sy,(right-left)*sx,(bottom-top)*sy);
+   };
+   const dialogs=createNativeDisplayDialogRuntime({...input,input:input.read,memory:()=>owner.memory(),d:owner.d,mode:owner.mode,drawing:owner.drawing,resources,present:()=>native.present(),presentDialog,capture:retain=>captureNativeDisplayDialogBackground(owner,retain)},0xe800);
    const answer=await dialogs.dialog(originalOpeningExitDialog.resource,originalOpeningExitDialog.mode,originalOpeningExitDialog.selected,v.getUint16(owner.d+0x4ec2,true));
    return answer;
   }
