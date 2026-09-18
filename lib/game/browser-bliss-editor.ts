@@ -94,7 +94,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
 
  const main=document.createElement('div');main.style.cssText='display:grid;grid-template-columns:minmax(360px,460px) minmax(0,1fr) minmax(220px,280px);gap:10px;min-height:0;';
  const palettePanel=panel('Track pieces');
- palettePanel.style.display='grid';palettePanel.style.gridTemplateRows='auto auto minmax(0,1fr) auto';palettePanel.style.gap='8px';
+ palettePanel.style.display='grid';palettePanel.style.gridTemplateRows='auto auto minmax(0,1fr) auto auto';palettePanel.style.gap='8px';
  const selectedPiece=document.createElement('div');selectedPiece.style.cssText='display:grid;grid-template-columns:118px minmax(0,1fr);gap:10px;align-items:center;min-height:126px;padding:8px;border:1px solid #353535;background:#0b0b0b;border-radius:5px;';
  const selectedPreview=document.createElement('canvas');selectedPreview.width=32;selectedPreview.height=32;selectedPreview.style.cssText='width:112px;height:112px;image-rendering:pixelated;display:block;background:#070707;border:1px solid #292929;';
  const selectedInfo=document.createElement('div');selectedInfo.style.cssText='min-width:0;';
@@ -103,7 +103,28 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  selectedInfo.append(selectedName,selectedCode);selectedPiece.append(selectedPreview,selectedInfo);
  const paletteGrid=document.createElement('div');paletteGrid.style.cssText='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;align-content:start;overflow:auto;min-height:0;padding-right:3px;';
  const pageBar=document.createElement('div');pageBar.style.cssText='display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding-top:6px;border-top:1px solid #2d2d2d;';
- palettePanel.append(selectedPiece,paletteGrid,pageBar);
+ const landscapeNames=['Desert','Tropical','Alpine','City','Country'] as const;
+ const sceneryBox=document.createElement('div');sceneryBox.style.cssText='border-top:1px solid #2d2d2d;padding-top:8px;';
+ const sceneryTitle=document.createElement('div');sceneryTitle.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;color:#aaa;';
+ const sceneryLabel=document.createElement('strong');sceneryLabel.textContent='Scenery / Diorama';sceneryLabel.style.color='#ddd';
+ const sceneryCurrent=document.createElement('span');
+ sceneryTitle.append(sceneryLabel,sceneryCurrent);
+ const sceneryButtons=document.createElement('div');sceneryButtons.style.cssText='display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;';
+ const sceneryControls=landscapeNames.map((label,index)=>{
+  const control=button(label,()=>{
+   if(core.setLandscape(index)){changed('Scenery changed to '+label);}
+   else{renderScenery();renderStatus();}
+  });
+  control.style.cssText+='padding:6px 3px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  sceneryButtons.append(control);return control;
+ });
+ const renderScenery=()=>{
+  const selected=Math.max(0,Math.min(4,core.track.landscape));
+  sceneryCurrent.textContent=landscapeNames[selected];
+  sceneryControls.forEach((control,index)=>setActive(control,index===selected));
+ };
+ sceneryBox.append(sceneryTitle,sceneryButtons);
+ palettePanel.append(selectedPiece,paletteGrid,pageBar,sceneryBox);
 
  const mapPanel=panel('30 × 30 track');
  mapPanel.style.display='grid';mapPanel.style.gridTemplateRows='auto auto minmax(0,1fr)';mapPanel.style.placeItems='stretch';
@@ -219,7 +240,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const updateArea=()=>{
   palettePanel.style.boxShadow=activeArea==='palette'?'0 0 0 2px #879341 inset':'none';
   mapPanel.style.boxShadow=activeArea==='grid'?'0 0 0 2px #879341 inset':'none';
-  renderMap();renderPalette();renderStatus();
+  renderMap();renderPalette();renderScenery();renderStatus();
  };
  const renderStatus=()=>{
   const terrainPage=page>=10,activeCode=terrainPage?terrainBrush:brush;
@@ -237,7 +258,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  const changed=(message='')=>{
   const bytes=encodeBlissTrack(core.track).subarray(0,1802);host.track.raw=Array.from(bytes);
-  renderMap();renderPalette();renderStatus();if(message)status.textContent=message+' · '+status.textContent;
+  renderMap();renderPalette();renderScenery();renderStatus();if(message)status.textContent=message+' · '+status.textContent;
  };
  const paletteLabels=['Paved','Dirt','Ice','Stunts','Banked','Splits','Highway','Elevated','Spins','Scenery','Terrain','Terrain 2'] as const;
  const pageCodes=(index:number)=>Array.from(new Set(blissPalettePages[index])).filter(code=>index>=10?code<=18:code>0&&code<253);
@@ -571,6 +592,6 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  }
  const cleanup=()=>{window.removeEventListener('keydown',keyDown,true);overlay.remove();};
  let resolveDone:(()=>void)|undefined;
- renderPalette();renderMap();renderStatus();chooseTool('place');updateArea();overlay.focus();requestAnimationFrame(()=>fitMap());
+ renderPalette();renderScenery();renderMap();renderStatus();chooseTool('place');updateArea();overlay.focus();requestAnimationFrame(()=>fitMap());
  await new Promise<void>(resolve=>{resolveDone=resolve;});cleanup();
 }
