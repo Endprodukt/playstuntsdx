@@ -251,7 +251,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  addSwitch('manual','MAN',()=>{allowConflicts=!allowConflicts;renderStatus();});
  addSwitch('grid','GRID',()=>{showGrid=!showGrid;renderMap();renderStatus();});
  const colourSwitch=addSwitch('colour','COL',()=>{status.textContent='Bliss colouring mode is not ported yet.';status.style.color='#ffbd7a';});
- colourSwitch.disabled=true;colourSwitch.style.opacity='.35';colourSwitch.style.cursor='not-allowed';
+ colourSwitch.setAttribute('aria-disabled','true');colourSwitch.style.opacity='.35';colourSwitch.style.cursor='help';
  addSwitch('shot','TRK SHOT',()=>void takeTrackShot());
  addSwitch('trk','TRK',()=>{affectTrack=!affectTrack;renderMap();renderStatus();});
  addSwitch('ter','TER',()=>{affectTerrain=!affectTerrain;renderMap();renderStatus();});
