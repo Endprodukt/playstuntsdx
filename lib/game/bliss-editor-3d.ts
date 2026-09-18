@@ -181,7 +181,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
  };
  const dolly=(delta:number,clientX:number,clientY:number)=>{
   const before=cellAt(clientX,clientY),factor=Math.exp(delta*.0012);
-  distance=Math.max(900,Math.min(90000,distance*factor));
+  distance=Math.max(180,Math.min(90000,distance*factor));
   if(before){
    const aim=new THREE.Vector3(before.x*1024+512,0,-((29-before.y)*1024+512));
    target.lerp(aim,delta<0?.16:.06);
