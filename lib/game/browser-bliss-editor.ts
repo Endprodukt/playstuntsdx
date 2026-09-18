@@ -337,7 +337,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  viewToggle.addEventListener('change',()=>{void setViewMode(viewToggle.checked?'3d':'2d');});
  view2D.addEventListener('click',event=>{event.preventDefault();viewToggle.checked=false;void setViewMode('2d');});
  view3D.addEventListener('click',event=>{event.preventDefault();viewToggle.checked=true;void setViewMode('3d');});
- const zoomOut=button('−',()=>{if(viewMode==='3d')editor3D?.dolly(120,map3D.getBoundingClientRect().left+map3D.clientWidth/2,map3D.getBoundingClientRect().top+map3D.clientHeight/2);else setZoom(zoom-.25);}),zoomReset=button('100%',()=>{if(viewMode==='3d')void reset3DView();else setZoom(1);}),zoomIn=button('+',()=>{if(viewMode==='3d')editor3D?.dolly(-120,map3D.getBoundingClientRect().left+map3D.clientWidth/2,map3D.getBoundingClientRect().top+map3D.clientHeight/2);else setZoom(zoom+.25);}),zoomFit=button('Fit',()=>fitMap());
+ const zoomOut=button('−',()=>{if(viewMode==='3d'){editor3D?.dolly(120,map3D.getBoundingClientRect().left+map3D.clientWidth/2,map3D.getBoundingClientRect().top+map3D.clientHeight/2);sync3DZoomLabel();}else setZoom(zoom-.25);}),zoomReset=button('100%',()=>{if(viewMode==='3d')void reset3DView();else setZoom(1);}),zoomIn=button('+',()=>{if(viewMode==='3d'){editor3D?.dolly(-120,map3D.getBoundingClientRect().left+map3D.clientWidth/2,map3D.getBoundingClientRect().top+map3D.clientHeight/2);sync3DZoomLabel();}else setZoom(zoom+.25);}),zoomFit=button('Fit',()=>fitMap());
  zoomOut.title='Zoom out';zoomIn.title='Zoom in';zoomReset.title='Actual size';zoomFit.title='Fit map to editor';
  for(const control of [zoomOut,zoomReset,zoomIn,zoomFit])control.style.padding='4px 8px';
  zoomBar.append(viewSwitch,zoomOut,zoomReset,zoomIn,zoomFit);
@@ -516,6 +516,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const width=Math.max(1,mapWrap.clientWidth-20),height=Math.max(1,mapWrap.clientHeight-20);
   setZoom(Math.min(4,width/BLISS_ORIGINAL_MAP_SIZE,height/BLISS_ORIGINAL_MAP_SIZE));
  };
+ const sync3DZoomLabel=()=>{if(viewMode==='3d'&&editor3D)zoomReset.textContent=editor3D.zoomPercent()+'%';};
  const drawSelection=()=>{
   const selection=core.selection;if(!selection)return;
   context.save();context.strokeStyle='#f2d000';context.lineWidth=2;
@@ -732,7 +733,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  async function reset3DView(){
   if(!editor3D)return;
-  editor3D.resetView();editor3D.render();
+  editor3D.resetView();editor3D.render();sync3DZoomLabel();
  }
   async function setViewMode(mode:'2d'|'3d'){
   viewMode=mode;viewToggle.checked=mode==='3d';viewKnob.style.transform=mode==='3d'?'translateX(16px)':'translateX(0)';view2D.style.color=mode==='2d'?'#fff':'#777';view3D.style.color=mode==='3d'?'#fff':'#777';
@@ -743,10 +744,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(mode==='3d'){
    if(!editor3D){const module=await import('./bliss-editor-3d.ts');editor3D=module.createBlissEditor3DView(map3D,host.assets,core.track);}
    else editor3D.update(core.track);
-   requestAnimationFrame(()=>editor3D?.render());
+   requestAnimationFrame(()=>{editor3D?.render();sync3DZoomLabel();});
    status.textContent='3D view · Ctrl + Left drag orbit · Ctrl + Right drag move · Wheel / Ctrl+Wheel dolly';
    status.style.color='#aee18a';
-  }else{editor3D?.setHover(null);editor3D?.setGhost(null,0,false,0);renderMap();requestAnimationFrame(()=>fitMap());}
+  }else{editor3D?.setHover(null);editor3D?.setGhost(null,0,false,0);zoomReset.textContent=Math.round(zoom*100)+'%';renderMap();requestAnimationFrame(()=>fitMap());}
  }
  const mapCoordinates=(event:PointerEvent)=>{
   const rect=map.getBoundingClientRect(),px=(event.clientX-rect.left)*map.width/rect.width,py=(event.clientY-rect.top)*map.height/rect.height;
@@ -886,10 +887,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(viewMode!=='3d'||!editor3D)return;
   const binding=wheelBinding(event),plainBinding=event.ctrlKey?[event.deltaY<0?'WheelUp':'WheelDown'].join(''):binding;
   const cameraAction=actionForBinding(binding,'3d')??actionForBinding(plainBinding,'3d');
-  if(cameraAction?.id==='dollyIn3D'){event.preventDefault();editor3D.dolly(-Math.max(40,Math.abs(event.deltaY)),event.clientX,event.clientY);return;}
-  if(cameraAction?.id==='dollyOut3D'){event.preventDefault();editor3D.dolly(Math.max(40,Math.abs(event.deltaY)),event.clientX,event.clientY);return;}
+  if(cameraAction?.id==='dollyIn3D'){event.preventDefault();editor3D.dolly(-Math.max(40,Math.abs(event.deltaY)),event.clientX,event.clientY);sync3DZoomLabel();return;}
+  if(cameraAction?.id==='dollyOut3D'){event.preventDefault();editor3D.dolly(Math.max(40,Math.abs(event.deltaY)),event.clientX,event.clientY);sync3DZoomLabel();return;}
   const action=actionForBinding(binding);
-  if(action?.id==='zoomIn'||action?.id==='zoomOut'){event.preventDefault();editor3D.dolly(action.id==='zoomIn'?-120:120,event.clientX,event.clientY);return;}
+  if(action?.id==='zoomIn'||action?.id==='zoomOut'){event.preventDefault();editor3D.dolly(action.id==='zoomIn'?-120:120,event.clientX,event.clientY);sync3DZoomLabel();return;}
   if(action){event.preventDefault();executeBoundAction(action,event.shiftKey);}
  },{passive:false});
 
