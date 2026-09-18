@@ -10,6 +10,7 @@ import {BLISS_TOOL_ICON_COLUMNS,BLISS_TOOL_ICON_SIZE,BLISS_TOOL_ICON_SPRITE} fro
 import {setBlissEditorActive} from './bliss-editor-presence.ts';
 import {blissTerrainPresets,type BlissTerrainPreset} from './bliss-terrain-presets.ts';
 import {setBlissTrackMetadata,type BlissMetadata} from './bliss-metadata.ts';
+import {blissSceneryDefaults,type BlissSceneryPlacement,type BlissSceneryRule} from './bliss-scenery-generator.ts';
 
 export interface BrowserBlissEditorHost {
  canvas:HTMLCanvasElement;
@@ -248,7 +249,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const undoTool=quickButton(13,'Undo',()=>{if(core.undo())changed('Undo');});
  const redoTool=quickButton(14,'Redo',()=>{if(core.redo())changed('Redo');});
  quickButton(15,'Help',()=>showHelp(0));
- quickButton(16,'Generate Scenery — port pending');
+ quickButton(16,'Generate Scenery',()=>showSceneryGenerator());
  quickButton(17,'Track Analysis — paths/errors; racer time estimates pending',()=>showTrackAnalysis());
  quickButton(18,'Tournaments — not used by PlayStunts DX');
  quickButton(19,'Editor Settings — full Bliss settings port pending');
