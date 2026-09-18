@@ -553,9 +553,9 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const next=smartSelectBliss(core.track,brush,key,direction,lastPlaced,core.definitions);if(next!==brush){brush=next;chooseTool('place');renderPalette();renderStatus();}
  };
  const changeMaterial=()=>{if(page>2)return;const next=changeBlissMaterial(brush);if(next!==brush){brush=next;renderPalette();renderStatus();}};
- const findByName=()=>{
+ const findByName=async()=>{
   if(page===11){terrainBrush=terrainBrush===0||terrainBrush>5?1:6;renderPalette();renderStatus();return;}
-  const query=window.prompt('Find Bliss element by name:','');if(query===null)return;
+  const query=await centeredPrompt('Find element','Enter part of a Bliss element name:','');if(query===null)return;
   const next=findBlissElementByName(query,brush);if(next!==brush){brush=next;chooseTool('place');renderPalette();renderStatus();}else{status.textContent='No matching element found.';status.style.color='#ffbd7a';}
  };
  const startManualHex=()=>{
