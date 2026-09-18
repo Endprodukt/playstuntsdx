@@ -12,6 +12,7 @@ export interface BlissEditor3DCell {x:number;y:number}
 export interface BlissEditor3DView {
  render():void;
  update(track:BlissTrack):void;
+ resetView():void;
  cellAt(clientX:number,clientY:number):BlissEditor3DCell|null;
  setHover(cell:BlissEditor3DCell|null):void;
  setGhost(cell:BlissEditor3DCell|null,code:number,terrain:boolean,terrainCode:number):void;
@@ -21,16 +22,26 @@ export interface BlissEditor3DView {
  close():void;
 }
 
-export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack):BlissEditor3DView{
+export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,options:{initialCamera?:{position:[number,number,number];target:[number,number,number];fov?:number}}={}):BlissEditor3DView{
  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,logarithmicDepthBuffer:true,powerPreference:'high-performance'});
  renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
  renderer.setClearColor(0x88a0b8,1);
 
  const scene=new THREE.Scene(),world=new THREE.Group();
  world.scale.z=-1;scene.add(world);
- const camera=new THREE.PerspectiveCamera(55,1,20,180000);
- const target=new THREE.Vector3(15360,0,-15360);
- let distance=26000,azimuth=-.72,elevation=.62;
+ const camera=new THREE.PerspectiveCamera(options.initialCamera?.fov??55,1,20,180000);
+ const defaultTarget=new THREE.Vector3(...(options.initialCamera?.target??[15360,0,-15360] as [number,number,number]));
+ const defaultPosition=new THREE.Vector3(...(options.initialCamera?.position??[
+  defaultTarget.x+Math.sin(-.72)*Math.cos(.62)*26000,
+  defaultTarget.y+Math.sin(.62)*26000,
+  defaultTarget.z+Math.cos(-.72)*Math.cos(.62)*26000
+ ] as [number,number,number]));
+ const target=defaultTarget.clone();
+ const initialOffset=defaultPosition.clone().sub(defaultTarget);
+ const initialDistance=Math.max(1,initialOffset.length());
+ const initialElevation=Math.asin(THREE.MathUtils.clamp(initialOffset.y/initialDistance,-1,1));
+ const initialAzimuth=Math.atan2(initialOffset.x,initialOffset.z);
+ let distance=initialDistance,azimuth=initialAzimuth,elevation=initialElevation;
 
  const light=new THREE.HemisphereLight(0xffffff,0x586030,1.15);scene.add(light);
  const materials=trackMaterials as TrackMaterials;
@@ -189,10 +200,15 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   render();
  };
 
+ const resetView=()=>{
+  target.copy(defaultTarget);distance=initialDistance;azimuth=initialAzimuth;elevation=initialElevation;camera.fov=options.initialCamera?.fov??55;camera.updateProjectionMatrix();render();
+ };
+
  rebuild(track);render();
  return {
   render,
   update(source){rebuild(source);render();},
+  resetView,
   cellAt,
   setHover,
   setGhost,
