@@ -7,6 +7,7 @@ import {trackRenderPlacement} from './track-render-placement.ts';
 import {hillRenderSelection} from './hill-render-selection.ts';
 import type {Assets} from './types.ts';
 import type {BlissTrack} from './bliss-track.ts';
+import {BLISS_TRANSPARENT_COLOUR,blissTrackMetadata} from './bliss-metadata.ts';
 
 export interface BlissEditor3DCell {x:number;y:number}
 export interface BlissEditor3DView {
@@ -46,7 +47,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
  const light=new THREE.HemisphereLight(0xffffff,0x586030,1.15);scene.add(light);
  const materials=trackMaterials as TrackMaterials;
  let modelFactory=createTrackModelFactory(materials,2);
- const content=new THREE.Group(),ghostRoot=new THREE.Group();world.add(content,ghostRoot);
+ const content=new THREE.Group(),annotationRoot=new THREE.Group(),ghostRoot=new THREE.Group();world.add(content,annotationRoot,ghostRoot);
 
  const base=new THREE.Mesh(
   new THREE.PlaneGeometry(30720,30720),
@@ -115,9 +116,37 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   });
  };
 
+ const colour565=(value:number)=>{
+  const r=((value>>>11)&31)/31,g=((value>>>5)&63)/63,b=(value&31)/31;return new THREE.Color(r,g,b);
+ };
+ const rebuildAnnotations=(source:BlissTrack)=>{
+  while(annotationRoot.children.length){const child=annotationRoot.children[annotationRoot.children.length-1];annotationRoot.remove(child);disposeObject(child);}
+  const colours=blissTrackMetadata(source)?.metadata.colours;if(!colours)return;
+  const borderGeometry=new THREE.BufferGeometry(),borderPositions:number[]=[],borderColors:number[]=[];
+  for(let y=0;y<30;y++)for(let x=0;x<30;x++){
+   const at=y*30+x,bg=colours.background[at],border=colours.border[at],row=29-y,cx=x*1024+512,cz=row*1024+512;
+   if(bg!==BLISS_TRANSPARENT_COLOUR){
+    const material=new THREE.MeshBasicMaterial({color:colour565(bg),transparent:true,opacity:.34,depthWrite:false,side:THREE.DoubleSide,toneMapped:false});
+    const cell=new THREE.Mesh(new THREE.PlaneGeometry(1016,1016),material);
+    cell.rotation.x=-Math.PI/2;cell.position.set(cx,24,cz);cell.renderOrder=80;annotationRoot.add(cell);
+   }
+   if(border!==BLISS_TRANSPARENT_COLOUR){
+    const color=colour565(border),left=cx-506,right=cx+506,top=cz-506,bottom=cz+506,yPos=30;
+    const segments=[[left,yPos,top,right,yPos,top],[right,yPos,top,right,yPos,bottom],[right,yPos,bottom,left,yPos,bottom],[left,yPos,bottom,left,yPos,top]];
+    for(const segment of segments){borderPositions.push(...segment);for(let i=0;i<2;i++)borderColors.push(color.r,color.g,color.b);}
+   }
+  }
+  if(borderPositions.length){
+   borderGeometry.setAttribute('position',new THREE.Float32BufferAttribute(borderPositions,3));
+   borderGeometry.setAttribute('color',new THREE.Float32BufferAttribute(borderColors,3));
+   const lines=new THREE.LineSegments(borderGeometry,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:.95,depthWrite:false,toneMapped:false}));
+   lines.renderOrder=90;annotationRoot.add(lines);
+  }else borderGeometry.dispose();
+ };
+
  const rebuild=(source:BlissTrack)=>{
   while(content.children.length){const child=content.children[content.children.length-1];content.remove(child);disposeObject(child);}
-  modelFactory=createTrackModelFactory(materials,2);
+  modelFactory=createTrackModelFactory(materials,2);rebuildAnnotations(source);
   for(let y=0;y<30;y++)for(let x=0;x<30;x++){
    const at=y*30+x,terrain=source.terrain[at],sourceId=source.track[at],selected=hillRenderSelection(terrain,sourceId);
    const row=29-y;
@@ -215,6 +244,6 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   orbit,
   pan,
   dolly,
-  close(){clearGhost();disposeObject(content);disposeObject(base);hover.geometry.dispose();(hover.material as THREE.Material).dispose();pickPlane.geometry.dispose();(pickPlane.material as THREE.Material).dispose();renderer.dispose();renderer.forceContextLoss();}
+  close(){clearGhost();disposeObject(content);disposeObject(annotationRoot);disposeObject(base);hover.geometry.dispose();(hover.material as THREE.Material).dispose();pickPlane.geometry.dispose();(pickPlane.material as THREE.Material).dispose();renderer.dispose();renderer.forceContextLoss();}
  };
 }
