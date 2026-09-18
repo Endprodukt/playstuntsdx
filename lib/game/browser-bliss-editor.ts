@@ -243,9 +243,9 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  let rebindingAction:string|null=null;
  const editorSettingsStorageKey='playstunts-bliss-editor-settings-v1';
  type TrackShotFormat='png'|'jpeg'|'bmp';
- type BlissEditorSettings={trackShotFormat:TrackShotFormat;jpegQuality:number;trackShotGrid:boolean;trackShotAnnotations:boolean;trackShotCarMarkers:boolean};
+ type BlissEditorSettings={trackShotFormat:TrackShotFormat;jpegQuality:number;trackShotGrid:boolean;trackShotAnnotations:boolean;trackShotCarMarkers:boolean;sceneryPercentMode:boolean};
  let showShortcutReference=true;
- let editorSettings:BlissEditorSettings={trackShotFormat:'png',jpegQuality:.92,trackShotGrid:true,trackShotAnnotations:true,trackShotCarMarkers:true};
+ let editorSettings:BlissEditorSettings={trackShotFormat:'png',jpegQuality:.92,trackShotGrid:true,trackShotAnnotations:true,trackShotCarMarkers:true,sceneryPercentMode:false};
  try{
   showShortcutReference=localStorage.getItem(shortcutHelpStorageKey)!=='0';
   const savedBindings=JSON.parse(localStorage.getItem(bindingStorageKey)??'null') as Record<string,string|null>|null;
@@ -257,6 +257,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    if(typeof saved.trackShotGrid==='boolean')editorSettings.trackShotGrid=saved.trackShotGrid;
    if(typeof saved.trackShotAnnotations==='boolean')editorSettings.trackShotAnnotations=saved.trackShotAnnotations;
    if(typeof saved.trackShotCarMarkers==='boolean')editorSettings.trackShotCarMarkers=saved.trackShotCarMarkers;
+   if(typeof saved.sceneryPercentMode==='boolean')editorSettings.sceneryPercentMode=saved.sceneryPercentMode;
   }
  }catch{}
  const persistEditorSettings=()=>{try{localStorage.setItem(editorSettingsStorageKey,JSON.stringify(editorSettings));}catch{}};
@@ -1109,7 +1110,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;margin-top:18px;';
   const close=()=>{modalOpen=false;shade.remove();overlay.focus();};
   const saveSettings=button('Save',()=>{
-   editorSettings={trackShotFormat:format.value as TrackShotFormat,jpegQuality:Number(quality.value)/100,trackShotGrid:grid.checked,trackShotAnnotations:annotations.checked,trackShotCarMarkers:carMarkers.checked};
+   editorSettings={trackShotFormat:format.value as TrackShotFormat,jpegQuality:Number(quality.value)/100,trackShotGrid:grid.checked,trackShotAnnotations:annotations.checked,trackShotCarMarkers:carMarkers.checked,sceneryPercentMode:editorSettings.sceneryPercentMode};
    showShortcutReference=shortcuts.checked;persistEditorSettings();try{localStorage.setItem(shortcutHelpStorageKey,showShortcutReference?'1':'0');}catch{}
    renderShortcutReference();close();status.textContent='Editor settings saved.';status.style.color='#aee18a';
   });
@@ -1397,15 +1398,44 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const availability=blissSceneryAvailability(core.track,false);
   const eligibleFor=(rule:BlissSceneryRule)=>rule.placement==='everywhere'?availability.openfield:rule.placement==='on-water'?availability.water:availability.byRoad;
   for(const rule of rules)rule.count=Math.max(0,blissRoundToEven(eligibleFor(rule)*rule.percent/100));
+
   const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
   const box=document.createElement('div');box.style.cssText='width:min(760px,94vw);max-height:90vh;overflow:auto;background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:18px 22px;box-shadow:0 22px 70px #000;border-radius:6px;font:13px/1.35 system-ui,Segoe UI,sans-serif;';
-  const heading=document.createElement('h2');heading.textContent='Generate Scenery';heading.style.cssText='text-align:center;font-size:18px;margin:0 0 14px;color:#fff;';
+  const heading=document.createElement('h2');heading.textContent='Generate Scenery';heading.style.cssText='text-align:center;font-size:18px;margin:0 0 12px;color:#fff;';
+
+  const modeBar=document.createElement('div');modeBar.style.cssText='display:flex;justify-content:center;align-items:center;gap:8px;margin-bottom:14px;';
+  const percentToggle=document.createElement('input');percentToggle.type='checkbox';percentToggle.checked=editorSettings.sceneryPercentMode;
+  const percentLabel=document.createElement('label');percentLabel.style.cssText='display:flex;align-items:center;gap:7px;color:#ddd;cursor:pointer;';
+  percentLabel.append(percentToggle,document.createTextNode('Use percentages instead of exact counts'));modeBar.append(percentLabel);
+
   const table=document.createElement('div');table.style.cssText='display:grid;grid-template-columns:minmax(180px,1fr) minmax(250px,1.5fr) 155px;gap:8px 12px;align-items:center;';
-  for(const label of ['Scenery','Count','Placement']){const h=document.createElement('strong');h.textContent=label;h.style.cssText='color:#d8d8ea;border-bottom:1px solid #555;padding-bottom:5px;';table.append(h);}
-  const countInputs:HTMLInputElement[]=[],modeInputs:HTMLSelectElement[]=[];
-  const syncCount=(index:number,value:number)=>{
-   const max=eligibleFor(rules[index]),count=Math.max(0,Math.min(max,Math.trunc(value)||0));
-   rules[index].count=count;countInputs[index].value=String(count);
+  const headers=['Scenery',editorSettings.sceneryPercentMode?'Percentage':'Count','Placement'].map(text=>{const h=document.createElement('strong');h.textContent=text;h.style.cssText='color:#d8d8ea;border-bottom:1px solid #555;padding-bottom:5px;';table.append(h);return h;});
+  const valueInputs:HTMLInputElement[]=[],valueNotes:HTMLSpanElement[]=[],modeInputs:HTMLSelectElement[]=[];
+
+  const syncRuleFromCount=(index:number,value:number)=>{
+   const rule=rules[index],max=eligibleFor(rule),count=Math.max(0,Math.min(max,Math.trunc(value)||0));
+   rule.count=count;rule.percent=max?Math.max(0,Math.min(100,blissRoundToEven(count*100/max))):0;
+  };
+  const syncRuleFromPercent=(index:number,value:number)=>{
+   const rule=rules[index],max=eligibleFor(rule),percent=Math.max(0,Math.min(100,blissRoundToEven(value)));
+   rule.percent=percent;rule.count=Math.max(0,Math.min(max,blissRoundToEven(max*percent/100)));
+  };
+  const refreshRow=(index:number)=>{
+   const rule=rules[index],max=eligibleFor(rule),input=valueInputs[index],note=valueNotes[index],percentMode=percentToggle.checked;
+   if(!input||!note)return;
+   if(percentMode){
+    input.min='0';input.max='100';input.value=String(rule.percent);note.textContent='≈ '+(rule.count??0)+' / '+max;
+   }else{
+    input.min='0';input.max=String(max);input.value=String(rule.count??0);note.textContent='max '+max;
+   }
+  };
+  const refreshMode=()=>{
+   editorSettings.sceneryPercentMode=percentToggle.checked;persistEditorSettings();
+   headers[1].textContent=percentToggle.checked?'Percentage':'Count';
+   rules.forEach((_,index)=>refreshRow(index));
+   note.textContent=percentToggle.checked
+    ?'Percentage mode uses the share of eligible cells and converts it to an exact object count. No extra random placements are added.'
+    :'Count mode is exact: entering 6 creates 6 objects, provided enough eligible cells exist.';
   };
 
   rules.forEach((rule,index)=>{
@@ -1414,20 +1444,26 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    const image=blissOriginalPaletteImageData(rule.baseCode,false,host.resources,host.palette);preview.width=image.width;preview.height=image.height;preview.getContext('2d',{alpha:false})!.putImageData(image,0,0);
    const labelText=document.createElement('span');labelText.textContent=rule.name;labelText.style.color='#ddd';label.append(preview,labelText);
 
-   const countBox=document.createElement('div');countBox.style.cssText='display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;';
-   const number=document.createElement('input');number.type='number';number.min='0';number.max=String(eligibleFor(rule));number.step='1';number.value=String(rule.count??0);number.style.cssText='box-sizing:border-box;width:100%;padding:6px;background:#0d0d18;border:1px solid #676783;color:#fff;border-radius:3px;text-align:right;';
-   const available=document.createElement('span');available.textContent='max '+eligibleFor(rule);available.style.cssText='color:#888;font-size:11px;white-space:nowrap;';
-   number.addEventListener('input',()=>syncCount(index,Number(number.value)||0));
-   countBox.append(number,available);
+   const valueBox=document.createElement('div');valueBox.style.cssText='display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;';
+   const number=document.createElement('input');number.type='number';number.step='1';number.style.cssText='box-sizing:border-box;width:100%;padding:6px;background:#0d0d18;border:1px solid #676783;color:#fff;border-radius:3px;text-align:right;';
+   const valueNote=document.createElement('span');valueNote.style.cssText='color:#888;font-size:11px;white-space:nowrap;';
+   valueInputs.push(number);valueNotes.push(valueNote);
+   number.addEventListener('input',()=>{
+    if(percentToggle.checked)syncRuleFromPercent(index,Number(number.value)||0);else syncRuleFromCount(index,Number(number.value)||0);
+    refreshRow(index);
+   });
+   valueBox.append(number,valueNote);
 
    const mode=document.createElement('select');mode.style.cssText='box-sizing:border-box;width:100%;padding:6px;background:#0d0d18;border:1px solid #676783;color:#fff;border-radius:3px;';
    const isShip=rule.baseCode===0xab;
    const choices:readonly [BlissSceneryPlacement,string][]=isShip?[['on-water','On water'],['everywhere','Everywhere']]:[['everywhere','Everywhere'],['by-road','By the road']];
    for(const [value,text] of choices){const option=document.createElement('option');option.value=value;option.textContent=text;option.selected=value===rule.placement;mode.append(option);}
-   mode.addEventListener('change',()=>{rules[index].placement=mode.value as BlissSceneryPlacement;const max=eligibleFor(rules[index]);number.max=String(max);if((rules[index].count??0)>max)syncCount(index,max);available.textContent='max '+max;});
-
-   countInputs.push(number);modeInputs.push(mode);
-   table.append(label,countBox,mode);
+   mode.addEventListener('change',()=>{
+    rules[index].placement=mode.value as BlissSceneryPlacement;
+    if(percentToggle.checked)syncRuleFromPercent(index,rules[index].percent);else syncRuleFromCount(index,rules[index].count??0);
+    refreshRow(index);
+   });
+   modeInputs.push(mode);table.append(label,valueBox,mode);
   });
 
   const modeRow=document.createElement('div');modeRow.style.cssText='display:flex;justify-content:center;gap:18px;align-items:center;margin-top:16px;padding-top:12px;border-top:1px solid #555;';
@@ -1435,13 +1471,21 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   preserve.type=erase.type='radio';preserve.name=erase.name='bliss-scenery-clear-'+Date.now();preserve.checked=true;
   preserveLabel.append(preserve,document.createTextNode(' Use free space'));eraseLabel.append(erase,document.createTextNode(' Remove old scenery'));modeRow.append(preserveLabel,eraseLabel);
 
-  const note=document.createElement('p');note.textContent='Counts are exact: entering 6 creates 6 objects, provided enough eligible cells exist. Landscape defaults are converted from the original Bliss percentages when this window opens.';note.style.cssText='margin:12px 0 0;color:#999;text-align:center;font-size:11px;';
+  const note=document.createElement('p');note.style.cssText='margin:12px 0 0;color:#999;text-align:center;font-size:11px;';
+  percentToggle.addEventListener('change',refreshMode);
+
   const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:14px;';
   const close=()=>{modalOpen=false;shade.remove();};
-  const zero=button('Set Everything to Zero',()=>{rules.forEach((_,index)=>syncCount(index,0));});
-  const generate=()=>{core.generateScenery({eraseExisting:erase.checked,rules});close();changed('Scenery generated');};
+  const zero=button('Set Everything to Zero',()=>{rules.forEach((rule,index)=>{rule.count=0;rule.percent=0;refreshRow(index);});});
+  const generate=()=>{
+   // Always pass exact counts to the generator. Percentage mode is only an
+   // alternate way of calculating those counts, which keeps results predictable.
+   if(percentToggle.checked)rules.forEach((rule,index)=>syncRuleFromPercent(index,rule.percent));
+   core.generateScenery({eraseExisting:erase.checked,rules});close();changed('Scenery generated');
+  };
   const generateButton=button('Generate',generate),cancel=button('Cancel',close);generateButton.style.cssText+='min-width:110px;background:#4e5b2b;border-color:#a9bd58;';zero.style.minWidth='150px';cancel.style.cssText+='min-width:105px;';
-  actions.append(zero,generateButton,cancel);box.append(heading,table,modeRow,note,actions);shade.append(box);document.body.append(shade);
+  actions.append(zero,generateButton,cancel);box.append(heading,modeBar,table,modeRow,note,actions);shade.append(box);document.body.append(shade);
+  refreshMode();
   shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();close();}});
   shade.addEventListener('pointerdown',event=>{if(event.target===shade)close();});
   requestAnimationFrame(()=>shade.focus());
