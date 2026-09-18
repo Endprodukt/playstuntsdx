@@ -88,6 +88,72 @@ const TILE_HELP=[
  ['T','Tunnel and slalom'],['V','Transitions'],['W','Corkscrew'],['X, Y, Z','Side, bottom and corner fillers'],
 ] as const;
 
+
+type EditorBindingAction={
+ id:string;
+ group:'Editing & navigation'|'Track piece shortcuts'|'Mouse';
+ description:string;
+ defaultBinding:string|null;
+ smartKey?:string;
+};
+const EDITOR_BINDING_ACTIONS:readonly EditorBindingAction[]=[
+ {id:'toggleDebug',group:'Editing & navigation',description:'Toggle debug mode',defaultBinding:'Ctrl+KeyQ'},
+ {id:'toggleManual',group:'Editing & navigation',description:'Allow/disallow conflict generation',defaultBinding:'Ctrl+KeyE'},
+ {id:'toggleWarnings',group:'Editing & navigation',description:'Toggle conflict-warning display',defaultBinding:'Ctrl+KeyD'},
+ {id:'toggleGrid',group:'Editing & navigation',description:'Display/hide grid',defaultBinding:'Ctrl+KeyG'},
+ {id:'redraw',group:'Editing & navigation',description:'Redraw track',defaultBinding:'Ctrl+KeyR'},
+ {id:'save',group:'Editing & navigation',description:'Save track',defaultBinding:'Ctrl+KeyS'},
+ {id:'trackShot',group:'Editing & navigation',description:'Take a track-shot',defaultBinding:'Ctrl+Shift+KeyS'},
+ {id:'toggleTerrain',group:'Editing & navigation',description:'Toggle terrain affected by paste',defaultBinding:'Ctrl+KeyT'},
+ {id:'toggleTrack',group:'Editing & navigation',description:'Toggle track affected by paste',defaultBinding:'Ctrl+KeyK'},
+ {id:'toggleColour',group:'Editing & navigation',description:'Toggle colouring mode',defaultBinding:'Ctrl+KeyO'},
+ {id:'selectAll',group:'Editing & navigation',description:'Select/Deselect the whole grid',defaultBinding:'Ctrl+KeyW'},
+ {id:'copy',group:'Editing & navigation',description:'Copy selection',defaultBinding:'Ctrl+KeyC'},
+ {id:'cut',group:'Editing & navigation',description:'Cut selection',defaultBinding:'Ctrl+KeyX'},
+ {id:'paste',group:'Editing & navigation',description:'Paste clipboard',defaultBinding:'Ctrl+KeyV'},
+ {id:'flipHorizontal',group:'Editing & navigation',description:'Flip horizontally',defaultBinding:'KeyF'},
+ {id:'flipVertical',group:'Editing & navigation',description:'Flip vertically',defaultBinding:'Shift+KeyF'},
+ {id:'rotateClockwise',group:'Editing & navigation',description:'Rotate clockwise',defaultBinding:'KeyR'},
+ {id:'rotateCounter',group:'Editing & navigation',description:'Rotate counter-clockwise',defaultBinding:'Shift+KeyR'},
+ {id:'undo',group:'Editing & navigation',description:'Undo',defaultBinding:'Ctrl+KeyZ'},
+ {id:'redo',group:'Editing & navigation',description:'Redo',defaultBinding:'Ctrl+KeyY'},
+ {id:'link',group:'Editing & navigation',description:'Link tiles at cursor',defaultBinding:'KeyU'},
+ {id:'check',group:'Editing & navigation',description:'Check track for errors',defaultBinding:'KeyC'},
+ {id:'switchArea',group:'Editing & navigation',description:'Switch between grid and palette',defaultBinding:'Tab'},
+ {id:'insert',group:'Editing & navigation',description:'Paste current element/Create closed-circuit',defaultBinding:'Enter'},
+ {id:'delete',group:'Editing & navigation',description:'Delete at cursor or selection',defaultBinding:'Delete'},
+ {id:'pick',group:'Editing & navigation',description:'Pick element at cursor',defaultBinding:'KeyP'},
+ {id:'manualHex',group:'Editing & navigation',description:'In manual mode, select element by hex typing',defaultBinding:'Backslash'},
+ {id:'find',group:'Track piece shortcuts',description:'Find element by name',defaultBinding:'Space'},
+ {id:'smartA',group:'Track piece shortcuts',description:'Banked road',defaultBinding:'KeyA',smartKey:'A'},
+ {id:'smartB',group:'Track piece shortcuts',description:'Boulevard (highway)',defaultBinding:'KeyB',smartKey:'B'},
+ {id:'smartD',group:'Track piece shortcuts',description:'Split (detour)',defaultBinding:'KeyD',smartKey:'D'},
+ {id:'smartE',group:'Track piece shortcuts',description:'Elevated road',defaultBinding:'KeyE',smartKey:'E'},
+ {id:'smartG',group:'Track piece shortcuts',description:'Spin (cork up/down)',defaultBinding:'KeyG',smartKey:'G'},
+ {id:'smartH',group:'Track piece shortcuts',description:'Chicane',defaultBinding:'KeyH',smartKey:'H'},
+ {id:'smartI',group:'Track piece shortcuts',description:'Pipe',defaultBinding:'KeyI',smartKey:'I'},
+ {id:'smartJ',group:'Track piece shortcuts',description:'Ramp (jump)',defaultBinding:'KeyJ',smartKey:'J'},
+ {id:'smartK',group:'Track piece shortcuts',description:'Crossroad',defaultBinding:'KeyK',smartKey:'K'},
+ {id:'smartL',group:'Track piece shortcuts',description:'Loop',defaultBinding:'KeyL',smartKey:'L'},
+ {id:'material',group:'Track piece shortcuts',description:'Change material',defaultBinding:'KeyM'},
+ {id:'smartN',group:'Track piece shortcuts',description:'Scenery',defaultBinding:'KeyN',smartKey:'N'},
+ {id:'smartO',group:'Track piece shortcuts',description:'Start/Finish line',defaultBinding:'KeyO',smartKey:'O'},
+ {id:'smartQ',group:'Track piece shortcuts',description:'Corner',defaultBinding:'KeyQ',smartKey:'Q'},
+ {id:'smartS',group:'Track piece shortcuts',description:'Straightway',defaultBinding:'KeyS',smartKey:'S'},
+ {id:'smartT',group:'Track piece shortcuts',description:'Tunnel and slalom',defaultBinding:'KeyT',smartKey:'T'},
+ {id:'smartV',group:'Track piece shortcuts',description:'Transitions',defaultBinding:'KeyV',smartKey:'V'},
+ {id:'smartW',group:'Track piece shortcuts',description:'Corkscrew',defaultBinding:'KeyW',smartKey:'W'},
+ {id:'paint',group:'Mouse',description:'Place / paint',defaultBinding:'Mouse0'},
+ {id:'erase',group:'Mouse',description:'Delete / erase',defaultBinding:'Mouse2'},
+ {id:'mousePick',group:'Mouse',description:'Pick element / colour dialog',defaultBinding:'Mouse1'},
+ {id:'selectDrag',group:'Mouse',description:'Select by dragging',defaultBinding:'Ctrl+Mouse0'},
+ {id:'zoomIn',group:'Mouse',description:'Zoom in',defaultBinding:'WheelUp'},
+ {id:'zoomOut',group:'Mouse',description:'Zoom out',defaultBinding:'WheelDown'},
+ {id:'scrollUp',group:'Mouse',description:'Scroll up',defaultBinding:null},
+ {id:'scrollDown',group:'Mouse',description:'Scroll down',defaultBinding:null},
+];
+const EDITOR_BINDING_DEFAULTS=Object.fromEntries(EDITOR_BINDING_ACTIONS.map(action=>[action.id,action.defaultBinding])) as Record<string,string|null>;
+
 type HoverHelp={name:string;shortcut?:string;description:string};
 const QUICK_TOOL_HELP:readonly HoverHelp[]=[
  {name:'New Track',description:'Create a new track design.'},
@@ -145,13 +211,16 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   metadata.tool='PlayStunts DX';metadata.toolVersion=100;metadata.editingTime=elapsed;
   setBlissTrackMetadata(core.track,metadata,current?.format??'binary');
  };
- let brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,selecting=false,selectionAnchor:{x:number;y:number}|null=null,closed=false,zoom=1;
+ let brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,activePaintAction:'paint'|'erase'|null=null,selecting=false,selectionAnchor:{x:number;y:number}|null=null,closed=false,zoom=1;
  let activeArea:EditorArea='grid',paletteCursor=0,lastPlaced:{x:number;y:number}|null=null;
  let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false,colouringMode=false;
  let selectionTool=false,pasteMode=false,manualHex='',manualHexDeadline=0,modalOpen=false,analysisCarIndex=-1,suppressMapCursor=false;
  let helpOverlay:HTMLDivElement|null=null;
  let borderColour=0xF800,backgroundColour=0xFFE0;
  const shortcutHelpStorageKey='playstunts-bliss-shortcuts-visible';
+ const bindingStorageKey='playstunts-bliss-editor-bindings-v1';
+ let editorBindings:Record<string,string|null>={...EDITOR_BINDING_DEFAULTS};
+ let rebindingAction:string|null=null;
  const editorSettingsStorageKey='playstunts-bliss-editor-settings-v1';
  type TrackShotFormat='png'|'jpeg'|'bmp';
  type BlissEditorSettings={trackShotFormat:TrackShotFormat;jpegQuality:number;trackShotGrid:boolean;trackShotAnnotations:boolean;trackShotCarMarkers:boolean};
@@ -159,6 +228,8 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  let editorSettings:BlissEditorSettings={trackShotFormat:'png',jpegQuality:.92,trackShotGrid:true,trackShotAnnotations:true,trackShotCarMarkers:true};
  try{
   showShortcutReference=localStorage.getItem(shortcutHelpStorageKey)!=='0';
+  const savedBindings=JSON.parse(localStorage.getItem(bindingStorageKey)??'null') as Record<string,string|null>|null;
+  if(savedBindings)for(const action of EDITOR_BINDING_ACTIONS)if(Object.prototype.hasOwnProperty.call(savedBindings,action.id))editorBindings[action.id]=typeof savedBindings[action.id]==='string'?savedBindings[action.id]:null;
   const saved=JSON.parse(localStorage.getItem(editorSettingsStorageKey)??'null') as Partial<BlissEditorSettings>|null;
   if(saved){
    if(saved.trackShotFormat==='png'||saved.trackShotFormat==='jpeg'||saved.trackShotFormat==='bmp')editorSettings.trackShotFormat=saved.trackShotFormat;
@@ -169,6 +240,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   }
  }catch{}
  const persistEditorSettings=()=>{try{localStorage.setItem(editorSettingsStorageKey,JSON.stringify(editorSettings));}catch{}};
+ const persistBindings=()=>{try{localStorage.setItem(bindingStorageKey,JSON.stringify(editorBindings));}catch{}};
 
  const overlay=document.createElement('div');overlay.tabIndex=-1;overlay.style.cssText='position:fixed;inset:0;z-index:2147483000;background:#090909;color:#ddd;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:10px;padding:12px;box-sizing:border-box;font-family:system-ui,Segoe UI,sans-serif;';
  const top=document.createElement('div');top.style.cssText='display:flex;align-items:center;gap:8px;min-width:0;';
@@ -285,27 +357,52 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
 
  const shortcutReference=document.createElement('section');shortcutReference.style.cssText='min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);align-content:start;border-top:1px solid #343447;padding-top:9px;';
  const shortcutHeader=document.createElement('div');shortcutHeader.style.cssText='display:flex;align-items:center;align-self:start;gap:8px;margin-bottom:7px;';
- const shortcutTitle=document.createElement('strong');shortcutTitle.textContent='Keyboard shortcuts';shortcutTitle.style.cssText='font-size:11px;color:#eee;margin-right:auto;';
+ const shortcutTitle=document.createElement('strong');shortcutTitle.textContent='Shortcuts';shortcutTitle.style.cssText='font-size:11px;color:#eee;margin-right:auto;';
  const shortcutToggle=button('',()=>{showShortcutReference=!showShortcutReference;renderShortcutReference();try{localStorage.setItem(shortcutHelpStorageKey,showShortcutReference?'1':'0');}catch{}});
  shortcutToggle.style.cssText+='padding:4px 7px;font-size:10px;';
  const shortcutList=document.createElement('div');shortcutList.style.cssText='min-height:0;overflow:auto;padding-right:3px;scrollbar-gutter:stable;';
- const appendShortcutGroup=(titleText:string,rows:readonly (readonly [string,string])[])=>{
+ const bindingLabel=(binding:string|null)=>{
+  if(!binding)return 'Unbound';
+  const parts=binding.split('+'),tail=parts.pop()??'';
+  const names:Record<string,string>={Mouse0:'Mouse Left',Mouse1:'Mouse Middle',Mouse2:'Mouse Right',Mouse3:'Mouse 4',Mouse4:'Mouse 5',WheelUp:'Wheel Up',WheelDown:'Wheel Down',Space:'Space',Backslash:'\\',Delete:'Del'};
+  const key=names[tail]??(tail.startsWith('Key')?tail.slice(3):tail.startsWith('Digit')?tail.slice(5):tail);
+  return [...parts,key].join(' + ');
+ };
+ const modifierPrefix=(event:{ctrlKey:boolean;shiftKey:boolean;altKey:boolean;metaKey:boolean})=>[event.ctrlKey?'Ctrl':'',event.shiftKey?'Shift':'',event.altKey?'Alt':'',event.metaKey?'Meta':''].filter(Boolean);
+ const keyboardBinding=(event:KeyboardEvent)=>[...modifierPrefix(event),event.code].join('+');
+ const pointerBinding=(event:PointerEvent)=>[...modifierPrefix(event),'Mouse'+event.button].join('+');
+ const wheelBinding=(event:WheelEvent)=>[...modifierPrefix(event),event.deltaY<0?'WheelUp':'WheelDown'].join('+');
+ const actionForBinding=(binding:string)=>EDITOR_BINDING_ACTIONS.find(action=>editorBindings[action.id]===binding);
+ const defaultOwnsBinding=(binding:string)=>EDITOR_BINDING_ACTIONS.some(action=>action.defaultBinding===binding);
+ const assignBinding=(actionId:string,binding:string|null)=>{
+  let displaced:EditorBindingAction|undefined;
+  if(binding){const other=EDITOR_BINDING_ACTIONS.find(action=>action.id!==actionId&&editorBindings[action.id]===binding);if(other){editorBindings[other.id]=null;displaced=other;}}
+  editorBindings[actionId]=binding;persistBindings();renderShortcutReference();
+  const action=EDITOR_BINDING_ACTIONS.find(entry=>entry.id===actionId);
+  status.textContent=(binding?bindingLabel(binding):'Unbound')+' → '+(action?.description??actionId)+(displaced?' · removed from '+displaced.description:'');
+  status.style.color=displaced?'#ffbd7a':'#aee18a';
+ };
+ const appendShortcutGroup=(titleText:EditorBindingAction['group'])=>{
+  const rows=EDITOR_BINDING_ACTIONS.filter(action=>action.group===titleText);
   const heading=document.createElement('div');heading.textContent=titleText;heading.style.cssText='font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#8f8fae;margin:5px 0 4px;';
-  const grid=document.createElement('div');grid.style.cssText='display:grid;grid-template-columns:minmax(58px,82px) minmax(0,1fr);gap:3px 7px;align-items:start;';
-  for(const [keyName,description] of rows){
-   const key=document.createElement('kbd');key.textContent=keyName;key.style.cssText='display:inline-block;min-width:0;padding:2px 4px;border:1px solid #48485d;border-bottom-color:#64647c;border-radius:3px;background:#191927;color:#e3df78;font:600 9.5px/1.25 ui-monospace,Consolas,monospace;white-space:normal;overflow-wrap:anywhere;';
-   const text=document.createElement('span');text.textContent=description;text.style.cssText='color:#b7b7c9;font-size:10px;line-height:1.3;';
+  const grid=document.createElement('div');grid.style.cssText='display:grid;grid-template-columns:minmax(76px,104px) minmax(0,1fr);gap:3px 7px;align-items:start;';
+  for(const action of rows){
+   const key=document.createElement('kbd');key.textContent=rebindingAction===action.id?'Press input…':bindingLabel(editorBindings[action.id]);key.style.cssText='display:inline-block;min-width:0;padding:3px 4px;border:1px solid '+(rebindingAction===action.id?'#b4c35a':'#48485d')+';border-bottom-color:#64647c;border-radius:3px;background:'+(rebindingAction===action.id?'#393c20':'#191927')+';color:#e3df78;font:600 9.5px/1.25 ui-monospace,Consolas,monospace;white-space:normal;overflow-wrap:anywhere;cursor:pointer;';
+   key.title='Click to rebind. Right-click to unbind.';
+   key.addEventListener('click',()=>{rebindingAction=action.id;renderShortcutReference();status.textContent='Press a key, mouse button or wheel direction for '+action.description+'. Escape cancels.';status.style.color='#d8d66d';});
+   key.addEventListener('contextmenu',event=>{event.preventDefault();rebindingAction=null;assignBinding(action.id,null);});
+   const text=document.createElement('span');text.textContent=action.description;text.style.cssText='color:#b7b7c9;font-size:10px;line-height:1.3;';
    grid.append(key,text);
   }
   shortcutList.append(heading,grid);
  };
- appendShortcutGroup('Editing & navigation',OPTION_HELP);
- appendShortcutGroup('Track piece shortcuts',TILE_HELP);
  const renderShortcutReference=()=>{
+  shortcutList.replaceChildren();
+  if(showShortcutReference){appendShortcutGroup('Editing & navigation');appendShortcutGroup('Track piece shortcuts');appendShortcutGroup('Mouse');}
   shortcutList.style.display=showShortcutReference?'block':'none';
   shortcutReference.style.gridTemplateRows=showShortcutReference?'auto minmax(0,1fr)':'auto 0';
   shortcutToggle.textContent=showShortcutReference?'Hide':'Show';
-  shortcutToggle.title=(showShortcutReference?'Hide':'Show')+' keyboard shortcut reference';
+  shortcutToggle.title=(showShortcutReference?'Hide':'Show')+' shortcut reference';
  };
  shortcutHeader.append(shortcutTitle,shortcutToggle);shortcutReference.append(shortcutHeader,shortcutList);renderShortcutReference();
  toolsPanel.append(quick,switches,shortcutReference);
