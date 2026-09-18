@@ -42,6 +42,12 @@ export class BlissEditorCore {
  dry(x:number,y:number){this.change(()=>dryBlissTerrain(this.track,x,y));}
  raise(x:number,y:number){this.change(()=>raiseBlissTerrain(this.track,x,y));}
  lower(x:number,y:number){this.change(()=>lowerBlissTerrain(this.track,x,y));}
+ paintTerrain(x:number,y:number,code:number){
+  if(!Number.isInteger(x)||!Number.isInteger(y)||x<0||x>=30||y<0||y>=30)throw Error(`Track coordinates out of range: ${x},${y}`);
+  if(!Number.isInteger(code)||code<0||code>255)throw Error(`Invalid terrain code: ${code}`);
+  const index=y*30+x;if(this.track.terrain[index]===code)return false;
+  const before=cloneBlissTrack(this.track);this.track.terrain[index]=code;this.history.push(before);this.modified=true;return true;
+ }
  link(x:number,y:number){const before=cloneBlissTrack(this.track),code=linkBlissTiles(this.track,x,y,this.definitions);if(code!==null){this.history.push(before);this.modified=true;}return code;}
  buildClosedCircuit(currentBrush:number){if(!this.selection)return false;const s=this.selection,before=cloneBlissTrack(this.track),built=buildBlissClosedCircuit(this.track,{x1:s.x,y1:s.y,x2:s.x+s.width-1,y2:s.y+s.height-1},currentBrush,this.definitions);if(built){this.history.push(before);this.modified=true;}return built;}
  copySelection(){if(!this.selection)return null;const s=this.selection;this.clipboard=captureBlissRegion(this.track,s.x,s.y,s.width,s.height);return this.clipboard;}
