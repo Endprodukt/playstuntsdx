@@ -168,6 +168,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     resources:{art,terrainNames:terrainNames.names,images:editor.screenResources.images},
     sceneryPreviews,
     writeTrack:editor.writeTrack,clearScores:editor.clearScores,exists:editor.exists,presets,
+    analysisCars:options.assets.cars.map(car=>({id:car.id,name:car.name})),
     enumerateTracks:()=>host.enumerate('','.trk'),readTrack:editor.readTrack,...customTracks,
    });
   }finally{input.setActive(true);await input.release();}
