@@ -75,8 +75,8 @@ export interface BrowserNativeMenuOptions {
 export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions){
  const json=async<T>(name:string):Promise<T>=>{const r=await fetch('/game/'+name+'.json');if(!r.ok)throw Error('Original menu resource could not load: '+name);return r.json() as Promise<T>;};
  const binary=async(name:string)=>{const r=await fetch('/game/'+name);if(!r.ok)throw Error('Original menu resource could not load: '+name);return new Uint8Array(await r.arrayBuffer());};
- const [misc,mainText,trackText,materials,font,smallFont,baseline,ground,panoramas,opponentArt,carArt,art,paletteMemory,terrainNames,packedArt,objects,records,metadataVectors,sampleVectors,presets,errorKeys,scores]=await Promise.all([
-  json<TextResources>('misc-dialog-text'),json<TextResources>('main-dialog-text'),json<TextResources>('track-menu-text'),json<{palette:number[]}>('track-materials'),binary('fontdef.fnt'),binary('fontn.fnt'),binary('native-render-resources.bin'),json<{resources:NativeTrackMenuHost['groundModels']}>('overview-ground-models'),json<NativeTrackMenuHost['panoramas']>('menu-panorama-art'),json<{resources:NativeOpponentHost['art'];descriptions:NativeOpponentHost['descriptions']}>('opponent-menu-art'),json<{resources:NativeCarMenuHost['art'];descriptions:NativeCarMenuHost['descriptions']}>('car-menu-art'),json<Array<ScreenResources['art'][number]&{labelResource:string}>>('editor-tile-art'),json<{bytes:number[]}>('editor-palette-memory'),json<{names:ScreenResources['terrainNames']}>('editor-terrain-art'),json<{resources:Record<string,{bytes:number[]}>}>('editor-art'),json<ScreenResources['objects']>('track-objects'),json<RouteResources['records']>('route-records'),json<RouteResources['metadataVectors']>('route-vectors'),json<RouteResources['sampleVectors']>('route-sample-vectors'),json<NativeEditorHost['presets']>('editor-terrain-presets'),json<{keys:string[]}>('editor-error-keys'),json<Record<string,{file:string}>>('high-scores/manifest'),
+ const [misc,mainText,trackText,materials,font,smallFont,baseline,ground,panoramas,opponentArt,carArt,objects,records,errorKeys,scores]=await Promise.all([
+  json<TextResources>('misc-dialog-text'),json<TextResources>('main-dialog-text'),json<TextResources>('track-menu-text'),json<{palette:number[]}>('track-materials'),binary('fontdef.fnt'),binary('fontn.fnt'),binary('native-render-resources.bin'),json<{resources:NativeTrackMenuHost['groundModels']}>('overview-ground-models'),json<NativeTrackMenuHost['panoramas']>('menu-panorama-art'),json<{resources:NativeOpponentHost['art'];descriptions:NativeOpponentHost['descriptions']}>('opponent-menu-art'),json<{resources:NativeCarMenuHost['art'];descriptions:NativeCarMenuHost['descriptions']}>('car-menu-art'),json<ScreenResources['objects']>('track-objects'),json<RouteResources['records']>('route-records'),json<{keys:string[]}>('editor-error-keys'),json<Record<string,{file:string}>>('high-scores/manifest'),
  ]);
 
  const mainMenuArt=await binary('main-menu-art.bin');
@@ -125,7 +125,19 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  const trackHost={...host,resources:{...host.resources,...trackText.resources}};
  // Normal source mouse polling writes DS:893A, not the adjacent editor row
  // word DS:A38C. Keep that word from the captured initialized source image.
- const editor:NativeEditorHost={...trackHost,track,mainFrameBP:0xeefe,retainedMouseButtons:()=>baseline[0x2d1a0+0xa38c]|baseline[0x2d1a0+0xa38d]<<8,screenResources:{font,text:trackHost.resources,objects,art,labelKeys:art.map(a=>a.labelResource),pages:Array.from({length:11},(_,i)=>paletteMemory.bytes.slice(i*36)),terrainNames:terrainNames.names,images:Object.fromEntries(Object.entries(packedArt.resources).filter(([name])=>name!=='!cg0').map(([name,r])=>[name,expandEditorArt(r.bytes)]))},routeResources:{objects,records,metadataVectors,sampleVectors},presets,errorKeys:errorKeys.keys,saveName:state=>editNativeSaveName(trackHost,state,'Track'),exists:async(path,name)=>files.exists(path,name,'.trk'),...createNativeEditorFileWrites(files),readTrack:(path,name)=>files.read(path,name,'.trk')};
+ let editorResourcesPromise:Promise<{editor:NativeEditorHost;art:Array<ScreenResources['art'][number]&{labelResource:string}>;terrainNames:{names:ScreenResources['terrainNames']};presets:NativeEditorHost['presets']}>|undefined;
+ const loadEditorResources=()=>editorResourcesPromise??=Promise.all([
+  json<Array<ScreenResources['art'][number]&{labelResource:string}>>('editor-tile-art'),
+  json<{bytes:number[]}>('editor-palette-memory'),
+  json<{names:ScreenResources['terrainNames']}>('editor-terrain-art'),
+  json<{resources:Record<string,{bytes:number[]}>}>('editor-art'),
+  json<RouteResources['metadataVectors']>('route-vectors'),
+  json<RouteResources['sampleVectors']>('route-sample-vectors'),
+  json<NativeEditorHost['presets']>('editor-terrain-presets'),
+ ]).then(([art,paletteMemory,terrainNames,packedArt,metadataVectors,sampleVectors,presets])=>{
+  const editor:NativeEditorHost={...trackHost,track,mainFrameBP:0xeefe,retainedMouseButtons:()=>baseline[0x2d1a0+0xa38c]|baseline[0x2d1a0+0xa38d]<<8,screenResources:{font,text:trackHost.resources,objects,art,labelKeys:art.map(a=>a.labelResource),pages:Array.from({length:11},(_,i)=>paletteMemory.bytes.slice(i*36)),terrainNames:terrainNames.names,images:Object.fromEntries(Object.entries(packedArt.resources).filter(([name])=>name!=='!cg0').map(([name,r])=>[name,expandEditorArt(r.bytes)]))},routeResources:{objects,records,metadataVectors,sampleVectors},presets,errorKeys:errorKeys.keys,saveName:state=>editNativeSaveName(trackHost,state,'Track'),exists:async(path,name)=>files.exists(path,name,'.trk'),...createNativeEditorFileWrites(files),readTrack:(path,name)=>files.read(path,name,'.trk')};
+  return {editor,art,terrainNames,presets};
+ });
  const car=async(config:number[],opponent:number)=>{
   show('car');focusBrowserGameCanvas(canvas);const carHost:NativeCarMenuHost={...host,configuration:config,opponent,opponentArt:opponent?opponentArt.resources['opp'+opponent]:undefined,baseline,cars:options.assets.cars as unknown as NativeCarMenuHost['cars'],art:carArt.resources,descriptions:carArt.descriptions,bank:id=>binary('car-models/'+id.toLowerCase()+'.bin')};
   if(!options.displayMode){
@@ -154,7 +166,10 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  const editTrack=async()=>{
   show('editor');input.setActive(false);
   try{
-   const {runBrowserBlissEditor}=await import('./browser-bliss-editor.ts');
+   const [{runBrowserBlissEditor},{editor,art,terrainNames,presets}]=await Promise.all([
+    import('./browser-bliss-editor.ts'),
+    loadEditorResources(),
+   ]);
    const sceneryPreviews=panoramas.slice(0,5).map((entry,index)=>blissOriginalSceneryPreview(baseline,index,entry.resources,palette));
    const tauriCore=(window as typeof window&{__TAURI__?:{core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}}}).__TAURI__?.core;
    const customTracks=tauriCore?{
