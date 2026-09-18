@@ -447,10 +447,22 @@ fn custom_track_exists(name: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
+fn read_custom_track(name: String) -> Result<Vec<u8>, String> {
+    let filename = checked_track_filename(&name)?;
+    let root = application_root()?.join("Custom Tracks");
+    let path = find_custom_track(&root, &filename)?
+        .ok_or_else(|| format!("Custom track {filename} was not found."))?;
+    fs::read(&path).map_err(|error| format!("Could not read custom track {}: {error}", path.display()))
+}
+
+#[tauri::command]
 fn write_custom_track(name: String, data: Vec<u8>) -> Result<String, String> {
-    if data.len() != 1802 {
+    // Bliss "one file" tracks keep the standard 1802-byte Stunts payload
+    // first and append metadata. Stunts itself ignores the tail; the Bliss
+    // manual documents 13802 bytes as the practical upper bound.
+    if data.len() < 1802 || data.len() > 13802 {
         return Err(format!(
-            "Custom Stunts tracks must contain exactly 1802 bytes (got {}).",
+            "Custom Stunts/Bliss tracks must contain 1802 to 13802 bytes (got {}).",
             data.len()
         ));
     }
@@ -469,6 +481,37 @@ fn write_custom_track(name: String, data: Vec<u8>) -> Result<String, String> {
         .unwrap_or(&path)
         .to_string_lossy()
         .replace('\\', "/"))
+}
+
+#[tauri::command]
+fn bliss_http_get(url: String) -> Result<Vec<u8>, String> {
+    let lower = url.trim().to_ascii_lowercase();
+    if !(lower.starts_with("https://") || lower.starts_with("http://")) {
+        return Err("Tournament URL must use http:// or https://.".to_string());
+    }
+    let output = Command::new("curl.exe")
+        .args([
+            "--location",
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--max-time",
+            "20",
+            "--max-filesize",
+            "4194304",
+            url.trim(),
+        ])
+        .output()
+        .map_err(|error| format!("Could not start Windows curl: {error}"))?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if detail.is_empty() {
+            format!("Tournament request failed with status {}.", output.status)
+        } else {
+            detail
+        });
+    }
+    Ok(output.stdout)
 }
 
 #[tauri::command]
@@ -809,7 +852,9 @@ pub fn run() {
             read_runtime_file,
             write_runtime_file,
             custom_track_exists,
+            read_custom_track,
             write_custom_track,
+            bliss_http_get,
             toggle_mt32_panel,
             check_mt32_roms,
             read_mt32_rom,
