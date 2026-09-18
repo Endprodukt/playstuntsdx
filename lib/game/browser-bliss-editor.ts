@@ -9,7 +9,7 @@ import {blissTrackTransforms,transformBlissTerrainCode,transformBlissTrackCode,t
 import {BLISS_TOOL_ICON_COLUMNS,BLISS_TOOL_ICON_SIZE,BLISS_TOOL_ICON_SPRITE} from './bliss-tool-icons.ts';
 import {setBlissEditorActive} from './bliss-editor-presence.ts';
 import {blissTerrainPresets,type BlissTerrainPreset} from './bliss-terrain-presets.ts';
-import {setBlissTrackMetadata,type BlissMetadata} from './bliss-metadata.ts';
+import {BLISS_TRANSPARENT_COLOUR,setBlissTrackMetadata,type BlissMetadata} from './bliss-metadata.ts';
 import {blissRoundToEven,blissSceneryDefaults,type BlissSceneryPlacement,type BlissSceneryRule} from './bliss-scenery-generator.ts';
 import {blissTournamentUrl,parseBlissScoreboard,parseBlissTournamentConfig,type BlissTournamentRace} from './bliss-tournaments.ts';
 import {blissEstimatedTimeCentiseconds,blissTimey,summarizeBlissTrackAnalysis,traceBlissPath,type BlissRouteAnalysis} from './bliss-route.ts';
@@ -114,7 +114,7 @@ const SWITCH_TOOL_HELP:Record<string,HoverHelp>={
  warn:{name:'WAR',shortcut:'Ctrl+D',description:'Show or hide Bliss conflict/warning markings on the map.'},
  manual:{name:'MAN',shortcut:'Ctrl+E',description:'Manual editing: allow raw/conflicting tile combinations Bliss normally prevents.'},
  grid:{name:'GRID',shortcut:'Ctrl+G',description:'Show or completely hide the 30×30 map grid.'},
- colour:{name:'COL',shortcut:'Ctrl+O',description:'Colouring/annotation mode. Port still pending.'},
+ colour:{name:'COL',shortcut:'Ctrl+O',description:'Colouring/annotation mode. Paint cell borders/backgrounds instead of editing the track.'},
  shot:{name:'TRK SHOT',shortcut:'Ctrl+S',description:'Export a picture of the complete map or the active selection.'},
  trk:{name:'TRK',shortcut:'Ctrl+K',description:'Choose whether paste/delete operations affect the track layer.'},
  ter:{name:'TER',shortcut:'Ctrl+T',description:'Choose whether paste/delete operations affect the terrain layer.'},
@@ -145,9 +145,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  let brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,selecting=false,selectionAnchor:{x:number;y:number}|null=null,closed=false,zoom=1;
  let activeArea:EditorArea='grid',paletteCursor=0,lastPlaced:{x:number;y:number}|null=null;
- let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false;
+ let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false,colouringMode=false;
  let selectionTool=false,pasteMode=false,manualHex='',manualHexDeadline=0,modalOpen=false,analysisCarIndex=-1,suppressMapCursor=false;
  let helpOverlay:HTMLDivElement|null=null;
+ let borderColour=0xF800,backgroundColour=0xFFE0;
  const shortcutHelpStorageKey='playstunts-bliss-shortcuts-visible';
  let showShortcutReference=true;
  try{showShortcutReference=localStorage.getItem(shortcutHelpStorageKey)!=='0';}catch{}
@@ -259,8 +260,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  addSwitch('warn','WAR',()=>{showConflicts=!showConflicts;renderMap();renderStatus();});
  addSwitch('manual','MAN',()=>{allowConflicts=!allowConflicts;renderStatus();});
  addSwitch('grid','GRID',()=>{showGrid=!showGrid;renderMap();renderStatus();});
- const colourSwitch=addSwitch('colour','COL',()=>{status.textContent='Bliss colouring mode is not ported yet.';status.style.color='#ffbd7a';});
- colourSwitch.setAttribute('aria-disabled','true');colourSwitch.style.opacity='.35';colourSwitch.style.cursor='help';
+ addSwitch('colour','COL',()=>toggleColouringMode());
  addSwitch('shot','TRK SHOT',()=>void takeTrackShot());
  addSwitch('trk','TRK',()=>{affectTrack=!affectTrack;renderMap();renderStatus();});
  addSwitch('ter','TER',()=>{affectTerrain=!affectTerrain;renderMap();renderStatus();});
@@ -296,7 +296,12 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  main.append(palettePanel,mapPanel,toolsPanel);
 
  const footer=document.createElement('div');footer.style.cssText='display:flex;align-items:center;gap:7px;min-width:0;';
- const coords=document.createElement('span');coords.style.cssText='font-size:11px;color:#888;margin-right:auto;';
+ const coords=document.createElement('span');coords.style.cssText='font-size:11px;color:#888;';
+ const colourControls=document.createElement('div');colourControls.style.cssText='display:none;align-items:center;gap:5px;margin-right:auto;';
+ const borderIndicator=button('Border',()=>showColourDialog());borderIndicator.style.cssText+='padding:4px 7px;font-size:10px;';
+ const backgroundIndicator=button('Background',()=>showColourDialog());backgroundIndicator.style.cssText+='padding:4px 7px;font-size:10px;';
+ colourControls.append(borderIndicator,backgroundIndicator);
+ const footerSpacer=document.createElement('span');footerSpacer.style.marginRight='auto';
  const newTrackButton=button('New',()=>{void createNewTrack();});
  const loadTrackButton=button('Load',()=>{void loadTrack();});
  const save=button('Save',()=>{void saveTrack();});
@@ -307,10 +312,41 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  save.title='Save\nSave the current track into Custom Tracks.';
  saveAs.title='Save As\nSave a copy under a new track name.';
  done.title='Done\nLeave the editor; unsaved changes will be offered for saving.';
- footer.append(coords,newTrackButton,loadTrackButton,save,saveAs,done);
+ footer.append(coords,colourControls,footerSpacer,newTrackButton,loadTrackButton,save,saveAs,done);
  overlay.append(top,main,footer);setBlissEditorActive(true);document.body.append(overlay);
 
  const context=map.getContext('2d',{alpha:false})!;
+ const colour565ToRgb=(value:number)=>{
+  const r=Math.round(((value>>>11)&31)*255/31),g=Math.round(((value>>>5)&63)*255/63),b=Math.round((value&31)*255/31);return {r,g,b};
+ };
+ const colour565ToHex=(value:number)=>{
+  if(value===BLISS_TRANSPARENT_COLOUR)return '#ff00ff';
+  const {r,g,b}=colour565ToRgb(value);return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+ };
+ const hexToColour565=(hex:string)=>{
+  const value=Number.parseInt(hex.replace('#',''),16)||0,r=(value>>>16)&255,g=(value>>>8)&255,b=value&255;
+  return ((Math.round(r*31/255)&31)<<11)|((Math.round(g*63/255)&63)<<5)|(Math.round(b*31/255)&31);
+ };
+ const metadataColours=()=>core.metadata()?.metadata.colours;
+ const drawColouring=(target:CanvasRenderingContext2D)=>{
+  const colours=metadataColours();if(!colours)return;
+  target.save();
+  for(let i=0;i<900;i++){
+   const x=(i%30)*16,y=Math.floor(i/30)*16,bg=colours.background[i],border=colours.border[i];
+   if(bg!==BLISS_TRANSPARENT_COLOUR){const {r,g,b}=colour565ToRgb(bg);target.fillStyle=`rgba(${r},${g},${b},.34)`;target.fillRect(x,y,16,16);}
+   if(border!==BLISS_TRANSPARENT_COLOUR){const {r,g,b}=colour565ToRgb(border);target.strokeStyle=`rgb(${r} ${g} ${b})`;target.lineWidth=2;target.strokeRect(x+1,y+1,14,14);}
+  }
+  target.restore();
+ };
+ const renderColourControls=()=>{
+  colourControls.style.display=colouringMode?'flex':'none';footerSpacer.style.display=colouringMode?'none':'inline';
+  const paint=(control:HTMLButtonElement,label:string,value:number)=>{
+   control.textContent=label+(value===BLISS_TRANSPARENT_COLOUR?' · clear':'');
+   const css=value===BLISS_TRANSPARENT_COLOUR?'transparent':colour565ToHex(value);
+   control.style.boxShadow=value===BLISS_TRANSPARENT_COLOUR?'none':`inset 0 -4px 0 ${css}`;
+  };
+  paint(borderIndicator,'Border',borderColour);paint(backgroundIndicator,'Background',backgroundColour);
+ };
  const setZoom=(next:number)=>{
   zoom=Math.max(.5,Math.min(4,Math.round(next*4)/4));
   const size=Math.round(BLISS_ORIGINAL_MAP_SIZE*zoom);
@@ -351,6 +387,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const renderMap=()=>{
   context.putImageData(blissOriginalMapImageData(core.track,host.resources,host.palette,showGrid),0,0);
   drawCarMarkers(core.track,context);
+  drawColouring(context);
   let brushPreviewShown=false;
   if(pasteMode){
    const preview=core.previewPaste(cellX,cellY,{track:affectTrack,terrain:affectTerrain});
@@ -362,7 +399,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
     const size=core.clipboardSize();if(size){context.strokeStyle='#ffe34d';context.lineWidth=2;context.strokeRect(cellX*16+1,cellY*16+1,size.width*16-2,size.height*16-2);}
     context.restore();
    }
-  }else if(!suppressMapCursor&&page<10&&!core.selection&&!selectionTool){
+  }else if(!colouringMode&&!suppressMapCursor&&page<10&&!core.selection&&!selectionTool){
    const preview=core.previewPlace(cellX,cellY,brush,allowConflicts);
    if(preview){
     const shape=core.definitions.track[brush],width=Math.max(1,shape?.width??1),height=Math.max(1,shape?.height??1);
@@ -386,17 +423,18 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  const renderStatus=()=>{
   const terrainPage=page>=10,activeCode=terrainPage?terrainBrush:brush;
-  const label=terrainPage?('Terrain '+terrainBrush):(blissElementData[brush]?.id||('Element '+brush));
-  const flags=[allowConflicts?'MAN':'',showGrid?'GRID':'',showConflicts?'WAR':'',affectTrack?'TRK':'',affectTerrain?'TER':'',debugMode?'DEB':'',pasteMode?'PASTE':'',selectionTool?'SELECT':''].filter(Boolean).join(' ');
+  const label=colouringMode?'Colouring / annotation':terrainPage?('Terrain '+terrainBrush):(blissElementData[brush]?.id||('Element '+brush));
+  const flags=[colouringMode?'COL':'',allowConflicts?'MAN':'',showGrid?'GRID':'',showConflicts?'WAR':'',affectTrack?'TRK':'',affectTerrain?'TER':'',debugMode?'DEB':'',pasteMode?'PASTE':'',selectionTool?'SELECT':''].filter(Boolean).join(' ');
   status.textContent=(core.modified?'Modified · ':'')+label+' ['+activeCode+']'+(flags?' · '+flags:'');
   status.style.color=core.modified?'#f2d36d':'#c8c8c8';
   const selection=core.selection;
   coords.textContent='Cell '+(cellX+1)+','+(cellY+1)+(selection?' · selection '+selection.width+'×'+selection.height:'')+' · '+(activeArea==='grid'?'GRID':'PALETTE');
   undoTool.disabled=!core.history.canUndo;redoTool.disabled=!core.history.canRedo;
   for(const [id,b] of switchButtons){
-   const active=id==='clip'?!!core.clipboardSize():id==='warn'?showConflicts:id==='manual'?allowConflicts:id==='grid'?showGrid:id==='trk'?affectTrack:id==='ter'?affectTerrain:id==='debug'?debugMode:false;
+   const active=id==='clip'?!!core.clipboardSize():id==='warn'?showConflicts:id==='manual'?allowConflicts:id==='grid'?showGrid:id==='colour'?colouringMode:id==='trk'?affectTrack:id==='ter'?affectTerrain:id==='debug'?debugMode:false;
    setActive(b,active);
   }
+  renderColourControls();
  };
  const changed=(message='')=>{
   const bytes=encodeBlissTrack(core.track).subarray(0,1802);host.track.raw=Array.from(bytes);
@@ -527,6 +565,18 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  const apply=(event:PointerEvent,forceErase=false)=>{
   const p=mapCoordinates(event);cellX=p.x;cellY=p.y;activeArea='grid';
+  if(colouringMode){
+   const current=core.metadata(),now=new Date(),metadata:BlissMetadata=current?{...current.metadata}:{
+    title:'',author:'Anonymous',comment:'',championship:'',year:now.getFullYear(),month:now.getMonth()+1,day:now.getDate(),tool:'PlayStunts DX',toolVersion:100,editingTime:0,
+   };
+   const old=metadata.colours,border=old?new Uint16Array(old.border):new Uint16Array(900),background=old?new Uint16Array(old.background):new Uint16Array(900);
+   if(!old){border.fill(BLISS_TRANSPARENT_COLOUR);background.fill(BLISS_TRANSPARENT_COLOUR);}
+   const index=p.y*30+p.x;
+   if(forceErase||event.button===2){border[index]=BLISS_TRANSPARENT_COLOUR;background[index]=BLISS_TRANSPARENT_COLOUR;}
+   else{border[index]=borderColour;background[index]=backgroundColour;}
+   metadata.colours={border,background};metadata.tool='PlayStunts DX';metadata.toolVersion=100;
+   core.setMetadata(metadata,'binary');renderMap();renderStatus();return;
+  }
   if(page===11){
    // Bliss F12 has no separate Flood/Dry/Raise/Lower tools: the selected
    // Water/Mountain brush plus the mouse button defines the operation.
@@ -542,13 +592,13 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const pointerDown=(event:PointerEvent)=>{
   event.preventDefault();activeArea='grid';map.setPointerCapture(event.pointerId);
   const p=mapCoordinates(event);cellX=p.x;cellY=p.y;
-  if(event.button===1){pickAtCursor();return;}
+  if(event.button===1){if(colouringMode)showColourDialog();else pickAtCursor();return;}
   if(pasteMode){
    if(event.button===0)commitPaste();
    else if(event.button===2){pasteMode=false;renderMap();renderStatus();}
    return;
   }
-  if((event.ctrlKey||selectionTool)&&event.button===0){selecting=true;selectionAnchor={x:p.x,y:p.y};setSelectionFrom(selectionAnchor,p);return;}
+  if(!colouringMode&&(event.ctrlKey||selectionTool)&&event.button===0){selecting=true;selectionAnchor={x:p.x,y:p.y};setSelectionFrom(selectionAnchor,p);return;}
   painting=true;core.beginStroke();apply(event,event.button===2);
  };
  const pointerMove=(event:PointerEvent)=>{
@@ -717,7 +767,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    if(upper==='R'){event.preventDefault();renderMap();renderStatus();return;}
    if(upper==='S'){event.preventDefault();void takeTrackShot();return;}
    if(upper==='H'){event.preventDefault();status.textContent='Track hash: '+blissTrackHash(core.track).toString(16).toUpperCase().padStart(8,'0');status.style.color='#aee18a';return;}
-   if(upper==='O'){event.preventDefault();status.textContent='Bliss colouring mode is not ported yet; no fake toggle is applied.';status.style.color='#ffbd7a';return;}
+   if(upper==='O'){event.preventDefault();toggleColouringMode();return;}
   }
 
   if(code==='Escape'){event.preventDefault();if(pasteMode){pasteMode=false;renderMap();renderStatus();return;}void finish();return;}
@@ -753,6 +803,37 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(terrain)terrainBrush=next;else brush=next;renderPalette();renderMap();renderStatus();
   if(next===before){status.textContent=label+': this piece is symmetrical, so its orientation does not change.';status.style.color='#aaa';}
   else{status.textContent=label+' → '+next+' · '+(terrain?('Terrain '+next):(blissElementData[next]?.id||('Element '+next)));status.style.color='#aee18a';}
+ }
+
+ function toggleColouringMode(){
+  colouringMode=!colouringMode;pasteMode=false;selectionTool=false;selecting=false;selectionAnchor=null;core.setSelection(null);activeArea='grid';
+  renderMap();renderStatus();
+  status.textContent=colouringMode?'Colouring mode · left paint · right erase · middle click or colour buttons to choose colours':'Track editing mode';
+  status.style.color=colouringMode?'#aee18a':'#c8c8c8';
+ }
+ function showColourDialog(){
+  modalOpen=true;
+  const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
+  const box=document.createElement('div');box.style.cssText='width:min(500px,90vw);background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:20px 22px;box-shadow:0 22px 70px #000;border-radius:6px;font:13px/1.4 system-ui,Segoe UI,sans-serif;';
+  const heading=document.createElement('h2');heading.textContent='Colouring';heading.style.cssText='text-align:center;font-size:18px;margin:0 0 15px;border-bottom:1px solid #aaa;padding-bottom:8px;';
+  const form=document.createElement('div');form.style.cssText='display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:center;';
+  const makeRow=(label:string,value:number)=>{
+   const text=document.createElement('strong');text.textContent=label;
+   const input=document.createElement('input');input.type='color';input.value=value===BLISS_TRANSPARENT_COLOUR?'#ffffff':colour565ToHex(value);input.style.cssText='width:100%;height:36px;background:#111;border:1px solid #555;';
+   const clear=document.createElement('label');clear.style.cssText='display:flex;gap:5px;align-items:center;color:#bbb;';const check=document.createElement('input');check.type='checkbox';check.checked=value===BLISS_TRANSPARENT_COLOUR;clear.append(check,document.createTextNode('Clear'));
+   check.addEventListener('change',()=>{input.disabled=check.checked;});input.disabled=check.checked;form.append(text,input,clear);return {input,check};
+  };
+  const border=makeRow('Border',borderColour),background=makeRow('Background',backgroundColour);
+  const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:18px;';
+  const close=()=>{modalOpen=false;shade.remove();overlay.focus();};
+  const set=button('Set colours',()=>{borderColour=border.check.checked?BLISS_TRANSPARENT_COLOUR:hexToColour565(border.input.value);backgroundColour=background.check.checked?BLISS_TRANSPARENT_COLOUR:hexToColour565(background.input.value);close();renderColourControls();renderStatus();});
+  const clear=button('Clear',()=>{borderColour=BLISS_TRANSPARENT_COLOUR;backgroundColour=BLISS_TRANSPARENT_COLOUR;close();renderColourControls();renderStatus();});
+  const uncolour=button('Uncolour map',()=>{
+   const current=core.metadata();if(current?.metadata.colours){const metadata={...current.metadata};metadata.colours=undefined;core.setMetadata(metadata,current.format);changed('Map colouration cleared');}
+   close();
+  });
+  const cancel=button('Cancel',close);set.style.cssText+='background:#4e5b2b;border-color:#a9bd58;';actions.append(set,clear,uncolour,cancel);box.append(heading,form,actions);shade.append(box);document.body.append(shade);
+  shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();close();}});shade.addEventListener('pointerdown',event=>{if(event.target===shade)close();});requestAnimationFrame(()=>shade.focus());
  }
 
  function showTextModal(titleText:string,rows:readonly string[]){
@@ -1343,7 +1424,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
 
  async function takeTrackShot(){
   const full=document.createElement('canvas');full.width=BLISS_ORIGINAL_MAP_SIZE;full.height=BLISS_ORIGINAL_MAP_SIZE;
-  full.getContext('2d',{alpha:false})!.putImageData(blissOriginalMapImageData(core.track,host.resources,host.palette,showGrid),0,0);
+  const fullContext=full.getContext('2d',{alpha:false})!;fullContext.putImageData(blissOriginalMapImageData(core.track,host.resources,host.palette,showGrid),0,0);drawCarMarkers(core.track,fullContext);drawColouring(fullContext);
   const selection=core.selection,shot=document.createElement('canvas');
   if(selection){
    shot.width=selection.width*16;shot.height=selection.height*16;
