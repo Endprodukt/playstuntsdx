@@ -31,7 +31,6 @@ export interface BrowserBlissEditorHost {
  presets?:readonly {terrain:number[]}[];
 }
 
-type Tool='place'|'erase'|'link'|'flood'|'dry'|'raise'|'lower'|'terrain';
 type EditorArea='grid'|'palette';
 
 const button=(label:string,action:()=>void)=>{
@@ -118,16 +117,6 @@ const SWITCH_TOOL_HELP:Record<string,HoverHelp>={
  ter:{name:'TER',shortcut:'Ctrl+T',description:'Choose whether paste/delete operations affect the terrain layer.'},
  debug:{name:'DEB',shortcut:'Ctrl+Q',description:'Show raw track/terrain codes and Bliss debug information.'},
 };
-const EDIT_TOOL_HELP:Record<Tool,HoverHelp>={
- place:{name:'Place',shortcut:'Left click / Enter',description:'Place the currently selected track element.'},
- erase:{name:'Erase',shortcut:'Right click / Del',description:'Remove the track element at the cursor.'},
- link:{name:'Auto link',shortcut:'U',description:'Choose and place the track element that connects neighbouring pieces.'},
- flood:{name:'Flood',shortcut:'F12 Water + left click',description:'Raise the water brush at this point; Bliss completes unfinished edges.'},
- dry:{name:'Dry',shortcut:'F12 Water + right click',description:'Remove water at this point; Bliss repairs the surrounding edges.'},
- raise:{name:'Raise',shortcut:'F12 Mountain + left click',description:'Raise mountain terrain with the Bliss brush.'},
- lower:{name:'Lower',shortcut:'F12 Mountain + right click',description:'Lower mountain terrain with the Bliss brush.'},
- terrain:{name:'Terrain tile',shortcut:'F11',description:'Directly place the selected terrain tile from palette page 11.'},
-};
 
 /** Native PlayStunts DX shell for the Bliss 2.6.1 port.
  * Track/terrain art comes from the user's Stunts data. Behaviour and shortcuts
@@ -151,7 +140,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   metadata.tool='PlayStunts DX';metadata.toolVersion=100;metadata.editingTime=elapsed;
   setBlissTrackMetadata(core.track,metadata,current?.format??'binary');
  };
- let tool:Tool='place',brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,selecting=false,selectionAnchor:{x:number;y:number}|null=null,closed=false,zoom=1;
+ let brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,selecting=false,selectionAnchor:{x:number;y:number}|null=null,closed=false,zoom=1;
  let activeArea:EditorArea='grid',paletteCursor=0,lastPlaced:{x:number;y:number}|null=null;
  let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false;
  let selectionTool=false,pasteMode=false,manualHex='',manualHexDeadline=0,modalOpen=false;
@@ -269,14 +258,8 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  addSwitch('ter','TER',()=>{affectTerrain=!affectTerrain;renderMap();renderStatus();});
  addSwitch('debug','DEB',()=>{debugMode=!debugMode;renderMap();renderStatus();});
 
- const terrainTools=document.createElement('div');terrainTools.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:10px;';
- const toolButtons=new Map<Tool,HTMLButtonElement>();
- const chooseTool=(next:Tool)=>{tool=next;for(const [key,value] of toolButtons)setActive(value,key===tool);renderStatus();};
- for(const [key,label] of [['place','Place'],['erase','Erase'],['link','Auto link'],['flood','Flood'],['dry','Dry'],['raise','Raise'],['lower','Lower'],['terrain','Terrain tile']] as const){
-  const control=button(label,()=>chooseTool(key)),help=EDIT_TOOL_HELP[key];attachHoverHelp(control,help);toolButtons.set(key,control);terrainTools.append(control);
- }
  const help=document.createElement('p');help.textContent='Bliss keys are active: F/Shift+F, R/Shift+R, F1–F12, Ctrl+C/X/V/W, arrows, Tab, Enter, Del, P, U, C and tile shortcuts.';help.style.cssText='font-size:11px;line-height:1.35;color:#999;margin:10px 0 0;';
- toolsPanel.append(quick,switches,terrainTools,help);
+ toolsPanel.append(quick,switches,help);
 
  main.append(palettePanel,mapPanel,toolsPanel);
 
@@ -437,10 +420,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   }
  };
  const selectPaletteCode=(code:number,terrain=page>=10)=>{
-  if(terrain){
-   terrainBrush=code;
-   if(page===11)chooseTool(code===1?'flood':'raise');else chooseTool('terrain');
-  }else{brush=code;chooseTool('place');}
+  if(terrain)terrainBrush=code;else brush=code;
   renderPalette();renderStatus();
  };
  const mapCoordinates=(event:PointerEvent)=>{
@@ -454,17 +434,15 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const apply=(event:PointerEvent,forceErase=false)=>{
   const p=mapCoordinates(event);cellX=p.x;cellY=p.y;activeArea='grid';
   if(page===11){
-   // Bliss F12: water and mountain are brush tools. Left adds, right removes.
+   // Bliss F12 has no separate Flood/Dry/Raise/Lower tools: the selected
+   // Water/Mountain brush plus the mouse button defines the operation.
    if(terrainBrush===1){if(forceErase||event.button===2)core.dry(p.vx,p.vy);else core.flood(p.vx,p.vy);}
    else if(terrainBrush===6){if(forceErase||event.button===2)core.lower(p.vx,p.vy);else core.raise(p.vx,p.vy);}
-  }else if(forceErase||event.button===2||tool==='erase')core.clear(p.x,p.y,allowConflicts);
-  else if(tool==='place'){if(core.place(p.x,p.y,brush,allowConflicts))lastPlaced={x:p.x,y:p.y};}
-  else if(tool==='link')core.link(p.x,p.y);
-  else if(tool==='flood')core.flood(p.vx,p.vy);
-  else if(tool==='dry')core.dry(p.vx,p.vy);
-  else if(tool==='raise')core.raise(p.vx,p.vy);
-  else if(tool==='lower')core.lower(p.vx,p.vy);
-  else if(tool==='terrain')core.paintTerrain(p.x,p.y,terrainBrush);
+  }else if(page===10){
+   // Bliss F11 edits terrain exactly like ordinary tiles.
+   core.paintTerrain(p.x,p.y,(forceErase||event.button===2)?0:terrainBrush);
+  }else if(forceErase||event.button===2)core.clear(p.x,p.y,allowConflicts);
+  else if(core.place(p.x,p.y,brush,allowConflicts))lastPlaced={x:p.x,y:p.y};
   changed();
  };
  const pointerDown=(event:PointerEvent)=>{
@@ -503,7 +481,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  const pickAtCursor=()=>{
   const code=core.track.track[cellY*30+cellX];
-  if(code){const parent=blissParentElement(core.track,cellX,cellY,core.definitions);brush=parent.code;page=Math.min(9,Math.max(0,blissPalettePages.findIndex(values=>values.includes(brush))));chooseTool('place');renderPalette();renderStatus();return;}
+  if(code){const parent=blissParentElement(core.track,cellX,cellY,core.definitions);brush=parent.code;page=Math.min(9,Math.max(0,blissPalettePages.findIndex(values=>values.includes(brush))));renderPalette();renderStatus();return;}
   if(page>=10){terrainBrush=core.track.terrain[cellY*30+cellX];renderPalette();renderStatus();}
  };
  const copySelection=()=>{if(core.copySelection()){pasteMode=false;status.textContent='Selection copied';status.style.color='#aee18a';}else status.textContent='Select a region first.';};
@@ -570,13 +548,13 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   else if(core.place(cellX,cellY,brush,allowConflicts)){lastPlaced={x:cellX,y:cellY};changed('Element placed');}
  };
  const smartSelect=(key:string,direction:1|-1)=>{
-  const next=smartSelectBliss(core.track,brush,key,direction,lastPlaced,core.definitions);if(next!==brush){brush=next;chooseTool('place');renderPalette();renderStatus();}
+  const next=smartSelectBliss(core.track,brush,key,direction,lastPlaced,core.definitions);if(next!==brush){brush=next;renderPalette();renderStatus();}
  };
  const changeMaterial=()=>{if(page>2)return;const next=changeBlissMaterial(brush);if(next!==brush){brush=next;renderPalette();renderStatus();}};
  const findByName=async()=>{
   if(page===11){terrainBrush=terrainBrush===0||terrainBrush>5?1:6;renderPalette();renderStatus();return;}
   const query=await centeredPrompt('Find element','Enter part of a Bliss element name:','');if(query===null)return;
-  const next=findBlissElementByName(query,brush);if(next!==brush){brush=next;chooseTool('place');renderPalette();renderStatus();}else{status.textContent='No matching element found.';status.style.color='#ffbd7a';}
+  const next=findBlissElementByName(query,brush);if(next!==brush){brush=next;renderPalette();renderStatus();}else{status.textContent='No matching element found.';status.style.color='#ffbd7a';}
  };
  const startManualHex=()=>{
   if(!allowConflicts){status.textContent='Manual editing (MAN / Ctrl+E) must be enabled first.';status.style.color='#ffbd7a';return;}
@@ -655,7 +633,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(code==='KeyR'){event.preventDefault();rotate(event.shiftKey);return;}
   if(code==='KeyM'){event.preventDefault();changeMaterial();return;}
   if(code==='KeyX'||code==='KeyY'||code==='KeyZ'){
-   event.preventDefault();brush=code==='KeyX'?255:code==='KeyY'?254:253;chooseTool('place');renderPalette();renderStatus();return;
+   event.preventDefault();brush=code==='KeyX'?255:code==='KeyY'?254:253;renderPalette();renderStatus();return;
   }
 
   if(/^Key[A-W]$/.test(code)&&!['KeyC','KeyF','KeyM','KeyP','KeyR','KeyU'].includes(code)){
@@ -1107,7 +1085,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const landscape=core.track.landscape;
   core.newTrack({landscape,format:preset.format,terrain:preset.terrain});
   metadataEditingBase=0;editingSessionStarted=performance.now();syncMetadataClock();
-  host.track.name='';name.textContent='UNTITLED.TRK';cellX=0;cellY=0;page=0;brush=4;terrainBrush=0;lastPlaced=null;core.setSelection(null);chooseTool('place');changed('New track · '+preset.name);
+  host.track.name='';name.textContent='UNTITLED.TRK';cellX=0;cellY=0;page=0;brush=4;terrainBrush=0;lastPlaced=null;core.setSelection(null);changed('New track · '+preset.name);
  }
 
  async function requestedTrackName(force=false){
@@ -1141,6 +1119,6 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  }
  const cleanup=()=>{core.endStroke();manualHexDeadline=0;window.removeEventListener('keydown',keyDown,true);setBlissEditorActive(false);overlay.remove();};
  let resolveDone:(()=>void)|undefined;
- renderPalette();renderScenery();renderMap();renderStatus();chooseTool('place');updateArea();overlay.focus();requestAnimationFrame(()=>fitMap());
+ renderPalette();renderScenery();renderMap();renderStatus();updateArea();overlay.focus();requestAnimationFrame(()=>fitMap());
  await new Promise<void>(resolve=>{resolveDone=resolve;});cleanup();
 }
