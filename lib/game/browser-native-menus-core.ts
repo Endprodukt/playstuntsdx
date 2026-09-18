@@ -231,13 +231,13 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    const inMap=(event:{clientX:number;clientY:number})=>{const r=canvas.getBoundingClientRect(),y=(event.clientY-r.top)*200/r.height;return y>=38&&y<169;};
    const pointerDown=(event:PointerEvent)=>{
     if(!options.graphics?.enabled||!interactiveTrackPreviewEnabled()||!overviewActive||!inMap(event)||(event.button!==0&&event.button!==2))return;
-    event.preventDefault();event.stopPropagation();drag=event.button===0?'orbit':'pan';lastX=event.clientX;lastY=event.clientY;canvas.setPointerCapture(event.pointerId);
+    event.preventDefault();event.stopImmediatePropagation();drag=event.button===0?'orbit':'pan';lastX=event.clientX;lastY=event.clientY;canvas.setPointerCapture(event.pointerId);
    };
    const pointerMove=(event:PointerEvent)=>{
-    if(!drag||!preview)return;event.preventDefault();const dx=event.clientX-lastX,dy=event.clientY-lastY;lastX=event.clientX;lastY=event.clientY;
+    if(!drag||!preview)return;event.preventDefault();event.stopImmediatePropagation();const dx=event.clientX-lastX,dy=event.clientY-lastY;lastX=event.clientX;lastY=event.clientY;
     if(drag==='orbit')preview.orbit(dx,dy);else preview.pan(dx,dy);presentTrack();
    };
-   const pointerUp=(event:PointerEvent)=>{drag=null;if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);};
+   const pointerUp=(event:PointerEvent)=>{if(drag){event.preventDefault();event.stopImmediatePropagation();}drag=null;if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);};
    const wheel=(event:WheelEvent)=>{
     if(!options.graphics?.enabled||!interactiveTrackPreviewEnabled()||!overviewActive||!inMap(event))return;
     event.preventDefault();ensurePreview().dolly(event.deltaY,event.clientX,event.clientY);presentTrack();
