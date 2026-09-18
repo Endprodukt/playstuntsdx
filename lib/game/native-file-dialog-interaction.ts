@@ -14,7 +14,10 @@ export async function interactNativeFileDialog(host:NativeFileDialogServices&{in
   else if(effect.type==='edit-path'){
    presentation??=host.draw({names:[],path:effect.path,selected:0,scroll:0});
    reply=await host.editPath(effect.path,effect.length,effect.timeout,presentation.fields[1]);onPathChange?.(reply.path);
-  }else{const input=await host.input();reply={key:input.wheelDelta?(input.wheelDelta<0?0x4800:0x5000):input.key,buttons:input.buttons,hit:input.mouseActive?presentation!.hits.findIndex(r=>input.x>=r.left&&input.x<=r.right&&input.y>=r.top&&input.y<=r.bottom):-1};}
+  }else{
+   const input=await host.input(),wheelKey=input.wheelDelta?(input.wheelDelta<0?0x4800:0x5000):0;
+   reply={key:wheelKey||input.key,buttons:input.buttons,hit:wheelKey?-1:(input.mouseActive?presentation!.hits.findIndex(r=>input.x>=r.left&&input.x<=r.right&&input.y>=r.top&&input.y<=r.bottom):-1)};
+  }
   step=flow.next(reply);
  }
  return step.value;
