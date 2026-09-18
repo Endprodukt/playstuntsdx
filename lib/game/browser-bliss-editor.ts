@@ -146,7 +146,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  let brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,selecting=false,selectionAnchor:{x:number;y:number}|null=null,closed=false,zoom=1;
  let activeArea:EditorArea='grid',paletteCursor=0,lastPlaced:{x:number;y:number}|null=null;
  let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false;
- let selectionTool=false,pasteMode=false,manualHex='',manualHexDeadline=0,modalOpen=false,analysisCarIndex=16;
+ let selectionTool=false,pasteMode=false,manualHex='',manualHexDeadline=0,modalOpen=false,analysisCarIndex=-1;
 
  const overlay=document.createElement('div');overlay.tabIndex=-1;overlay.style.cssText='position:fixed;inset:0;z-index:2147483000;background:#090909;color:#ddd;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:10px;padding:12px;box-sizing:border-box;font-family:system-ui,Segoe UI,sans-serif;';
  const top=document.createElement('div');top.style.cssText='display:flex;align-items:center;gap:8px;min-width:0;';
@@ -313,13 +313,21 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   for(const issue of issues)context.strokeRect(issue.x*16+1,issue.y*16+1,14,14);
   context.restore();
  };
+ const drawCarMarkers=(track:typeof core.track,target:CanvasRenderingContext2D)=>{
+  for(let y=0;y<30;y++)for(let x=0;x<30;x++){
+   const code=track.track[y*30+x];if(code!==2&&code!==3)continue;
+   const marker=markerImages[code];if(marker?.complete&&marker.naturalWidth)target.drawImage(marker,x*16,y*16,16,16);
+  }
+ };
  const renderMap=()=>{
   context.putImageData(blissOriginalMapImageData(core.track,host.resources,host.palette,showGrid),0,0);
+  drawCarMarkers(core.track,context);
   if(pasteMode){
    const preview=core.previewPaste(cellX,cellY,{track:affectTrack,terrain:affectTerrain});
    if(preview){
     const ghost=document.createElement('canvas');ghost.width=BLISS_ORIGINAL_MAP_SIZE;ghost.height=BLISS_ORIGINAL_MAP_SIZE;
-    ghost.getContext('2d',{alpha:false})!.putImageData(blissOriginalMapImageData(preview,host.resources,host.palette,showGrid),0,0);
+    const ghostContext=ghost.getContext('2d',{alpha:false})!;
+    ghostContext.putImageData(blissOriginalMapImageData(preview,host.resources,host.palette,showGrid),0,0);drawCarMarkers(preview,ghostContext);
     context.save();context.globalAlpha=.62;context.drawImage(ghost,0,0);context.globalAlpha=1;
     const size=core.clipboardSize();if(size){context.strokeStyle='#ffe34d';context.lineWidth=2;context.strokeRect(cellX*16+1,cellY*16+1,size.width*16-2,size.height*16-2);}
     context.restore();
@@ -1129,21 +1137,33 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(!analysis.paths.length){void centeredNotice('Track Analysis','Track has no valid path.');return;}
 
   const summary=summarizeBlissTrackAnalysis(core.track,analysis,core.definitions);
-  const cars=[
-   ['ANSX','Acura NSX',1.467],['AUDI','Audi Quattro',1.387],['VETT','Chevrolet Corvette ZR1',1.499],['zF40','Ferrari F40',1.242],
-   ['FGTO','Ferrari GTO',1.415],['RANG','Ford Ranger',1.380],['JAGU','Jaguar XJR9 IMSA',1.129],['COUN','Lamborghini Countach',1.475],
-   ['LM02','Lamborghini LM-002',1.552],['LANC','Lancia Delta Integrale',1.358],['zLET','Lotus Esprit Turbo',1.518],['CDOR','Melange XGT-88',1.070],
-   ['NSKY','Nissan Skyline GT-R',1.466],['zPTR','Porsche 911 Turbo',1.489],['P962','Porsche 962 IMSA',1.085],['PC04','Porsche Carrera 4',1.508],
-   ['PMIN','Porsche March Indy',1.000],['GATE','Speedgate XSD',1.073],
+  const knownHandicaps=new Map<string,number>([
+   ['ANSX',1.467],['AUDI',1.387],['VETT',1.499],['ZF40',1.242],['FGTO',1.415],['RANG',1.380],
+   ['JAGU',1.129],['COUN',1.475],['LM02',1.552],['LANC',1.358],['ZLET',1.518],['CDOR',1.070],
+   ['NSKY',1.466],['ZPTR',1.489],['P962',1.085],['PC04',1.508],['PMIN',1.000],['GATE',1.073],
+  ]);
+  const fallbackCars=[
+   ['ANSX','Acura NSX'],['AUDI','Audi Quattro'],['VETT','Chevrolet Corvette ZR1'],['zF40','Ferrari F40'],
+   ['FGTO','Ferrari GTO'],['RANG','Ford Ranger'],['JAGU','Jaguar XJR9 IMSA'],['COUN','Lamborghini Countach'],
+   ['LM02','Lamborghini LM-002'],['LANC','Lancia Delta Integrale'],['zLET','Lotus Esprit Turbo'],['CDOR','Melange XGT-88'],
+   ['NSKY','Nissan Skyline GT-R'],['zPTR','Porsche 911 Turbo'],['P962','Porsche 962 IMSA'],['PC04','Porsche Carrera 4'],
+   ['PMIN','Porsche March Indy'],['GATE','Speedgate XSD'],
   ] as const;
+  const installed=host.analysisCars?.length?host.analysisCars:fallbackCars.map(([id,name])=>({id,name}));
+  const cars=installed.map(car=>({id:car.id,name:car.name,handicap:knownHandicaps.get(car.id.toUpperCase())??null}));
+  if(analysisCarIndex<0||analysisCarIndex>=cars.length){
+   const pmin=cars.findIndex(car=>car.id.toUpperCase()==='PMIN');analysisCarIndex=pmin>=0?pmin:0;
+  }
   const rh=[['Duplode',6.8815],['Marco',6.8863],['FinRok',7.0758],['Zak McKracken',7.6161],['Cas',7.6255],['Nach',7.6588],['AbuRaf70',7.9953],['Shoegazing Leo',9.2796]] as const;
   const noRh=[['Marco',7.4313],['Duplode',7.6066],['Cas',8.3744]] as const;
-  analysisCarIndex=Math.max(0,Math.min(cars.length-1,analysisCarIndex));
   // Bliss stores car handicaps (and the famous-racer ratios below) as
   // FreeBASIC Single values. Preserve that float32 rounding before the final
   // Double multiplication, otherwise some estimates differ by 0.01s.
-  const handicap=()=>Math.fround(cars[analysisCarIndex][2]);
-  const timeFor=(tokens:number,weight=7.2955,singleWeight=false)=>blissTimey(blissEstimatedTimeCentiseconds(tokens,handicap(),singleWeight?Math.fround(weight):weight));
+  const handicap=()=>cars[analysisCarIndex]?.handicap;
+  const timeFor=(tokens:number,weight=7.2955,singleWeight=false)=>{
+   const value=handicap();if(value===null||value===undefined)return '—';
+   return blissTimey(blissEstimatedTimeCentiseconds(tokens,Math.fround(value),singleWeight?Math.fround(weight):weight));
+  };
 
   modalOpen=true;
   const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
@@ -1169,9 +1189,11 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    const wrap=document.createElement('div');wrap.style.cssText='display:flex;justify-content:center;align-items:center;gap:9px;margin-top:15px;';
    const label=document.createElement('span');label.textContent='Times estimated based on:';label.style.color='#c8c8dc';
    const select=document.createElement('select');select.style.cssText='padding:6px 8px;background:#0d0d18;border:1px solid #676783;color:#fff;border-radius:3px;min-width:230px;';
-   cars.forEach((car,index)=>{const option=document.createElement('option');option.value=String(index);option.textContent=car[1];option.selected=index===analysisCarIndex;select.append(option);});
+   cars.forEach((car,index)=>{const option=document.createElement('option');option.value=String(index);option.textContent=car.name+(car.handicap===null?' · not calibrated':'');option.selected=index===analysisCarIndex;select.append(option);});
    select.addEventListener('change',()=>{analysisCarIndex=Number(select.value)||0;draw();});
-   wrap.append(label,select);return wrap;
+   wrap.append(label,select);
+   if(cars[analysisCarIndex]?.handicap===null){const note=document.createElement('span');note.textContent='No Bliss handicap for this custom car yet.';note.style.cssText='color:#ffbd7a;font-size:11px;';wrap.append(note);}
+   return wrap;
   };
 
   const drawSummary=()=>{
@@ -1323,6 +1345,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  }
  const cleanup=()=>{core.endStroke();manualHexDeadline=0;window.removeEventListener('keydown',keyDown,true);setBlissEditorActive(false);overlay.remove();};
  let resolveDone:(()=>void)|undefined;
+ for(const marker of Object.values(markerImages))marker.onload=()=>{if(!closed){renderPalette();renderMap();}};
  renderPalette();renderScenery();renderMap();renderStatus();updateArea();overlay.focus();requestAnimationFrame(()=>fitMap());
  await new Promise<void>(resolve=>{resolveDone=resolve;});cleanup();
 }
