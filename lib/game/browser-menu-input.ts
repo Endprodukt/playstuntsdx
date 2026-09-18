@@ -22,7 +22,7 @@ Array.from('1234567890').forEach((digit,i)=>{scanCodes['Digit'+digit]=2+i;});for
 const wheelMenuArrowScans=new Set([72,80,75,77]);
 export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joystickEnabled?:()=>boolean;drivingBindings?:()=>ArrayLike<number>;onPoll?:()=>void|Promise<void>}={}){
  stopDesktopForceFeedback();
- let active=true,controlHeld=false,pendingKey=0,pendingTextKey=0;
+ let active=true,controlHeld=false,pendingKey=0,pendingTextKey=0,pendingWheel=0;
  let disposed=false,x=160,y=100,buttons=0,last=0,lastPoll=0,request=0,rejectWait:((error:Error)=>void)|undefined;
  const epoch=performance.now(),held=new Set<number>(),mappedHeld=new Map<string,readonly number[]>(),pointerEdges:{x:number;y:number;buttons:number}[]=[];
  let state:OriginalMenuDeviceState={counter:0,mouseTime:0,joystickTime:0,joystick:0,pressedJoystick:0,x,y,buttons:0,mouseIdle:0,joystickKey:0,mouseKey:0,mouseAvailable:true,mouseActive:false,cursorVisible:false};
@@ -73,11 +73,12 @@ export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joysti
  const leave=(event:PointerEvent)=>{if(disposed)return;if(capturedPointer===event.pointerId)capturedPointer=undefined;blockedButtons|=buttons|(event.buttons&7);if(active&&buttons)pointerEdges.push({x,y,buttons:0});buttons=0;if(active&&element.hasPointerCapture?.(event.pointerId))element.releasePointerCapture(event.pointerId);};
  const pointer=(event:PointerEvent)=>{if(disposed)return;const rect=element.getBoundingClientRect();const outside=event.clientX<rect.left||event.clientX>=rect.left+rect.width||event.clientY<rect.top||event.clientY>=rect.top+rect.height;x=Math.max(mouseBounds[0],Math.min(mouseBounds[1],Math.floor((event.clientX-rect.left)*320/rect.width)));y=Math.max(mouseBounds[2],Math.min(mouseBounds[3],Math.floor((event.clientY-rect.top)*200/rect.height)));if(outside){leave(event);return;}blockedButtons&=event.buttons&7;const next=(event.buttons&7)&~blockedButtons;if(active&&next!==buttons)pointerEdges.push({x,y,buttons:next});buttons=next;};
  const down=(event:PointerEvent)=>{pointer(event);if(!active)return;event.preventDefault();element.focus({preventScroll:true});element.setPointerCapture(event.pointerId);capturedPointer=event.pointerId;};
- const contextMenu=(event:MouseEvent)=>{if(active)event.preventDefault();};
- const clear=()=>{blockedButtons|=buttons;controlHeld=false;buttons=0;pendingKey=0;pendingTextKey=0;held.clear();mappedHeld.clear();pointerEdges.length=0;releaseCapture();};
+ const wheel=(event:WheelEvent)=>{if(disposed||!active||event.deltaY===0)return;pendingWheel=event.deltaY<0?-1:1;};
+  const contextMenu=(event:MouseEvent)=>{if(active)event.preventDefault();};
+ const clear=()=>{blockedButtons|=buttons;controlHeld=false;buttons=0;pendingKey=0;pendingTextKey=0;pendingWheel=0;held.clear();mappedHeld.clear();pointerEdges.length=0;releaseCapture();};
  const visibility=()=>{if(page?.hidden)clear();};
  page?.addEventListener('visibilitychange',visibility);
- element.addEventListener('keydown',keyboard);element.addEventListener('keyup',keyup);element.addEventListener('blur',clear);element.addEventListener('pointerdown',down);element.addEventListener('pointermove',pointer);element.addEventListener('pointerup',pointer);element.addEventListener('pointercancel',leave);element.addEventListener('lostpointercapture',leave);element.addEventListener('pointerleave',leave);element.addEventListener('contextmenu',contextMenu);window.addEventListener('blur',clear);
+ element.addEventListener('keydown',keyboard);element.addEventListener('keyup',keyup);element.addEventListener('blur',clear);element.addEventListener('pointerdown',down);element.addEventListener('pointermove',pointer);element.addEventListener('pointerup',pointer);element.addEventListener('pointercancel',leave);element.addEventListener('lostpointercapture',leave);element.addEventListener('pointerleave',leave);element.addEventListener('wheel',wheel,{passive:true});element.addEventListener('contextmenu',contextMenu);window.addEventListener('blur',clear);
  const gamepad=()=>{
   const wheelSelected=desktopInputDevice()==='wheel';
   if(!active||disposed||(!wheelSelected&&options.joystickEnabled&&!options.joystickEnabled()))return {mask:0,direction:0,axis:0};
@@ -97,7 +98,8 @@ export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joysti
   const now=counter(),delta=deltaOverride===undefined?(now-last)&65535:(typeof deltaOverride==='function'?deltaOverride():deltaOverride)&65535;last=now;lastPoll=now;const pad=gamepad(),pointer=pointerEdges.shift()??{x,y,buttons:active?buttons:0},keyboardKey=takeMappedKey();takeTextKey();
   const result=pollOriginalMenuDevices(state,{delta,key:keyboardKey,joystick:pad.mask,rawButtons:pad.mask,...pointer});state=result.state;
   if(result.cursor.length)element.style.cursor=state.cursorVisible?'url("/site/original-pointer.png") 0 0, auto':'none';
-  return {key:result.key,keyboardKey,delta,...pointer,mouseActive:state.mouseActive,rawButtons:result.rawButtons,joystickDirection:pad.direction,joystickButtons:pad.mask&48};
+  const wheelDelta=pendingWheel;pendingWheel=0;
+  return {key:result.key,keyboardKey,delta,...pointer,wheelDelta,mouseActive:state.mouseActive,rawButtons:result.rawButtons,joystickDirection:pad.direction,joystickButtons:pad.mask&48};
  };
  const read=async(deltaOverride?:number|(()=>number))=>{await wait();return readImmediate(deltaOverride);};
  return {
@@ -121,6 +123,6 @@ export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joysti
   async keyboard(){await wait();const ticks=counter();return {key:takeTextKey(),input:ticks>>>0,game:Math.floor(ticks/ORIGINAL_GAME_TIMER_DIVIDER)>>>0};},
   async gameCounter(){await wait();return Math.floor(counter()/ORIGINAL_GAME_TIMER_DIVIDER)>>>0;},
   async release(){for(;;){if(gamepad().mask&48){await wait();continue;}const sample=await read();if(!sample.key&&!(sample.mouseActive&&sample.buttons&3))return;}},
-  close(){if(disposed)return;const ownedCursor=active;disposed=true;active=false;clear();page?.removeEventListener('visibilitychange',visibility);cancelAnimationFrame(request);rejectWait?.(new DOMException('Native menu closed','AbortError'));element.removeEventListener('keydown',keyboard);element.removeEventListener('keyup',keyup);element.removeEventListener('blur',clear);element.removeEventListener('pointerdown',down);element.removeEventListener('pointermove',pointer);element.removeEventListener('pointerup',pointer);element.removeEventListener('pointercancel',leave);element.removeEventListener('lostpointercapture',leave);element.removeEventListener('pointerleave',leave);element.removeEventListener('contextmenu',contextMenu);window.removeEventListener('blur',clear);if(ownedCursor)element.style.cursor='';},
+  close(){if(disposed)return;const ownedCursor=active;disposed=true;active=false;clear();page?.removeEventListener('visibilitychange',visibility);cancelAnimationFrame(request);rejectWait?.(new DOMException('Native menu closed','AbortError'));element.removeEventListener('keydown',keyboard);element.removeEventListener('keyup',keyup);element.removeEventListener('blur',clear);element.removeEventListener('pointerdown',down);element.removeEventListener('pointermove',pointer);element.removeEventListener('pointerup',pointer);element.removeEventListener('pointercancel',leave);element.removeEventListener('lostpointercapture',leave);element.removeEventListener('pointerleave',leave);element.removeEventListener('wheel',wheel);element.removeEventListener('contextmenu',contextMenu);window.removeEventListener('blur',clear);if(ownedCursor)element.style.cursor='';},
  };
 }
