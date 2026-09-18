@@ -3,8 +3,8 @@
 Reference: Bliss 2.6.1 behaviour/source-derived routines already ported into this branch, plus the Bliss 2.5.8/2.6 user manual for UI semantics.
 
 ## File menu
-- New: functional for the five Stunts scenery presets currently exposed by PlayStunts DX. Bliss' additional custom terrain templates are still pending.
-- Save / Save As: functional. Desktop writes the physical TRK into `Custom Tracks`.
+- New: Bliss-style Select Terrain dialog with 28 named choices. The three empty terrains and five original Stunts presets use canonical game data; the remaining named layouts are currently reconstructed from Bliss terrain primitives pending the authoritative Bliss preset bytes.
+- Save / Save As: functional. Desktop writes the physical TRK into `Custom Tracks`. Bliss one-file metadata tails (up to 13802 bytes total) are preserved in the physical file while gameplay consumes the standard first 1802 bytes.
 - Load: functional for TRK files currently visible to PlayStunts DX. Loading tracks from RPL files is pending.
 - Exit: functional.
 
@@ -49,7 +49,7 @@ Reference: Bliss 2.6.1 behaviour/source-derived routines already ported into thi
 - F12 is now the Bliss mouse-only terrain brush:
   - Water: left floods, right dries.
   - Mountain: left raises, right lowers.
-- Background/scenery (Desert/Tropical/Alpine/City/Country) is permanently selectable and does not reset the track.
+- Background/scenery (Desert/Tropical/Alpine/City/Country) is permanently selectable and does not reset the track. Selector previews are rendered from original low-resolution Stunts panorama resources.
 
 ## Switch bar
 - CLIP: indicates clipboard state and clears it when clicked.
@@ -65,12 +65,11 @@ Reference: Bliss 2.6.1 behaviour/source-derived routines already ported into thi
 - Auto-link: source-derived LinkTiles port.
 - Closed circuit / Enter on selection: source-derived BuildClosedCircuit port, including repeated-corner switching logic.
 - Check Track / C: source-derived start, terrain, route-section and path validation.
-- Track Analysis: real route/path/error analysis is active; Bliss racer-time estimates and detailed path dialogs are pending.
+- Track Analysis: real route/path/error analysis is active with sections, winning/safe paths, cycles, tile lengths, opponent shortest-path choice, and a See Paths dialog. Bliss' source-specific racer-time coefficient/calibration tables are still pending.
 
-## Toolbar items intentionally disabled until real functionality exists
-- Track Information metadata editor.
-- Automatic scenery generator.
-- Tournament integration.
-- Full Settings dialog.
+## Advanced menu tools
+- Track Information: functional title/author/comment/championship editor with creation date and accumulated editing time. Metadata is preserved in Bliss one-file tracks.
+- Automatic scenery generator: functional percentages, Everywhere/By the road/On water placement, by-road-first generation, orientation, and keep/erase-existing modes. The manual does not publish Bliss' exact per-landscape default percentage table, so the current default percentages remain a DX reconstruction pending the authoritative source constants.
+- Tournaments: functional Bliss-compatible tournament list, Add/Save/Remove/Connect flow, tour.cfg parsing, race details, scoreboard parsing, and Get Track. Tournament definitions persist locally.
+- Full Settings dialog remains pending.
 
-These remain visibly disabled rather than presenting placeholder dialogs as if Bliss parity were complete.
