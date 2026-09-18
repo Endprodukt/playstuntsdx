@@ -9,7 +9,7 @@ import {transformBlissTerrainCode,transformBlissTrackCode,type BlissTransformOpe
 import {BLISS_TOOL_ICON_COLUMNS,BLISS_TOOL_ICON_SIZE,BLISS_TOOL_ICON_SPRITE} from './bliss-tool-icons.ts';
 import {setBlissEditorActive} from './bliss-editor-presence.ts';
 import {blissTerrainPresets,type BlissTerrainPreset} from './bliss-terrain-presets.ts';
-import type {BlissMetadata} from './bliss-metadata.ts';
+import {setBlissTrackMetadata,type BlissMetadata} from './bliss-metadata.ts';
 
 export interface BrowserBlissEditorHost {
  canvas:HTMLCanvasElement;
@@ -138,6 +138,17 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const core=BlissEditorCore.fromBytes(initialBytes);
  let editingSessionStarted=performance.now();
  let metadataEditingBase=Math.max(0,core.metadata()?.metadata.editingTime??0);
+ const syncMetadataClock=()=>{
+  const current=core.metadata(),now=new Date(),elapsed=metadataEditingBase+Math.max(0,Math.floor((performance.now()-editingSessionStarted)/1000));
+  const metadata:BlissMetadata=current?{...current.metadata}:{
+   title:'',author:'Anonymous',comment:'',championship:'',
+   year:now.getFullYear(),month:now.getMonth()+1,day:now.getDate(),
+   tool:'PlayStunts DX',toolVersion:100,editingTime:elapsed,
+  };
+  if(!metadata.year){metadata.year=now.getFullYear();metadata.month=now.getMonth()+1;metadata.day=now.getDate();}
+  metadata.tool='PlayStunts DX';metadata.toolVersion=100;metadata.editingTime=elapsed;
+  setBlissTrackMetadata(core.track,metadata,current?.format??'binary');
+ };
  let tool:Tool='place',brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,selecting=false,selectionAnchor:{x:number;y:number}|null=null,closed=false,zoom=1;
  let activeArea:EditorArea='grid',paletteCursor=0,lastPlaced:{x:number;y:number}|null=null;
  let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false;
@@ -783,8 +794,12 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const choose=async(filename:string)=>{
    const stem=filename.replace(/\.trk$/i,'');
    try{
-    const bytes=await host.readTrack!('',stem);if(bytes.length!==1802)throw Error('Track must contain exactly 1802 bytes');
-    core.loadBytes(bytes);host.track.name=stem;host.track.path='';host.track.raw=Array.from(bytes);name.textContent=stem+'.TRK';
+    let bytes:Uint8Array;
+    const physical=host.customTrackExists&&host.readCustomTrack&&await host.customTrackExists(stem);
+    bytes=physical?await host.readCustomTrack!(stem):await host.readTrack!('',stem);
+    if(bytes.length<1802||bytes.length>13802)throw Error('Track must contain 1802 to 13802 bytes');
+    core.loadBytes(bytes);host.track.name=stem;host.track.path='';host.track.raw=Array.from(bytes.subarray(0,1802));name.textContent=stem+'.TRK';
+    metadataEditingBase=Math.max(0,core.metadata()?.metadata.editingTime??0);editingSessionStarted=performance.now();
     cellX=0;cellY=0;lastPlaced=null;core.setSelection(null);closeModal();renderPalette();renderScenery();renderMap();renderStatus();status.textContent='Loaded '+stem+'.TRK';status.style.color='#aee18a';
    }catch(error){status.textContent='Could not load '+filename+': '+String(error);status.style.color='#ff9b9b';}
   };
@@ -879,6 +894,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const preset=await selectTerrainPreset(blissTerrainPresets(host.presets));if(!preset)return;
   const landscape=core.track.landscape;
   core.newTrack({landscape,format:preset.format,terrain:preset.terrain});
+  metadataEditingBase=0;editingSessionStarted=performance.now();syncMetadataClock();
   host.track.name='';name.textContent='UNTITLED.TRK';cellX=0;cellY=0;page=0;brush=4;terrainBrush=0;lastPlaced=null;core.setSelection(null);chooseTool('place');changed('New track · '+preset.name);
  }
 
@@ -895,8 +911,9 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const targetIsCustom=host.customTrackExists?await host.customTrackExists(target):false,targetExists=await host.exists(savePath,target);
   if(host.customTrackExists&&targetExists&&!targetIsCustom){await centeredNotice('Save Track',target+'.TRK is a supplied track and cannot be replaced through Custom Tracks. Choose another name.');return false;}
   if(targetIsCustom&&(forceName||target!==host.track.name)&&!await centeredConfirm('Overwrite Track',target+'.TRK already exists in Custom Tracks. Overwrite it?','Overwrite','Cancel'))return false;
-  const bytes=encodeBlissTrack(core.track).subarray(0,1802);let customLocation='';
-  try{if(host.persistCustomTrack)customLocation=await host.persistCustomTrack(target,bytes);}catch(error){status.textContent='Could not save to Custom Tracks: '+String(error);status.style.color='#ff9b9b';return false;}
+  syncMetadataClock();
+  const fullBytes=encodeBlissTrack(core.track),bytes=fullBytes.subarray(0,1802);let customLocation='';
+  try{if(host.persistCustomTrack)customLocation=await host.persistCustomTrack(target,fullBytes);}catch(error){status.textContent='Could not save to Custom Tracks: '+String(error);status.style.color='#ff9b9b';return false;}
   const statusCode=await host.writeTrack(savePath,target,bytes);if(statusCode){status.textContent='Track was written to Custom Tracks, but could not be added to the current track list.';status.style.color='#ffbd7a';return false;}
   host.track.name=target;host.track.path=savePath;name.textContent=host.track.name+'.TRK';await host.clearScores(savePath,host.track.name);host.track.raw=Array.from(bytes);core.markSaved();renderStatus();
   status.textContent=customLocation?'Saved to '+customLocation:'Saved '+host.track.name+'.TRK';status.style.color='#aee18a';return true;
