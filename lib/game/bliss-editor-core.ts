@@ -5,6 +5,7 @@ import {BlissHistory} from './bliss-history.ts';
 import {blissTransformations,type BlissTransformations} from './bliss-transformations.ts';
 import {clearBlissTrackElement,dryBlissTerrain,floodBlissTerrain,lowerBlissTerrain,placeBlissTrackElement,raiseBlissTerrain} from './bliss-edit.ts';
 import {captureBlissRegion,cutBlissRegion,hflipBlissRegion,pasteBlissRegion,rotateBlissRegionClockwise,rotateBlissRegionCounterClockwise,vflipBlissRegion,type BlissRegion} from './bliss-region.ts';
+import {buildBlissClosedCircuit,linkBlissTiles} from './bliss-smart-tools.ts';
 
 export interface BlissSelection {x:number;y:number;width:number;height:number}
 
@@ -31,6 +32,8 @@ export class BlissEditorCore {
  dry(x:number,y:number){this.change(()=>dryBlissTerrain(this.track,x,y));}
  raise(x:number,y:number){this.change(()=>raiseBlissTerrain(this.track,x,y));}
  lower(x:number,y:number){this.change(()=>lowerBlissTerrain(this.track,x,y));}
+ link(x:number,y:number){const before=cloneBlissTrack(this.track),code=linkBlissTiles(this.track,x,y,this.definitions);if(code!==null){this.history.push(before);this.modified=true;}return code;}
+ buildClosedCircuit(currentBrush:number){if(!this.selection)return false;const s=this.selection,before=cloneBlissTrack(this.track),built=buildBlissClosedCircuit(this.track,{x1:s.x,y1:s.y,x2:s.x+s.width-1,y2:s.y+s.height-1},currentBrush,this.definitions);if(built){this.history.push(before);this.modified=true;}return built;}
  copySelection(){if(!this.selection)return null;const s=this.selection;this.clipboard=captureBlissRegion(this.track,s.x,s.y,s.width,s.height);return this.clipboard;}
  cutSelection(options:{track?:boolean;terrain?:boolean}={}){if(!this.selection)return null;const s=this.selection;this.change(()=>{this.clipboard=cutBlissRegion(this.track,s.x,s.y,s.width,s.height,options);});return this.clipboard;}
  paste(x:number,y:number,options:{track?:boolean;terrain?:boolean}={}){if(!this.clipboard)return false;this.change(()=>pasteBlissRegion(this.track,x,y,this.clipboard!,options));return true;}
