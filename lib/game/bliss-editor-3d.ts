@@ -5,7 +5,8 @@ import terrainObjects from '../../public/game/terrain-objects.json';
 import {createTrackModel,createTrackModelFactory,type TrackMaterials} from './track-model.ts';
 import {trackRenderPlacement} from './track-render-placement.ts';
 import {hillRenderSelection} from './hill-render-selection.ts';
-import type {Assets,Shape} from './types.ts';
+import {elevatedRoadUnderlays} from './elevated-road-underlays.ts';
+import type {Assets} from './types.ts';
 import type {BlissTrack} from './bliss-track.ts';
 import {BLISS_TRANSPARENT_COLOUR,blissTrackMetadata} from './bliss-metadata.ts';
 
@@ -68,51 +69,6 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
  );
  hover.rotation.x=-Math.PI/2;hover.position.y=12;hover.visible=false;scene.add(hover);
 
- const primitiveXZArea=(shape:Shape,primitive:Shape['primitives'][number])=>{
-  const points=primitive.indices.map(index=>shape.vertices[index]);
-  let area=0;
-  for(let i=0;i<points.length;i++){const a=points[i],b=points[(i+1)%points.length];area+=a[0]*b[2]-b[0]*a[2];}
-  return Math.abs(area)*.5;
- };
- const nearestMaterialForColour=(rgb:[number,number,number])=>{
-  let best=0,bestDistance=Infinity;
-  for(let material=0;material<materials.indices.length;material++){
-   const paletteIndex=materials.indices[material];if(paletteIndex===undefined)continue;
-   const at=paletteIndex*3,dr=materials.palette[at]-rgb[0],dg=materials.palette[at+1]-rgb[1],db=materials.palette[at+2]-rgb[2],distance=dr*dr+dg*dg+db*db;
-   if(distance<bestDistance){bestDistance=distance;best=material;}
-  }
-  return best;
- };
- const baseGrassMaterial=nearestMaterialForColour([0x46,0x6f,0x35]);
- const terrainTopMaterial=(terrainCode:number)=>{
-  if(!terrainCode)return baseGrassMaterial;
-  const selected=hillRenderSelection(terrainCode,0),descriptor=(terrainObjects as Array<{id:number;shape:string;rotation:number}>).find(entry=>entry.id===selected.terrain);
-  if(!descriptor)return baseGrassMaterial;
-  const [group,name]=descriptor.shape.split('.'),shape=assets.shapes[group]?.[name];if(!shape)return baseGrassMaterial;
-  let best:{area:number;material:number}|undefined;
-  for(const primitive of shape.primitives){
-   if(primitive.type<3||primitive.type>10||primitive.indices.length<3)continue;
-   const ys=primitive.indices.map(index=>shape.vertices[index][1]),flat=Math.max(...ys)-Math.min(...ys)<1;
-   if(!flat)continue;
-   const area=primitiveXZArea(shape,primitive),material=primitive.materials[0];
-   if(material!==undefined&&(!best||area>best.area))best={area,material};
-  }
-  return best?.material??baseGrassMaterial;
- };
- const matchPlantGround=(shape:Shape,sourceId:number,terrainCode:number)=>{
-  if(sourceId<0x93||sourceId>0x95)return shape;
-  const groundMaterial=terrainTopMaterial(terrainCode);
-  let changed=false;
-  const primitives=shape.primitives.map(primitive=>{
-   if(primitive.type<3||primitive.type>10||primitive.indices.length<3)return primitive;
-   const vertices=primitive.indices.map(index=>shape.vertices[index]),ys=vertices.map(vertex=>vertex[1]);
-   const flat=Math.max(...ys)-Math.min(...ys)<1,nearGround=Math.abs(ys.reduce((sum,value)=>sum+value,0)/ys.length)<32;
-   if(!flat||!nearGround||primitiveXZArea(shape,primitive)<180000)return primitive;
-   changed=true;return {...primitive,materials:primitive.materials.map(()=>groundMaterial)};
-  });
-  return changed?{...shape,primitives}:shape;
- };
-
  const makeGhost=(model:THREE.Object3D)=>{
   model.traverse(node=>{
    const drawable=node as THREE.Mesh|THREE.Line;
@@ -140,9 +96,15 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
    const selected=hillRenderSelection(terrainCode,code),descriptor=(trackRenderModels as Record<string,{id:number;shape?:string;overlay?:number;rotation:number;multiTile:number;paint:number}>)[String(selected.tile)];
    if(descriptor){
     const parts=[descriptor,...(descriptor.overlay?[(trackRenderModels as Record<string,typeof descriptor>)[String(descriptor.overlay)]]:[])].filter(Boolean);
+    if(terrainCode===6&&descriptor){
+     const origin=trackRenderPlacement(descriptor,cell.x,row,450,0).position,high=assets.shapes.GAME2?.high;
+     if(high)for(const underlay of elevatedRoadUnderlays(origin,descriptor.multiTile)){
+      const grass=makeGhost(createTrackModel(high,materials,0,true,2));grass.position.set(...underlay.position);ghostRoot.add(grass);
+     }
+    }
     for(const part of parts){
-     if(!part?.shape)continue;const [group,name]=part.shape.split('.'),sourceShape=assets.shapes[group]?.[name];if(!sourceShape)continue;
-     const placement=trackRenderPlacement(part,cell.x,row,terrainCode===6?450:18,0),paint=part.paint===255?0:placement.paint,shape=matchPlantGround(sourceShape,code,terrainCode);
+     if(!part?.shape)continue;const [group,name]=part.shape.split('.'),shape=assets.shapes[group]?.[name];if(!shape)continue;
+     const placement=trackRenderPlacement(part,cell.x,row,terrainCode===6?450:18,0),paint=part.paint===255?0:placement.paint;
      const model=makeGhost(createTrackModel(shape,materials,paint,false,2));model.position.set(...placement.position);model.rotation.y=placement.rotation;ghostRoot.add(model);
     }
    }
@@ -210,13 +172,20 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
    if(!sourceId||sourceId>=253||!selected.tile)continue;
    const descriptor=(trackRenderModels as Record<string,{id:number;shape?:string;detailShape?:string;overlay?:number;rotation:number;multiTile:number;paint:number}>)[String(selected.tile)];
    if(!descriptor)continue;
+   const origin=trackRenderPlacement(descriptor,x,row,terrain===6?450:0,0).position;
+   if(terrain===6){
+    const high=assets.shapes.GAME2?.high;
+    if(high)for(const underlay of elevatedRoadUnderlays(origin,descriptor.multiTile)){
+     const grass=modelFactory(high,0,true);grass.position.set(...underlay.position);content.add(grass);
+    }
+   }
    const parts=[descriptor,...(descriptor.overlay?[(trackRenderModels as Record<string,typeof descriptor>)[String(descriptor.overlay)]]:[])].filter(Boolean);
    for(const part of parts){
     if(!part?.shape)continue;
-    const [group,name]=part.shape.split('.'),sourceShape=assets.shapes[group]?.[name];
-    if(!sourceShape)continue;
+    const [group,name]=part.shape.split('.'),shape=assets.shapes[group]?.[name];
+    if(!shape)continue;
     const placement=trackRenderPlacement(part,x,row,terrain===6?450:0,0);
-    const paint=part.paint===255?0:placement.paint,shape=matchPlantGround(sourceShape,sourceId,terrain);
+    const paint=part.paint===255?0:placement.paint;
     const model=modelFactory(shape,paint);
     model.position.set(...placement.position);model.rotation.y=placement.rotation;content.add(model);
    }
