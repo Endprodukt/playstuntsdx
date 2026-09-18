@@ -33,7 +33,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
 
  const light=new THREE.HemisphereLight(0xffffff,0x586030,1.15);scene.add(light);
  const materials=trackMaterials as TrackMaterials;
- const modelFactory=createTrackModelFactory(materials,2);
+ let modelFactory=createTrackModelFactory(materials,2);
  const content=new THREE.Group();world.add(content);
 
  const base=new THREE.Mesh(
@@ -67,7 +67,8 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
  };
 
  const rebuild=(source:BlissTrack)=>{
-  while(content.children.length){const child=content.children.pop()!;disposeObject(child);}
+  while(content.children.length){const child=content.children[content.children.length-1];content.remove(child);disposeObject(child);}
+  modelFactory=createTrackModelFactory(materials,2);
   for(let y=0;y<30;y++)for(let x=0;x<30;x++){
    const at=y*30+x,terrain=source.terrain[at],sourceId=source.track[at],selected=hillRenderSelection(terrain,sourceId);
    const row=29-y;
