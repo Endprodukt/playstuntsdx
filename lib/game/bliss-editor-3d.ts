@@ -172,10 +172,12 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
  };
  const pan=(dx:number,dy:number)=>{
   const scale=Math.max(1,distance/900);
-  const forward=new THREE.Vector3();camera.getWorldDirection(forward);forward.y=0;forward.normalize();
+  const forward=new THREE.Vector3();camera.getWorldDirection(forward);forward.y=0;if(!forward.lengthSq())forward.set(0,0,-1);forward.normalize();
   const right=new THREE.Vector3().crossVectors(forward,new THREE.Vector3(0,1,0)).normalize();
-  target.addScaledVector(right,-dx*scale);target.addScaledVector(new THREE.Vector3(0,1,0),dy*scale);
-  target.x=Math.max(-4096,Math.min(34816,target.x));target.z=Math.max(-34816,Math.min(4096,target.z));target.y=Math.max(-2048,Math.min(12000,target.y));render();
+  // "Grab" navigation: horizontal drag moves sideways, vertical drag moves
+  // across the ground toward/away from the current view direction.
+  target.addScaledVector(right,-dx*scale);target.addScaledVector(forward,dy*scale);
+  target.x=Math.max(-4096,Math.min(34816,target.x));target.z=Math.max(-34816,Math.min(4096,target.z));render();
  };
  const dolly=(delta:number,clientX:number,clientY:number)=>{
   const before=cellAt(clientX,clientY),factor=Math.exp(delta*.0012);
