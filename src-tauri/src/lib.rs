@@ -484,6 +484,32 @@ fn write_custom_track(name: String, data: Vec<u8>) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn write_track_shot(filename: String, data: Vec<u8>) -> Result<String, String> {
+    let name = filename.trim();
+    if name.is_empty() || name.len() > 96 {
+        return Err("Track-shot filename is invalid.".to_string());
+    }
+    let lower = name.to_ascii_lowercase();
+    if !(lower.ends_with(".png") || lower.ends_with(".jpg") || lower.ends_with(".jpeg") || lower.ends_with(".bmp")) {
+        return Err("Track-shot format must be PNG, JPEG or BMP.".to_string());
+    }
+    if name.chars().any(|value| matches!(value, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')) {
+        return Err("Track-shot filename contains unsupported characters.".to_string());
+    }
+    let root = application_root()?.join("Track Shots");
+    fs::create_dir_all(&root)
+        .map_err(|error| format!("Could not create {}: {error}", root.display()))?;
+    let path = root.join(name);
+    fs::write(&path, data)
+        .map_err(|error| format!("Could not write track shot {}: {error}", path.display()))?;
+    Ok(path
+        .strip_prefix(application_root()?)
+        .unwrap_or(&path)
+        .to_string_lossy()
+        .replace('\\', "/"))
+}
+
+#[tauri::command]
 fn bliss_http_get(url: String) -> Result<Vec<u8>, String> {
     let lower = url.trim().to_ascii_lowercase();
     if !(lower.starts_with("https://") || lower.starts_with("http://")) {
@@ -854,6 +880,7 @@ pub fn run() {
             custom_track_exists,
             read_custom_track,
             write_custom_track,
+            write_track_shot,
             bliss_http_get,
             toggle_mt32_panel,
             check_mt32_roms,
