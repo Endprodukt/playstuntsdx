@@ -13,8 +13,8 @@ export function originalFileDialogInput(input:{names:ReadonlyArray<string>;selec
  if(key===13||key===32)action='accept';else if(key===27)action='cancel';
  else if(key===0x4800)selected=b8(selected-1);
  else if(key===0x5000){if(selected!==count-1)selected=b8(selected+1);}
- else if(key===0x4900){selected=Math.max(0,selected-7);scroll=Math.max(0,scroll-7);}
- else if(key===0x5100){selected=Math.min(count-1,selected+7);scroll=Math.min(Math.max(0,count-7),scroll+7);}
+ else if(key===0x4a00)return {selected,scroll:Math.max(0,scroll-1),action:'wait' as const};
+ else if(key===0x5200)return {selected,scroll:Math.min(Math.max(0,count-7),scroll+1),action:'wait' as const};
  else if(key>=65&&key<=90||key>=97&&key<=122){
   const lower=String.fromCharCode(key).toLowerCase(),index=count<0?-1:names.findIndex(name=>name[0]?.toLowerCase()===lower);if(index>=0)selected=index;
  }
