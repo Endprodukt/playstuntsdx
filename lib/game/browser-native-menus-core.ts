@@ -41,7 +41,7 @@ import {originalMainMenuBounds} from './main-menu-hit.ts';
 import {ENHANCED_TEXTURES_EVENT,enhancedTexturesEnabled} from './enhanced-textures.ts';
 import {runNativeCarMenu,type NativeCarMenuHost} from './native-car-runtime.ts';
 import {runNativeOpponentMenu,type NativeOpponentHost} from './native-opponent-runtime.ts';
-import {runNativeOptions,type NativeOptionsHost} from './native-options-runtime.ts';
+import {interactiveTrackPreviewEnabled,runNativeOptions,type NativeOptionsHost} from './native-options-runtime.ts';
 import {runNativeTrackMenu,type NativeTrackMenuHost} from './native-track-runtime.ts';
 import type {NativeEditorHost} from './native-editor-runtime.ts';
 import {createBrowserMenuInput} from './browser-menu-input.ts';
@@ -200,8 +200,9 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    };
    const backdropCanvas=document.createElement('canvas');backdropCanvas.width=320;backdropCanvas.height=200;
    const backdropContext=backdropCanvas.getContext('2d')!,backdropImage=backdropContext.createImageData(320,200);
-   let backdrop:Uint8Array|undefined,preview:ReturnType<typeof createBlissEditor3DView>|undefined,previewSignature='';
+   let backdrop:Uint8Array|undefined,preview:ReturnType<typeof createBlissEditor3DView>|undefined,previewSignature='',overviewActive=true;
    menuHost.captureOverviewBackdrop=(captured)=>{backdrop=captured.slice();};
+   menuHost.setOverviewActive=(active)=>{overviewActive=active;if(!active)paint();};
    const trackSignature=()=>track.name+'/'+track.raw.length+'/'+track.raw.slice(0,1802).reduce((hash,value,index)=>(Math.imul(hash^value,16777619)+index)>>>0,2166136261);
    const ensurePreview=()=>{
     const signature=trackSignature();
@@ -220,7 +221,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    };
    const presentTrack=()=>{
     paint();if(!options.graphics)return;options.graphics.refresh=presentTrack;
-    if(!options.graphics.enabled||!backdrop)return;
+    if(!options.graphics.enabled||!interactiveTrackPreviewEnabled()||!overviewActive||!backdrop)return;
     const top=38,bottom=169;drawBackdropRegion(top,bottom);
     const view=ensurePreview();view.render();
     const sy=top*previewCanvas.height/200,sh=(bottom-top)*previewCanvas.height/200,dy=top*canvas.height/200,dh=(bottom-top)*canvas.height/200;
@@ -229,7 +230,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    let drag:'orbit'|'pan'|null=null,lastX=0,lastY=0;
    const inMap=(event:{clientX:number;clientY:number})=>{const r=canvas.getBoundingClientRect(),y=(event.clientY-r.top)*200/r.height;return y>=38&&y<169;};
    const pointerDown=(event:PointerEvent)=>{
-    if(!options.graphics?.enabled||!inMap(event)||!event.ctrlKey||(event.button!==0&&event.button!==2))return;
+    if(!options.graphics?.enabled||!interactiveTrackPreviewEnabled()||!overviewActive||!inMap(event)||(event.button!==0&&event.button!==2))return;
     event.preventDefault();event.stopPropagation();drag=event.button===0?'orbit':'pan';lastX=event.clientX;lastY=event.clientY;canvas.setPointerCapture(event.pointerId);
    };
    const pointerMove=(event:PointerEvent)=>{
@@ -238,7 +239,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    };
    const pointerUp=(event:PointerEvent)=>{drag=null;if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);};
    const wheel=(event:WheelEvent)=>{
-    if(!options.graphics?.enabled||!inMap(event))return;
+    if(!options.graphics?.enabled||!interactiveTrackPreviewEnabled()||!overviewActive||!inMap(event))return;
     event.preventDefault();ensurePreview().dolly(event.deltaY,event.clientX,event.clientY);presentTrack();
    };
    canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
