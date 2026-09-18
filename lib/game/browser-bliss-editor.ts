@@ -1055,8 +1055,11 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const rh=[['Duplode',6.8815],['Marco',6.8863],['FinRok',7.0758],['Zak McKracken',7.6161],['Cas',7.6255],['Nach',7.6588],['AbuRaf70',7.9953],['Shoegazing Leo',9.2796]] as const;
   const noRh=[['Marco',7.4313],['Duplode',7.6066],['Cas',8.3744]] as const;
   analysisCarIndex=Math.max(0,Math.min(cars.length-1,analysisCarIndex));
-  const handicap=()=>cars[analysisCarIndex][2];
-  const timeFor=(tokens:number,weight=7.2955)=>blissTimey(blissEstimatedTimeCentiseconds(tokens,handicap(),weight));
+  // Bliss stores car handicaps (and the famous-racer ratios below) as
+  // FreeBASIC Single values. Preserve that float32 rounding before the final
+  // Double multiplication, otherwise some estimates differ by 0.01s.
+  const handicap=()=>Math.fround(cars[analysisCarIndex][2]);
+  const timeFor=(tokens:number,weight=7.2955,singleWeight=false)=>blissTimey(blissEstimatedTimeCentiseconds(tokens,handicap(),singleWeight?Math.fround(weight):weight));
 
   modalOpen=true;
   const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
@@ -1133,7 +1136,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    const section=(titleText:string,rows:readonly (readonly [string,number])[])=>{
     const title=document.createElement('h3');title.textContent=titleText;title.style.cssText='text-align:center;font-size:14px;color:#ddd;margin:6px 0 8px;';
     const table=document.createElement('div');table.style.cssText='display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:4px 16px;max-width:520px;margin:0 auto 18px;';
-    for(const [racer,ratio] of rows){const a=document.createElement('span'),b=document.createElement('span');a.textContent=racer;a.style.color='#c8c8dc';b.textContent=timeFor(summary.briefestWinning!,ratio);b.style.color='#d8d66d';table.append(a,b);}
+    for(const [racer,ratio] of rows){const a=document.createElement('span'),b=document.createElement('span');a.textContent=racer;a.style.color='#c8c8dc';b.textContent=timeFor(summary.briefestWinning!,ratio,true);b.style.color='#d8d66d';table.append(a,b);}
     body.append(title,table);
    };
    section('Estimated OWOOT times for famous racers',rh);
