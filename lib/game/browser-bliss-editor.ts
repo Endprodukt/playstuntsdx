@@ -453,7 +453,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const query=window.prompt('Find Bliss element by name:','');if(query===null)return;
   const next=findBlissElementByName(query,brush);if(next!==brush){brush=next;chooseTool('place');renderPalette();renderStatus();}else{status.textContent='No matching element found.';status.style.color='#ffbd7a';}
  };
- const manualHex=()=>{
+ const startManualHex=()=>{
   if(!allowConflicts){status.textContent='Manual editing (MAN / Ctrl+E) must be enabled first.';status.style.color='#ffbd7a';return;}
   manualHex='';manualHexDeadline=performance.now()+3000;renderPalette();
   status.textContent='?  Enter two hexadecimal digits (00–FF). Backspace/Delete restarts; timeout is 3 seconds.';status.style.color='#ffe77a';
@@ -522,7 +522,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(code==='Enter'){event.preventDefault();insertAtCursor();return;}
   if(code==='Delete'){event.preventDefault();deleteAtCursor();return;}
   if(code==='Space'){event.preventDefault();findByName();return;}
-  if(code==='Backslash'){event.preventDefault();manualHex();return;}
+  if(code==='Backslash'){event.preventDefault();startManualHex();return;}
   if(code==='KeyP'){event.preventDefault();pickAtCursor();return;}
   if(code==='KeyU'){event.preventDefault();const linked=core.link(cellX,cellY);if(linked!==null){brush=linked;changed('Tiles linked');}else{status.textContent='No compatible tile link at cursor.';status.style.color='#ffbd7a';}return;}
   if(code==='KeyC'){event.preventDefault();checkTrack();return;}
