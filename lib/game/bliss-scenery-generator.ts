@@ -8,6 +8,7 @@ export interface BlissSceneryRule {
  name:string;
  baseCode:number;
  percent:number;
+ count?:number;
  placement:BlissSceneryPlacement;
 }
 export interface BlissSceneryGeneratorConfig {
@@ -136,11 +137,21 @@ export function generateBlissScenery(source:BlissTrack,config:BlissSceneryGenera
    else{from=10;to=13;available=availability.byRoad;}
 
    if((from===1&&round!==2)||(from!==1&&round!==1))continue;
-   const amount=blissSceneryTargetCount(available,rule.percent);
+   const amount=rule.count===undefined?blissSceneryTargetCount(available,rule.percent):Math.max(0,Math.min(available,Math.trunc(rule.count)));
+
+   if(rule.count!==undefined){
+    const candidates:number[]=[];
+    for(let at=0;at<map.length;at++)if(map[at]>=from&&map[at]<=to)candidates.push(at);
+    for(let j=0;j<amount&&candidates.length;j++){
+     const pick=Math.floor(random()*candidates.length),at=candidates.splice(pick,1)[0],value=map[at];
+     placeVariant(result,at,rule,i,from,value,random);map[at]=-1;
+    }
+    continue;
+   }
 
    for(let j=1;j<=amount;j++){
-    // Valid Bliss percentages guarantee eventual success. Keep a generous
-    // guard so malformed caller configs cannot hang PlayStunts DX forever.
+    // Legacy Bliss percentage mode. Keep its original fallback quirks for
+    // compatibility, but exact-count callers bypass them entirely.
     let guard=0;
     for(;;){
      if(++guard>250000)break;
