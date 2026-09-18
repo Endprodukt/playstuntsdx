@@ -19,14 +19,14 @@ export class BlissEditorCore {
  }
  static fromBytes(bytes:Uint8Array,definitions:BlissTransformations=blissTransformations){return new BlissEditorCore(decodeBlissTrack(bytes),definitions);}
  serialize(){return encodeBlissTrack(this.track);}
- private change(action:()=>void){this.history.push(this.track);action();this.modified=true;}
+ private change(action:()=>void){const before=cloneBlissTrack(this.track);action();this.history.push(before);this.modified=true;}
  markSaved(){this.modified=false;}
  setSelection(selection:BlissSelection|null){
   if(selection){captureBlissRegion(this.track,selection.x,selection.y,selection.width,selection.height);}
   this.selection=selection?{...selection}:null;
  }
- place(x:number,y:number,code:number,allowErrors=false){let placed=false;this.change(()=>{placed=placeBlissTrackElement(this.track,x,y,code,this.definitions,{allowErrors});});return placed;}
- clear(x:number,y:number,allowErrors=false){let changed=false;this.change(()=>{changed=clearBlissTrackElement(this.track,x,y,this.definitions,{allowErrors});});return changed;}
+ place(x:number,y:number,code:number,allowErrors=false){const before=cloneBlissTrack(this.track),placed=placeBlissTrackElement(this.track,x,y,code,this.definitions,{allowErrors});if(placed){this.history.push(before);this.modified=true;}return placed;}
+ clear(x:number,y:number,allowErrors=false){const before=cloneBlissTrack(this.track),changed=clearBlissTrackElement(this.track,x,y,this.definitions,{allowErrors});if(changed){this.history.push(before);this.modified=true;}return changed;}
  flood(x:number,y:number){this.change(()=>floodBlissTerrain(this.track,x,y));}
  dry(x:number,y:number){this.change(()=>dryBlissTerrain(this.track,x,y));}
  raise(x:number,y:number){this.change(()=>raiseBlissTerrain(this.track,x,y));}
