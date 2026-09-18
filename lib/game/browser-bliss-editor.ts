@@ -12,6 +12,8 @@ export interface BrowserBlissEditorHost {
  writeTrack(path:string,name:string,bytes:Uint8Array):Promise<number>;
  clearScores(path:string,name:string):Promise<void>;
  exists(path:string,name:string):Promise<boolean>;
+ customTrackExists?(name:string):Promise<boolean>;
+ persistCustomTrack?(name:string,bytes:Uint8Array):Promise<string>;
  presets?:readonly {terrain:number[]}[];
 }
 
@@ -224,8 +226,11 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   changed('New '+names[choice]+' track');
  }
 
- function requestedTrackName(force=false){
-  if(!force&&host.track.name)return host.track.name;
+ async function requestedTrackName(force=false){
+  if(!force&&host.track.name){
+   const isCustom=host.customTrackExists?await host.customTrackExists(host.track.name):true;
+   if(isCustom)return host.track.name;
+  }
   const entered=window.prompt('Track name (maximum 8 characters):',host.track.name||'NEWTRACK');
   if(entered===null)return null;
   const clean=entered.trim().replace(/[^A-Za-z0-9_-]/g,'_').toUpperCase().slice(0,8);
@@ -234,13 +239,29 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  }
 
  async function saveTrack(forceName=false){
-  const target=requestedTrackName(forceName);if(!target)return false;
-  if((forceName||target!==host.track.name)&&await host.exists(host.track.path,target)&&!window.confirm(target+'.TRK already exists. Overwrite it?'))return false;
-  const bytes=encodeBlissTrack(core.track).subarray(0,1802),statusCode=await host.writeTrack(host.track.path,target,bytes);
-  if(statusCode){status.textContent='Save failed · status '+statusCode;status.style.color='#ff9b9b';return false;}
-  if(target!==host.track.name)host.track.name=target;
+  const target=await requestedTrackName(forceName);if(!target)return false;
+  const savePath='';
+  const targetIsCustom=host.customTrackExists?await host.customTrackExists(target):false;
+  const targetExists=await host.exists(savePath,target);
+  if(targetExists&&!targetIsCustom&&target!==host.track.name){
+   window.alert(target+'.TRK is already a supplied track. Choose another name for the custom track.');
+   return false;
+  }
+  if(targetIsCustom&&(forceName||target!==host.track.name)&&!window.confirm(target+'.TRK already exists in Custom Tracks. Overwrite it?'))return false;
+  const bytes=encodeBlissTrack(core.track).subarray(0,1802);
+  let customLocation='';
+  try{
+   if(host.persistCustomTrack)customLocation=await host.persistCustomTrack(target,bytes);
+  }catch(error){
+   status.textContent='Could not save to Custom Tracks: '+String(error);status.style.color='#ff9b9b';return false;
+  }
+  const statusCode=await host.writeTrack(savePath,target,bytes);
+  if(statusCode){status.textContent='Track was written to Custom Tracks, but could not be added to the current track list.';status.style.color='#ffbd7a';return false;}
+  host.track.name=target;host.track.path=savePath;
   name.textContent=host.track.name+'.TRK';
-  await host.clearScores(host.track.path,host.track.name);host.track.raw=Array.from(bytes);core.markSaved();renderStatus();status.textContent='Saved '+host.track.name+'.TRK';status.style.color='#aee18a';return true;
+  await host.clearScores(savePath,host.track.name);host.track.raw=Array.from(bytes);core.markSaved();renderStatus();
+  status.textContent=customLocation?'Saved to '+customLocation:'Saved '+host.track.name+'.TRK';
+  status.style.color='#aee18a';return true;
  }
  async function finish(){
   if(closed)return;
