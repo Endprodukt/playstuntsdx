@@ -214,11 +214,13 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    let upgraded:ReturnType<typeof createUpgradedRaceScene>|undefined,loading=false,closed=false,failed=false;
    const graphics=options.graphics;if(graphics){runtime.enableGraphicsCapture();graphics.resetPerformance?.();}
    const presentWorld=()=>{
-    display();if(!graphics)return;graphics.refresh=presentWorld;
-    if(!graphics.enabled)return;
-    if(failed)return;
-    if(!upgraded){if(!loading){loading=true;graphics.notice?.('Loading upgraded driving graphics…');void import('./upgraded-race-scene').then(({createUpgradedRaceScene})=>{if(closed)return;upgraded=createUpgradedRaceScene(options.assets,baseline,runtime,()=>graphics.chaseCamera??0,()=>graphics.selectOriginalCamera?.());graphics.refresh?.();}).catch(()=>{failed=true;graphics.notice?.('Upgraded graphics are unavailable. Original graphics remain active.');});}return;}
-    try{const shown=upgraded.draw(canvas);if(shown)graphics.performanceFrame?.(performance.now());graphics.notice?.(shown?'Upgraded driving graphics · experimental':'Original graphics for this scene');}catch{failed=true;upgraded.close();upgraded=undefined;display();graphics.notice?.('Upgraded graphics are unavailable. Original graphics remain active.');}
+    if(!graphics){display();return;}graphics.refresh=presentWorld;
+    if(!graphics.enabled||failed){display();return;}
+    // Do not expose the retained original framebuffer while the upgraded race
+    // renderer is still loading. The last fully composited menu frame stays on
+    // screen until the first upgraded race frame can replace it atomically.
+    if(!upgraded){if(!loading){loading=true;graphics.notice?.('Loading upgraded driving graphics…');void import('./upgraded-race-scene').then(({createUpgradedRaceScene})=>{if(closed)return;upgraded=createUpgradedRaceScene(options.assets,baseline,runtime,()=>graphics.chaseCamera??0,()=>graphics.selectOriginalCamera?.());graphics.refresh?.();}).catch(()=>{failed=true;display();graphics.notice?.('Upgraded graphics are unavailable. Original graphics remain active.');});}return;}
+    try{const shown=upgraded.draw(canvas);if(!shown)display();else graphics.performanceFrame?.(performance.now());graphics.notice?.(shown?'Upgraded driving graphics · experimental':'Original graphics for this scene');}catch{failed=true;upgraded.close();upgraded=undefined;display();graphics.notice?.('Upgraded graphics are unavailable. Original graphics remain active.');}
    };
    const gameText=await json<TextResources>('race-dialog-text');
    activeRace=runtime;racePoll=onPoll;
@@ -297,7 +299,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    show('race');focusBrowserGameCanvas(canvas);
    await createNativeDialogRuntime(trackHost).dialog(resource,1,0,1);
   },
-  showRaceWaiting(memory:Uint8Array){show('race');canvas.style.cursor='none';if(lastNativeDisplay){const {owner}=lastNativeDisplay,high={cga:0x5e0,tandy:0x620,ega:0x45c}[owner.mode],y=new DataView(memory.buffer,memory.byteOffset,memory.byteLength).getUint16(0x2d1a0+0x8a10,true);new DataView(owner.memory().buffer).setUint16(owner.d+0x8a10+high,y,true);restoreOriginalDisplayWindow(owner.memory(),owner.d,owner.mode);drawOriginalRaceWaitingDisplay(owner.memory(),owner.d,owner.mode,owner.drawing,host.resources.ewai,0xe800);pixels.set(lastNativeDisplay.pixels());paint(lastNativeDisplay.palette);return;}drawOriginalRaceWaiting(pixels,font,host.resources.ewai,memory,0x2d1a0);present();},
+  showRaceWaiting(memory:Uint8Array){const keepEnhancedMenu=screen==='main'&&!options.displayMode&&enhancedTextures&&highResMainMenuReady;show('race');canvas.style.cursor='none';if(keepEnhancedMenu)return;if(lastNativeDisplay){const {owner}=lastNativeDisplay,high={cga:0x5e0,tandy:0x620,ega:0x45c}[owner.mode],y=new DataView(memory.buffer,memory.byteOffset,memory.byteLength).getUint16(0x2d1a0+0x8a10,true);new DataView(owner.memory().buffer).setUint16(owner.d+0x8a10+high,y,true);restoreOriginalDisplayWindow(owner.memory(),owner.d,owner.mode);drawOriginalRaceWaitingDisplay(owner.memory(),owner.d,owner.mode,owner.drawing,host.resources.ewai,0xe800);pixels.set(lastNativeDisplay.pixels());paint(lastNativeDisplay.palette);return;}drawOriginalRaceWaiting(pixels,font,host.resources.ewai,memory,0x2d1a0);present();},
   async loadAllocatedRaceReplay(data:NativeDemoData,runtime:Awaited<ReturnType<typeof createNativeManualRaceRuntime>>,services:Pick<AllocatedReplayLoadServices,'showWaiting'|'progress'|'writeAudio'>,displayOverride?:{file(path:string,extension:string,title:string,onPathChange?:(path:string)=>void):Promise<{path:string;name:string}|undefined>;present():void}){
    const d=0x2d1a0,dialogs=displayOverride??createNativeDialogRuntime(host);let selected:{path:string;name:string}|undefined;
    const readString=(memory:Uint8Array,at:number)=>{let value='';for(let i=0;i<65536;i++){const byte=memory[d+((at+i)&65535)];if(!byte)return value;value+=String.fromCharCode(byte);}throw Error('Unterminated original replay filename');};
