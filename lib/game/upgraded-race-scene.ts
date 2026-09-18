@@ -26,6 +26,8 @@ import {createEnhancedCrashEffects} from './enhanced-crash-effects';
 import {createEnhancedCockpitOverlay} from './enhanced-cockpit-overlay';
 import {upgradedTrackSeamShape} from './upgraded-track-seams';
 import {createEnhancedAlpineBackground,createEnhancedPanoramaBackground,enhancedPanoramaHorizon} from './enhanced-alpine-background';
+import {upgradedCarCastsShadow,upgradedHasActiveCrashFragments} from './upgraded-crash-presentation';
+import {createUpgradedRaceGround} from './upgraded-race-ground';
 import {type Vector} from '../physics/math';
 import trackMaterials from '../../public/game/track-materials.json';
 import trackRenderModels from '../../public/game/track-render-models.json';
@@ -51,13 +53,7 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
  scene.background=null;
  const camera=new THREE.PerspectiveCamera(58,1,1,200000);
  const sceneryWorldCenter=new THREE.Vector3(15360,0,-15360);
- const ground=new THREE.Mesh(new THREE.PlaneGeometry(30720,30720),new THREE.MeshBasicMaterial({color:0x000000,toneMapped:false,depthWrite:false}));
- // The base fill must never occlude terrain whose depth is biased behind roads.
- // It supplies the ordinary flat grass between road and special terrain.
- // Preserve its exact original hue without procedural colour variation or
- // the cyan atmospheric blend used by distant roads and scenery.
- ground.renderOrder=-1;ground.userData.retroDistanceColour=false;
- ground.rotation.x=-Math.PI/2;ground.position.set(15360,-1,15360);world.add(ground);
+ const ground=createUpgradedRaceGround();world.add(ground);
       const sourceMaterials={...trackMaterials,...readOriginalMaterialPatterns(runtime.session.state.memory)};
       // One native raster pixel maps to four pixels on this 4x presentation.
       // Keep every source line primitive at that screen-space weight.
@@ -188,9 +184,10 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    const graphicsChanged=frame.revision!==appliedGraphicsRevision;
    if(graphicsChanged){
     const groundIndex=(v.getUint16(d+0x909e,true)&255)*3;ground.material.color.setRGB(trackMaterials.palette[groundIndex]/255,trackMaterials.palette[groundIndex+1]/255,trackMaterials.palette[groundIndex+2]/255,THREE.SRGBColorSpace);
-    // State 3 means a finished race, not a collision. Actual crash scenes
-    // use the source's complete ordered primitives, including debris.
-    orderedScene=!!([runtime.session.state.player.driving.car.grip.crash,runtime.session.state.opponent.car.grip.crash].some(state=>state===1||state===2)||Array.from({length:24},(_,i)=>v.getInt16(d+0x8e44+i*2,true)).some(Boolean));
+    // Keep the ordered fallback only while genuine crash debris is active.
+    // Persistent crash flags and stale particle slots must not remove the
+    // upgraded world and its shadows for the rest of a replay.
+    orderedScene=upgradedHasActiveCrashFragments(live,d);
     const truckState=truck.update(live);if(truckState.rebuilt)retroLighting.apply(truck.group,true,false);truckChanged=truckState.changed;
    }
    // Camera selection is input state, so the live game memory is authoritative.
@@ -298,7 +295,7 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    if(renderer.domElement.width!==canvas.width||renderer.domElement.height!==canvas.height)renderer.setSize(canvas.width,canvas.height,false);
    const shadowCars=cars.map((models,i)=>{
     const state=i?runtime.session.state.opponent.car:runtime.session.state.player.driving.car;
-    if((i&&!live[d+0x8fc8])||state.grip.crash===1||state.grip.crash===2)return undefined;
+    if(!upgradedCarCastsShadow(!!i,!!live[d+0x8fc8],state.grip.crash))return undefined;
     return models[live[d+0x134]>=2&&models[1]?1:0];
    });
    const playerModel=cars[0][live[d+0x134]>=2&&cars[0][1]?1:0];
