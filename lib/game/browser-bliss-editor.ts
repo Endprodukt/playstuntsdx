@@ -167,7 +167,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  quickButton(14,'Redo',()=>{if(core.redo())changed('Redo');});
  quickButton(15,'Help',()=>showHelp(0));
  quickButton(16,'Generate Scenery — port pending');
- quickButton(17,'Track Analysis',()=>showTrackAnalysis());
+ quickButton(17,'Track Analysis — paths/errors; racer time estimates pending',()=>showTrackAnalysis());
  quickButton(18,'Tournaments — not used by PlayStunts DX');
  quickButton(19,'Editor Settings — full Bliss settings port pending');
 
@@ -235,8 +235,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  const drawConflict=()=>{
   if(!showConflicts)return;
-  const issue=core.compatibility()??core.terrainError();if(!issue)return;
-  context.save();context.strokeStyle='#ff3434';context.lineWidth=2;context.strokeRect(issue.x*16+1,issue.y*16+1,14,14);context.restore();
+  const issues=core.warnings();if(!issues.length)return;
+  context.save();context.strokeStyle='#ffe04a';context.lineWidth=2;
+  for(const issue of issues)context.strokeRect(issue.x*16+1,issue.y*16+1,14,14);
+  context.restore();
  };
  const renderMap=()=>{
   context.putImageData(blissOriginalMapImageData(core.track,host.resources,host.palette,showGrid),0,0);
