@@ -626,6 +626,20 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(marker?.complete&&marker.naturalWidth)cx.drawImage(marker,0,0,cropWidth,cropHeight);
   canvas.style.width=Math.max(size,width*size)+'px';canvas.style.height=Math.max(size,height*size)+'px';
  };
+ const drawSelectedPreview=(code:number,terrain:boolean,width=1,height=1)=>{
+  const image=blissOriginalPaletteImageData(code,terrain,host.resources,host.palette);
+  const cropWidth=terrain?16:Math.max(16,Math.min(image.width,width*16)),cropHeight=terrain?16:Math.max(16,Math.min(image.height,height*16));
+  const source=document.createElement('canvas');source.width=cropWidth;source.height=cropHeight;
+  const sx=source.getContext('2d',{alpha:false})!;sx.putImageData(image,0,0,0,0,cropWidth,cropHeight);
+  const marker=!terrain?markerImages[code]:undefined;
+  if(marker?.complete&&marker.naturalWidth)sx.drawImage(marker,0,0,cropWidth,cropHeight);
+  selectedPreview.width=112;selectedPreview.height=112;
+  const cx=selectedPreview.getContext('2d',{alpha:false})!;cx.imageSmoothingEnabled=false;cx.fillStyle='#070707';cx.fillRect(0,0,112,112);
+  const available=104,scale=Math.min(available/cropWidth,available/cropHeight),drawWidth=Math.max(1,Math.round(cropWidth*scale)),drawHeight=Math.max(1,Math.round(cropHeight*scale));
+  const x=Math.floor((112-drawWidth)/2),y=Math.floor((112-drawHeight)/2);
+  cx.drawImage(source,0,0,cropWidth,cropHeight,x,y,drawWidth,drawHeight);
+  selectedPreview.style.width='112px';selectedPreview.style.height='112px';
+ };
  const drawPageIcon=(canvas:HTMLCanvasElement,index:number)=>{
   if(index===10){
    const codes=[0,1,6,11];canvas.width=32;canvas.height=32;const cx=canvas.getContext('2d',{alpha:false})!;
@@ -649,7 +663,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
     ?('F12 · brush mode · left adds, right removes · mouse only')
     :(('Track element ')+currentCode+' · F'+(page+1));
   const selectedShape=!terrainPage?blissTrackTransforms[currentCode]:undefined;
-  drawPreview(selectedPreview,currentCode,terrainPage,112,selectedShape?.width??1,selectedShape?.height??1);
+  drawSelectedPreview(currentCode,terrainPage,selectedShape?.width??1,selectedShape?.height??1);
 
   paletteGrid.replaceChildren();
   const blocks=paletteBlocks(page);
