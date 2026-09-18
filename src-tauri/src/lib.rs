@@ -399,6 +399,78 @@ fn check_gamedata() -> Result<bool, String> {
     Ok(false)
 }
 
+fn checked_track_filename(name: &str) -> Result<String, String> {
+    let stem = name.trim().to_ascii_uppercase();
+    if stem.is_empty() || stem.len() > 8 {
+        return Err("Track name must contain between 1 and 8 characters.".to_string());
+    }
+    if !stem
+        .bytes()
+        .all(|value| value.is_ascii_alphanumeric() || value == b'_' || value == b'-')
+    {
+        return Err("Track name contains unsupported filename characters.".to_string());
+    }
+    Ok(format!("{stem}.TRK"))
+}
+
+fn find_custom_track(directory: &Path, filename: &str) -> Result<Option<PathBuf>, String> {
+    if !directory.is_dir() {
+        return Ok(None);
+    }
+    let mut entries = fs::read_dir(directory)
+        .map_err(|error| format!("Could not scan {}: {error}", directory.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not scan {}: {error}", directory.display()))?;
+    entries.sort_by_key(|entry| entry.file_name().to_string_lossy().to_lowercase());
+    for entry in entries {
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("Could not inspect {}: {error}", path.display()))?;
+        if file_type.is_dir() {
+            if let Some(found) = find_custom_track(&path, filename)? {
+                return Ok(Some(found));
+            }
+        } else if file_type.is_file()
+            && entry.file_name().to_string_lossy().eq_ignore_ascii_case(filename)
+        {
+            return Ok(Some(path));
+        }
+    }
+    Ok(None)
+}
+
+#[tauri::command]
+fn custom_track_exists(name: String) -> Result<bool, String> {
+    let filename = checked_track_filename(&name)?;
+    Ok(find_custom_track(&application_root()?.join("Custom Tracks"), &filename)?.is_some())
+}
+
+#[tauri::command]
+fn write_custom_track(name: String, data: Vec<u8>) -> Result<String, String> {
+    if data.len() != 1802 {
+        return Err(format!(
+            "Custom Stunts tracks must contain exactly 1802 bytes (got {}).",
+            data.len()
+        ));
+    }
+    let filename = checked_track_filename(&name)?;
+    let root = application_root()?.join("Custom Tracks");
+    fs::create_dir_all(&root)
+        .map_err(|error| format!("Could not create {}: {error}", root.display()))?;
+    let path = match find_custom_track(&root, &filename)? {
+        Some(existing) => existing,
+        None => root.join(&filename),
+    };
+    fs::write(&path, data)
+        .map_err(|error| format!("Could not write custom track {}: {error}", path.display()))?;
+    Ok(path
+        .strip_prefix(application_root()?)
+        .unwrap_or(&path)
+        .to_string_lossy()
+        .replace('\\', "/"))
+}
+
 #[tauri::command]
 fn runtime_file_exists(path: String) -> Result<bool, String> {
     let path = runtime_game_root()?.join(checked_runtime_path(&path)?);
@@ -736,6 +808,8 @@ pub fn run() {
             runtime_file_exists,
             read_runtime_file,
             write_runtime_file,
+            custom_track_exists,
+            write_custom_track,
             toggle_mt32_panel,
             check_mt32_roms,
             read_mt32_rom,
