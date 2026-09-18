@@ -1,4 +1,5 @@
 import {clearDesktopWheelInput,setDesktopWheelInput} from '../lib/game/desktop-wheel-input';
+import {blissEditorActive} from '../lib/game/bliss-editor-presence';
 
 type SetupStage =
   | 'idle'
@@ -176,6 +177,7 @@ function createSetupUi(
   onToggle: () => void,
 ): SetupUi {
   const root = document.createElement('div');
+  root.dataset.playstuntsOptionsRoot = '1';
   root.style.cssText = 'position:fixed;right:16px;top:16px;z-index:2147483647;font:14px/1.4 system-ui,Segoe UI,sans-serif;color:#f5f5f5;';
 
   const toggle = document.createElement('button');
@@ -396,6 +398,14 @@ export function installDesktopDriveControls() {
   }
 
   function updateUi(ui: SetupUi) {
+    const editorActive=blissEditorActive();
+    ui.root.style.display=editorActive?'none':'block';
+    if(editorActive&&setupOpen){
+      setupOpen=false;
+      referenceSnapshot=undefined;
+      captureNotice='';
+      if(stage!=='done')stage='idle';
+    }
     ui.panel.style.display = setupOpen ? 'block' : 'none';
     ui.status.textContent = stageText();
     ui.bindings.textContent = bindingsText();
@@ -544,6 +554,7 @@ export function installDesktopDriveControls() {
   const ui = createSetupUi(startCalibration, captureCalibrationPoint, clearBindings, toggleSetup);
 
   function onKeyDown(event: KeyboardEvent) {
+    if(blissEditorActive())return;
     if (event.key === 'F8' && !event.repeat) {
       event.preventDefault();
       event.stopImmediatePropagation();
