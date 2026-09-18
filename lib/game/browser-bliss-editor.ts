@@ -6,6 +6,7 @@ import {blissParentElement} from './bliss-edit.ts';
 import {blissTrackHash} from './bliss-track.ts';
 import {changeBlissMaterial,findBlissElementByName,smartSelectBliss} from './bliss-shortcuts.ts';
 import {transformBlissTerrainCode,transformBlissTrackCode,type BlissTransformOperation} from './bliss-transformations.ts';
+import {BLISS_TOOL_ICON_COLUMNS,BLISS_TOOL_ICON_SIZE,BLISS_TOOL_ICON_SPRITE} from './bliss-tool-icons.ts';
 
 export interface BrowserBlissEditorHost {
  canvas:HTMLCanvasElement;
@@ -17,6 +18,8 @@ export interface BrowserBlissEditorHost {
  exists(path:string,name:string):Promise<boolean>;
  customTrackExists?(name:string):Promise<boolean>;
  persistCustomTrack?(name:string,bytes:Uint8Array):Promise<string>;
+ enumerateTracks?():Promise<string[]>;
+ readTrack?(path:string,name:string):Promise<Uint8Array>;
  presets?:readonly {terrain:number[]}[];
 }
 
@@ -113,22 +116,37 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  mapWrap.append(map);mapPanel.append(zoomBar,mapWrap);
 
  const toolsPanel=panel('Bliss tools');
- const quick=document.createElement('div');quick.style.cssText='display:grid;grid-template-columns:repeat(4,1fr);gap:5px;';
- const quickButton=(symbol:string,titleText:string,action:()=>void)=>{
-  const control=button(symbol,action);control.title=titleText;control.setAttribute('aria-label',titleText);control.style.cssText+='font-size:20px;height:44px;padding:3px;';quick.append(control);return control;
+ const quick=document.createElement('div');quick.style.cssText='display:grid;grid-template-columns:repeat(4,48px);gap:4px;justify-content:center;padding:6px;background:#17172a;border:1px solid #303047;border-radius:5px;';
+ const quickButton=(icon:number,titleText:string,action?:()=>void)=>{
+  const control=button('',()=>action?.());control.title=titleText;control.setAttribute('aria-label',titleText);
+  control.style.cssText+='width:48px;height:48px;padding:1px;display:grid;place-items:center;background:#222238;border-color:#4a4a64;';
+  const image=document.createElement('span'),column=icon%BLISS_TOOL_ICON_COLUMNS,row=Math.floor(icon/BLISS_TOOL_ICON_COLUMNS);
+  image.style.cssText='display:block;width:'+BLISS_TOOL_ICON_SIZE+'px;height:'+BLISS_TOOL_ICON_SIZE+'px;background-image:url("'+BLISS_TOOL_ICON_SPRITE+'");background-repeat:no-repeat;background-size:'+(BLISS_TOOL_ICON_SIZE*BLISS_TOOL_ICON_COLUMNS)+'px '+(BLISS_TOOL_ICON_SIZE*5)+'px;background-position:-'+(column*BLISS_TOOL_ICON_SIZE)+'px -'+(row*BLISS_TOOL_ICON_SIZE)+'px;image-rendering:pixelated;';
+  control.replaceChildren(image);
+  if(!action){control.disabled=true;control.style.opacity='.35';control.style.cursor='not-allowed';}
+  quick.append(control);return control;
  };
- quickButton('□','Select',()=>{activeArea='grid';updateArea();});
- quickButton('⧉','Copy',()=>copySelection());
- quickButton('✂','Cut',()=>cutSelection());
- quickButton('↪','Paste',()=>pasteClipboard());
- quickButton('↔','Flip horizontally (F)',()=>flip(false));
- quickButton('↕','Flip vertically (Shift+F)',()=>flip(true));
- quickButton('↻','Rotate clockwise (R)',()=>rotate(false));
- quickButton('↺','Rotate counter-clockwise (Shift+R)',()=>rotate(true));
- quickButton('↶','Undo',()=>{if(core.undo())changed('Undo');});
- quickButton('↷','Redo',()=>{if(core.redo())changed('Redo');});
- quickButton('?','Bliss shortcut help',()=>showHelp(0));
- quickButton('✓','Check track',()=>checkTrack());
+ // Keep Bliss' original 4×5 toolbar order so muscle memory carries over.
+ quickButton(0,'New Track',()=>void createNewTrack());
+ quickButton(1,'Save Track',()=>void saveTrack());
+ quickButton(2,'Load Track',()=>void loadTrack());
+ quickButton(3,'Exit Bliss editor',()=>void finish());
+ quickButton(4,'Select',()=>{activeArea='grid';updateArea();});
+ quickButton(5,'Copy',()=>copySelection());
+ quickButton(6,'Cut',()=>cutSelection());
+ quickButton(7,'Paste',()=>pasteClipboard());
+ quickButton(8,'Flip horizontally (F)',()=>flip(false));
+ quickButton(9,'Flip vertically (Shift+F)',()=>flip(true));
+ quickButton(10,'Rotate clockwise (R)',()=>rotate(false));
+ quickButton(11,'Rotate counter-clockwise (Shift+R)',()=>rotate(true));
+ quickButton(12,'Track Information',()=>showTrackInfo());
+ quickButton(13,'Undo',()=>{if(core.undo())changed('Undo');});
+ quickButton(14,'Redo',()=>{if(core.redo())changed('Redo');});
+ quickButton(15,'Help',()=>showHelp(0));
+ quickButton(16,'Generate Scenery — port pending');
+ quickButton(17,'Track Analysis',()=>showTrackAnalysis());
+ quickButton(18,'Tournaments — not used by PlayStunts DX');
+ quickButton(19,'Editor Settings',()=>showEditorSettings());
 
  const switches=document.createElement('div');switches.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:10px;';
  const switchButtons=new Map<string,HTMLButtonElement>();
@@ -426,6 +444,78 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(terrain)terrainBrush=next;else brush=next;renderPalette();renderStatus();
   if(next===before){status.textContent=label+': this piece is symmetrical, so its orientation does not change.';status.style.color='#aaa';}
   else{status.textContent=label+' → '+next+' · '+(terrain?('Terrain '+next):(blissElementData[next]?.id||('Element '+next)));status.style.color='#aee18a';}
+ }
+
+ function showTextModal(titleText:string,rows:readonly string[]){
+  const shade=document.createElement('div');shade.style.cssText='position:fixed;inset:0;z-index:2147483640;background:rgba(0,0,0,.72);display:grid;place-items:center;padding:30px;';
+  const box=document.createElement('div');box.style.cssText='width:min(640px,90vw);max-height:85vh;overflow:auto;background:#1e1e34;border:2px solid #80809a;color:#ddd;padding:18px 22px;box-shadow:0 18px 60px #000;font:14px/1.45 ui-monospace,Consolas,monospace;';
+  const heading=document.createElement('h2');heading.textContent=titleText;heading.style.cssText='text-align:center;font-size:16px;margin:0 0 12px;border-bottom:1px solid #aaa;padding-bottom:8px;';
+  const body=document.createElement('div');for(const row of rows){const line=document.createElement('div');line.textContent=row;line.style.margin='3px 0';body.append(line);}
+  const close=button('Back',()=>shade.remove());close.style.marginTop='14px';box.append(heading,body,close);shade.append(box);document.body.append(shade);
+  shade.addEventListener('pointerdown',event=>{if(event.target===shade)shade.remove();});
+ }
+
+ async function loadTrack(){
+  if(!host.enumerateTracks||!host.readTrack){status.textContent='Track loading is unavailable in this build.';status.style.color='#ffbd7a';return;}
+  if(core.modified&&!window.confirm('Discard the current unsaved changes and load another track?'))return;
+  let filenames:string[];
+  try{filenames=(await host.enumerateTracks()).filter(value=>/\.trk$/i.test(value)).sort((a,b)=>a.localeCompare(b));}
+  catch(error){status.textContent='Could not list tracks: '+String(error);status.style.color='#ff9b9b';return;}
+  if(!filenames.length){status.textContent='No tracks found.';status.style.color='#ffbd7a';return;}
+  const shade=document.createElement('div');shade.style.cssText='position:fixed;inset:0;z-index:2147483640;background:rgba(0,0,0,.72);display:grid;place-items:center;padding:30px;';
+  const box=document.createElement('div');box.style.cssText='width:min(560px,90vw);max-height:82vh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#1e1e34;border:2px solid #80809a;padding:16px;box-shadow:0 18px 60px #000;';
+  const heading=document.createElement('h2');heading.textContent='Load Track';heading.style.cssText='text-align:center;font:16px ui-monospace,Consolas,monospace;margin:0 0 10px;color:#eee;';
+  const list=document.createElement('div');list.style.cssText='display:grid;gap:4px;overflow:auto;min-height:120px;max-height:60vh;';
+  const close=button('Cancel',()=>shade.remove());
+  const choose=async(filename:string)=>{
+   const stem=filename.replace(/\.trk$/i,'');
+   try{
+    const bytes=await host.readTrack!('',stem);if(bytes.length!==1802)throw Error('Track must contain exactly 1802 bytes');
+    core.loadBytes(bytes);host.track.name=stem;host.track.path='';host.track.raw=Array.from(bytes);name.textContent=stem+'.TRK';
+    cellX=0;cellY=0;lastPlaced=null;core.setSelection(null);shade.remove();renderPalette();renderMap();renderStatus();status.textContent='Loaded '+stem+'.TRK';status.style.color='#aee18a';
+   }catch(error){status.textContent='Could not load '+filename+': '+String(error);status.style.color='#ff9b9b';}
+  };
+  for(const filename of filenames){const entry=button(filename,()=>void choose(filename));entry.style.textAlign='left';entry.style.fontFamily='ui-monospace,Consolas,monospace';list.append(entry);}
+  box.append(heading,list,close);shade.append(box);document.body.append(shade);
+  shade.addEventListener('pointerdown',event=>{if(event.target===shade)shade.remove();});
+ }
+
+ function showTrackInfo(){
+  const metadata=core.metadata()?.metadata,start=core.start(),hash=blissTrackHash(core.track).toString(16).toUpperCase().padStart(8,'0');
+  showTextModal('Track Information',[
+   'File: '+(host.track.name||'UNTITLED')+'.TRK',
+   'Landscape: '+core.track.landscape,
+   'Format: '+core.track.format,
+   'Hash: '+hash,
+   'Start: '+(start.error?'error '+start.error:(start.x+1)+','+(start.y+1)),
+   'Title: '+(metadata?.title||'—'),
+   'Author: '+(metadata?.author||'—'),
+   'Comment: '+(metadata?.comment||'—'),
+  ]);
+ }
+
+ function showTrackAnalysis(){
+  const analysis=core.analyze();
+  const finishing=analysis.paths.filter(path=>path.finishes).length;
+  showTextModal('Track Analysis',[
+   'Sections: '+Math.max(0,analysis.sections.length-1),
+   'Paths: '+analysis.paths.length,
+   'Finishing paths: '+finishing,
+   'Errors: '+analysis.errors.length,
+   'Too complex: '+(analysis.tooComplex?'yes':'no'),
+   analysis.errors.length?'First error: '+analysis.errors[0].error+' at '+(analysis.errors[0].x+1)+','+(analysis.errors[0].y+1):'No route errors detected.',
+  ]);
+ }
+
+ function showEditorSettings(){
+  showTextModal('Editor Settings',[
+   'Conflict generation: '+(allowConflicts?'on':'off')+' (Ctrl+E)',
+   'Conflict warnings: '+(showConflicts?'on':'off')+' (Ctrl+D)',
+   'Grid: '+(showGrid?'on':'off')+' (Ctrl+G)',
+   'Paste track layer: '+(affectTrack?'on':'off')+' (Ctrl+K)',
+   'Paste terrain layer: '+(affectTerrain?'on':'off')+' (Ctrl+T)',
+   'Debug mode: '+(debugMode?'on':'off')+' (Ctrl+Q)',
+  ]);
  }
 
  function showHelp(initial:0|1){
