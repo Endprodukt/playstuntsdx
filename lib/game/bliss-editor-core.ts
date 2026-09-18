@@ -9,6 +9,7 @@ import {buildBlissClosedCircuit,linkBlissTiles} from './bliss-smart-tools.ts';
 import {analyzeBlissRoute,checkBlissTrack} from './bliss-route.ts';
 import {detectBlissNonStunts,detectBlissTerrainError,findBlissStart,listBlissCompatibilityIssues} from './bliss-validation.ts';
 import {blissTrackMetadata,setBlissTrackMetadata,type BlissMetadata,type BlissMetadataFormat} from './bliss-metadata.ts';
+import {generateBlissScenery,type BlissSceneryGeneratorConfig} from './bliss-scenery-generator.ts';
 
 export interface BlissSelection {x:number;y:number;width:number;height:number}
 
@@ -57,6 +58,10 @@ export class BlissEditorCore {
  start(){return findBlissStart(this.track);}
  metadata(){return blissTrackMetadata(this.track);}
  setMetadata(metadata:BlissMetadata|null,format:BlissMetadataFormat='binary'){this.change(()=>setBlissTrackMetadata(this.track,metadata,format));}
+ generateScenery(config:BlissSceneryGeneratorConfig){
+  const next=generateBlissScenery(this.track,config);
+  this.change(()=>{this.track.track.set(next.track);});
+ }
  setSelection(selection:BlissSelection|null){
   if(selection){captureBlissRegion(this.track,selection.x,selection.y,selection.width,selection.height);}
   this.selection=selection?{...selection}:null;
