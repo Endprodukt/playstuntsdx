@@ -866,7 +866,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    }
    if(action.id==='paint')insertAtCursor();else deleteAtCursor();return;
   }
-  if(action.id==='mousePick'||action.id==='pick'){pickAtCursor();editor3D.update(core.track);return;}
+  if(action.id==='mousePick'||action.id==='pick'){
+   if(colouringMode&&action.id==='mousePick'){showColourDialog();return;}
+   pickAtCursor();editor3D.update(core.track);return;
+  }
   executeBoundAction(action,event.shiftKey);
  });
  map3D.addEventListener('pointermove',event=>{
@@ -1159,14 +1162,18 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
   const box=document.createElement('div');box.style.cssText='width:min(500px,90vw);background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:20px 22px;box-shadow:0 22px 70px #000;border-radius:6px;font:13px/1.4 system-ui,Segoe UI,sans-serif;';
   const heading=document.createElement('h2');heading.textContent='Colouring';heading.style.cssText='text-align:center;font-size:18px;margin:0 0 15px;border-bottom:1px solid #aaa;padding-bottom:8px;';
-  const form=document.createElement('div');form.style.cssText='display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:center;';
-  const makeRow=(label:string,value:number)=>{
+  const form=document.createElement('div');form.style.cssText='display:grid;grid-template-columns:110px minmax(150px,1fr) auto auto;gap:10px;align-items:center;';
+  const makeRow=(label:string,value:number,sameLabel:string)=>{
    const text=document.createElement('strong');text.textContent=label;
    const input=document.createElement('input');input.type='color';input.value=value===BLISS_TRANSPARENT_COLOUR?'#ffffff':colour565ToHex(value);input.style.cssText='width:100%;height:36px;background:#111;border:1px solid #555;';
-   const clear=document.createElement('label');clear.style.cssText='display:flex;gap:5px;align-items:center;color:#bbb;';const check=document.createElement('input');check.type='checkbox';check.checked=value===BLISS_TRANSPARENT_COLOUR;clear.append(check,document.createTextNode('Clear'));
-   check.addEventListener('change',()=>{input.disabled=check.checked;});input.disabled=check.checked;form.append(text,input,clear);return {input,check};
+   const clear=document.createElement('label');clear.style.cssText='display:flex;gap:5px;align-items:center;color:#bbb;white-space:nowrap;';const check=document.createElement('input');check.type='checkbox';check.checked=value===BLISS_TRANSPARENT_COLOUR;clear.append(check,document.createTextNode('Clear'));
+   const same=button('Same as '+sameLabel,()=>{});
+   same.style.cssText+='padding:6px 8px;font-size:10px;white-space:nowrap;';
+   check.addEventListener('change',()=>{input.disabled=check.checked;});input.disabled=check.checked;form.append(text,input,clear,same);return {input,check,same};
   };
-  const border=makeRow('Border',borderColour),background=makeRow('Background',backgroundColour);
+  const border=makeRow('Border',borderColour,'Background'),background=makeRow('Background',backgroundColour,'Border');
+  border.same.onclick=()=>{border.input.value=background.input.value;border.check.checked=background.check.checked;border.input.disabled=border.check.checked;};
+  background.same.onclick=()=>{background.input.value=border.input.value;background.check.checked=border.check.checked;background.input.disabled=background.check.checked;};
   const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:18px;';
   const close=()=>{modalOpen=false;shade.remove();overlay.focus();};
   const set=button('Set colours',()=>{borderColour=border.check.checked?BLISS_TRANSPARENT_COLOUR:hexToColour565(border.input.value);backgroundColour=background.check.checked?BLISS_TRANSPARENT_COLOUR:hexToColour565(background.input.value);close();renderColourControls();renderStatus();});
