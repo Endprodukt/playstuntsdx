@@ -159,7 +159,9 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    const tauriCore=(window as typeof window&{__TAURI__?:{core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}}}).__TAURI__?.core;
    const customTracks=tauriCore?{
     customTrackExists:(name:string)=>tauriCore.invoke<boolean>('custom_track_exists',{name}),
+    readCustomTrack:(name:string)=>tauriCore.invoke<number[]>('read_custom_track',{name}).then(bytes=>Uint8Array.from(bytes)),
     persistCustomTrack:(name:string,bytes:Uint8Array)=>tauriCore.invoke<string>('write_custom_track',{name,data:Array.from(bytes)}),
+    fetchUrl:(url:string)=>tauriCore.invoke<number[]>('bliss_http_get',{url}).then(bytes=>Uint8Array.from(bytes)),
    }:{};
    await runBrowserBlissEditor({
     canvas,track,palette,
