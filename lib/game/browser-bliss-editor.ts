@@ -932,21 +932,28 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const table=document.createElement('div');table.style.cssText='display:grid;grid-template-columns:minmax(180px,1fr) minmax(250px,1.5fr) 155px;gap:8px 12px;align-items:center;';
   for(const label of ['Scenery','Percentage','Placement']){const h=document.createElement('strong');h.textContent=label;h.style.cssText='color:#d8d8ea;border-bottom:1px solid #555;padding-bottom:5px;';table.append(h);}
   const percentageInputs:HTMLInputElement[]=[],percentageNumbers:HTMLInputElement[]=[],modeInputs:HTMLSelectElement[]=[];
+  // Bliss only changes lastchanged when the percentage bar itself moves.
+  // Changing a placement selector re-runs normalization with the previous
+  // bar as lastchanged; treating the selector row as lastchanged changes the
+  // percentages and was the source of visible number drift.
+  let lastChanged=0;
 
   const syncPercent=(index:number,value:number)=>{
    const percent=Math.max(0,Math.min(100,blissRoundToEven(value)));
    rules[index].percent=percent;percentageInputs[index].value=String(percent);percentageNumbers[index].value=String(percent);
   };
-  const normalizeGroup=(lastChanged:number)=>{
-   const shipOnWater=rules[9]?.placement==='on-water',top=shipOnWater?8:9;
-   const group=(rule:BlissSceneryRule)=>rule.placement==='everywhere'?1:2;
-   const changedGroup=group(rules[lastChanged]);
-   const indices=Array.from({length:top+1},(_,i)=>i).filter(i=>group(rules[i])===changedGroup);
-   const total=indices.reduce((sum,i)=>sum+rules[i].percent,0);
-   if(total<=100)return;
-   const own=indices.includes(lastChanged)?rules[lastChanged].percent:0,others=total-own;
-   const factor=indices.includes(lastChanged)?(others>0?(100-own)/others:0):100/total;
-   for(const i of indices)if(i!==lastChanged)syncPercent(i,rules[i].percent*factor);
+  const normalizeGroups=()=>{
+   const top=rules[9]?.placement==='on-water'?8:9;
+   for(const placement of ['everywhere','secondary'] as const){
+    const matches=(rule:BlissSceneryRule)=>placement==='everywhere'?rule.placement==='everywhere':rule.placement!=='everywhere';
+    const indices=Array.from({length:top+1},(_,i)=>i).filter(i=>matches(rules[i]));
+    const total=indices.reduce((sum,i)=>sum+rules[i].percent,0);
+    if(total<=100)continue;
+    const changedIsHere=lastChanged<=top&&matches(rules[lastChanged]);
+    const own=changedIsHere?rules[lastChanged].percent:0;
+    const factor=changedIsHere?(total-own>0?(100-own)/(total-own):0):100/total;
+    for(const i of indices)if(i!==lastChanged)syncPercent(i,rules[i].percent*factor);
+   }
   };
 
   rules.forEach((rule,index)=>{
@@ -958,7 +965,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    const percentBox=document.createElement('div');percentBox.style.cssText='display:grid;grid-template-columns:minmax(0,1fr) 68px;gap:8px;align-items:center;';
    const percentage=document.createElement('input');percentage.type='range';percentage.min='0';percentage.max='100';percentage.step='1';percentage.value=String(rule.percent);percentage.style.width='100%';
    const number=document.createElement('input');number.type='number';number.min='0';number.max='100';number.step='1';number.value=String(rule.percent);number.style.cssText='box-sizing:border-box;width:100%;padding:6px;background:#0d0d18;border:1px solid #676783;color:#fff;border-radius:3px;text-align:right;';
-   const update=(value:number)=>{syncPercent(index,value);normalizeGroup(index);};
+   const update=(value:number)=>{lastChanged=index;syncPercent(index,value);normalizeGroups();};
    percentage.addEventListener('input',()=>update(Number(percentage.value)));
    number.addEventListener('input',()=>update(Number(number.value)||0));
    percentBox.append(percentage,number);
@@ -967,7 +974,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    const isShip=rule.baseCode===0xab;
    const choices:readonly [BlissSceneryPlacement,string][]=isShip?[['on-water','On water'],['everywhere','Everywhere']]:[['everywhere','Everywhere'],['by-road','By the road']];
    for(const [value,text] of choices){const option=document.createElement('option');option.value=value;option.textContent=text;option.selected=value===rule.placement;mode.append(option);}
-   mode.addEventListener('change',()=>{rules[index].placement=mode.value as BlissSceneryPlacement;normalizeGroup(index);});
+   mode.addEventListener('change',()=>{rules[index].placement=mode.value as BlissSceneryPlacement;normalizeGroups();});
 
    percentageInputs.push(percentage);percentageNumbers.push(number);modeInputs.push(mode);
    table.append(label,percentBox,mode);
