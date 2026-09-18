@@ -153,20 +153,11 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const paletteGrid=document.createElement('div');paletteGrid.style.cssText='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;align-content:start;overflow:auto;min-height:0;padding-right:3px;';
  const pageBar=document.createElement('div');pageBar.style.cssText='display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding-top:6px;border-top:1px solid #2d2d2d;';
  const landscapeNames=['Desert','Tropical','Alpine','City','Country'] as const;
- const landscapeImages=[
-  '/site/enhanced-backgrounds/desert-overview.png',
-  '/site/enhanced-backgrounds/tropical-overview.png',
-  '/site/enhanced-backgrounds/alpine-overview.png',
-  '/site/enhanced-backgrounds/city-overview.png',
-  '/site/enhanced-backgrounds/country-overview.png',
- ] as const;
  const sceneryBox=document.createElement('div');sceneryBox.style.cssText='border-top:1px solid #2d2d2d;padding-top:8px;';
  const sceneryTitle=document.createElement('div');sceneryTitle.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;color:#aaa;';
  const sceneryLabel=document.createElement('strong');sceneryLabel.textContent='Background / Scenery';sceneryLabel.style.color='#ddd';
  const sceneryCurrent=document.createElement('span');
- const sceneryPreview=document.createElement('img');sceneryPreview.alt='Selected Stunts background';sceneryPreview.style.cssText='display:block;width:100%;height:92px;object-fit:cover;object-position:center;border:1px solid #353535;background:#070707;margin-bottom:6px;image-rendering:auto;';
- sceneryPreview.addEventListener('error',()=>{sceneryPreview.style.display='none';});
- sceneryPreview.addEventListener('load',()=>{sceneryPreview.style.display='block';});
+ const sceneryPreview=document.createElement('canvas');sceneryPreview.width=320;sceneryPreview.height=120;sceneryPreview.style.cssText='display:block;width:100%;height:92px;border:1px solid #353535;background:#070707;margin-bottom:6px;image-rendering:pixelated;';
  sceneryTitle.append(sceneryLabel,sceneryCurrent);
  const sceneryButtons=document.createElement('div');sceneryButtons.style.cssText='display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;';
  const sceneryControls=landscapeNames.map((label,index)=>{
@@ -181,8 +172,13 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const renderScenery=()=>{
   const selected=Math.max(0,Math.min(4,core.track.landscape));
   sceneryCurrent.textContent=landscapeNames[selected];
-  const nextSource=landscapeImages[selected];
-  if(!sceneryPreview.src.endsWith(nextSource))sceneryPreview.src=nextSource;
+  const preview=host.sceneryPreviews?.[selected],previewContext=sceneryPreview.getContext('2d',{alpha:false})!;
+  if(preview){
+   const image=new ImageData(new Uint8ClampedArray(preview.rgba),preview.width,preview.height);
+   sceneryPreview.width=preview.width;sceneryPreview.height=preview.height;previewContext.putImageData(image,0,0);
+  }else{
+   sceneryPreview.width=320;sceneryPreview.height=120;previewContext.fillStyle='#070707';previewContext.fillRect(0,0,320,120);
+  }
   sceneryControls.forEach((control,index)=>setActive(control,index===selected));
  };
  sceneryBox.append(sceneryTitle,sceneryPreview,sceneryButtons);
