@@ -59,7 +59,7 @@ export function buildBlissClosedCircuit(source:BlissTrack,selection:BlissClosedC
  if(!straight)return false;
  if(x1===x2){for(let y=y1;y<=y2;y++)placeBlissTrackElement(source,x1,y,straight,definitions);return true;}
  if(y1===y2){straight=definitions.track[straight].clockwise;for(let x=x1;x<=x2;x++)placeBlissTrackElement(source,x,y1,straight,definitions);return true;}
- if(!corner)return false;
+ if(!corner&&brush.entity!==98)return false;
  placeBlissTrackElement(source,x1,y1,corner,definitions);corner=definitions.track[corner].clockwise;
  placeBlissTrackElement(source,x2-definitions.track[corner].width+1,y1,corner,definitions);corner=definitions.track[corner].clockwise;
  placeBlissTrackElement(source,x2-definitions.track[corner].width+1,y2-definitions.track[corner].height+1,corner,definitions);corner=definitions.track[corner].clockwise;
