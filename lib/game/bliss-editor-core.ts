@@ -7,7 +7,7 @@ import {clearBlissTrackElement,dryBlissTerrain,floodBlissTerrain,lowerBlissTerra
 import {captureBlissRegion,cutBlissRegion,hflipBlissRegion,pasteBlissRegion,rotateBlissRegionClockwise,rotateBlissRegionCounterClockwise,vflipBlissRegion,type BlissRegion} from './bliss-region.ts';
 import {buildBlissClosedCircuit,linkBlissTiles} from './bliss-smart-tools.ts';
 import {analyzeBlissRoute,checkBlissTrack} from './bliss-route.ts';
-import {detectBlissNonStunts,detectBlissTerrainError,findBlissStart} from './bliss-validation.ts';
+import {detectBlissNonStunts,detectBlissTerrainError,findBlissStart,listBlissCompatibilityIssues} from './bliss-validation.ts';
 import {blissTrackMetadata,setBlissTrackMetadata,type BlissMetadata,type BlissMetadataFormat} from './bliss-metadata.ts';
 
 export interface BlissSelection {x:number;y:number;width:number;height:number}
@@ -52,6 +52,7 @@ export class BlissEditorCore {
  analyze(){return analyzeBlissRoute(this.track,this.definitions);}
  check(){return checkBlissTrack(this.track);}
  compatibility(){return detectBlissNonStunts(this.track,this.definitions);}
+ warnings(){return listBlissCompatibilityIssues(this.track,this.definitions);}
  terrainError(){return detectBlissTerrainError(this.track);}
  start(){return findBlissStart(this.track);}
  metadata(){return blissTrackMetadata(this.track);}
