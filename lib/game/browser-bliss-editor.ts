@@ -77,6 +77,51 @@ const TILE_HELP=[
  ['T','Tunnel and slalom'],['V','Transitions'],['W','Corkscrew'],['X, Y, Z','Side, bottom and corner fillers'],
 ] as const;
 
+type HoverHelp={name:string;shortcut?:string;description:string};
+const QUICK_TOOL_HELP:readonly HoverHelp[]=[
+ {name:'New Track',description:'Create a new track design.'},
+ {name:'Save Track',description:'Save the current track into Custom Tracks.'},
+ {name:'Load Track',description:'Load an existing track into the editor.'},
+ {name:'Exit',shortcut:'Esc',description:'Leave the editor. Unsaved changes will be offered for saving.'},
+ {name:'Select',shortcut:'Ctrl + drag',description:'Select a rectangular region, like holding Ctrl in Bliss.'},
+ {name:'Copy',shortcut:'Ctrl+C',description:'Copy the selected track and terrain region to the clipboard.'},
+ {name:'Cut',shortcut:'Ctrl+X',description:'Copy the selection and delete the enabled TRK/TER layers.'},
+ {name:'Paste',shortcut:'Ctrl+V',description:'Start Bliss-style hovering paste; move it before placing.'},
+ {name:'Flip horizontally',shortcut:'F',description:'Selection/paste: flip the block. With no selection the toolbar icon flips the whole track; F alone flips the current element.'},
+ {name:'Flip vertically',shortcut:'Shift+F',description:'Selection/paste: flip the block. With no selection the toolbar icon flips the whole track; Shift+F alone flips the current element.'},
+ {name:'Rotate clockwise',shortcut:'R',description:'Selection/paste: rotate the block. With no selection the toolbar icon rotates the whole track; R alone rotates the current element.'},
+ {name:'Rotate counter-clockwise',shortcut:'Shift+R',description:'Selection/paste: rotate the block. With no selection the toolbar icon rotates the whole track; Shift+R alone rotates the current element.'},
+ {name:'Track Information',description:'Bliss metadata editor for title, author and comments. Port still pending.'},
+ {name:'Undo',shortcut:'Ctrl+Z',description:'Undo the previous edit stroke or operation.'},
+ {name:'Redo',shortcut:'Ctrl+Y',description:'Redo the last undone edit.'},
+ {name:'Help',shortcut:'F1 on palette 1',description:'Show Bliss option keys and tile shortcuts.'},
+ {name:'Generate Scenery',description:'Automatic Bliss scenery generator. Port still pending.'},
+ {name:'Track Analysis',description:'Analyse route sections, paths and track errors.'},
+ {name:'Tournaments',description:'Bliss tournament integration. Not used by PlayStunts DX.'},
+ {name:'Settings',description:'Bliss editor settings. Full settings port still pending.'},
+];
+const SWITCH_TOOL_HELP:Record<string,HoverHelp>={
+ clip:{name:'CLIP',description:'Shows whether the clipboard contains a block. Click to clear it.'},
+ warn:{name:'WAR',shortcut:'Ctrl+D',description:'Show or hide Bliss conflict/warning markings on the map.'},
+ manual:{name:'MAN',shortcut:'Ctrl+E',description:'Manual editing: allow raw/conflicting tile combinations Bliss normally prevents.'},
+ grid:{name:'GRID',shortcut:'Ctrl+G',description:'Show or completely hide the 30×30 map grid.'},
+ colour:{name:'COL',shortcut:'Ctrl+O',description:'Colouring/annotation mode. Port still pending.'},
+ shot:{name:'TRK SHOT',shortcut:'Ctrl+S',description:'Export a picture of the complete map or the active selection.'},
+ trk:{name:'TRK',shortcut:'Ctrl+K',description:'Choose whether paste/delete operations affect the track layer.'},
+ ter:{name:'TER',shortcut:'Ctrl+T',description:'Choose whether paste/delete operations affect the terrain layer.'},
+ debug:{name:'DEB',shortcut:'Ctrl+Q',description:'Show raw track/terrain codes and Bliss debug information.'},
+};
+const EDIT_TOOL_HELP:Record<Tool,HoverHelp>={
+ place:{name:'Place',shortcut:'Left click / Enter',description:'Place the currently selected track element.'},
+ erase:{name:'Erase',shortcut:'Right click / Del',description:'Remove the track element at the cursor.'},
+ link:{name:'Auto link',shortcut:'U',description:'Choose and place the track element that connects neighbouring pieces.'},
+ flood:{name:'Flood',shortcut:'F12 Water + left click',description:'Raise the water brush at this point; Bliss completes unfinished edges.'},
+ dry:{name:'Dry',shortcut:'F12 Water + right click',description:'Remove water at this point; Bliss repairs the surrounding edges.'},
+ raise:{name:'Raise',shortcut:'F12 Mountain + left click',description:'Raise mountain terrain with the Bliss brush.'},
+ lower:{name:'Lower',shortcut:'F12 Mountain + right click',description:'Lower mountain terrain with the Bliss brush.'},
+ terrain:{name:'Terrain tile',shortcut:'F11',description:'Directly place the selected terrain tile from palette page 11.'},
+};
+
 /** Native PlayStunts DX shell for the Bliss 2.6.1 port.
  * Track/terrain art comes from the user's Stunts data. Behaviour and shortcuts
  * intentionally follow Bliss so experienced Bliss users can work by muscle memory. */
