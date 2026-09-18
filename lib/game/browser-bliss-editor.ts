@@ -7,6 +7,7 @@ import {blissTrackHash} from './bliss-track.ts';
 import {changeBlissMaterial,findBlissElementByName,smartSelectBliss} from './bliss-shortcuts.ts';
 import {transformBlissTerrainCode,transformBlissTrackCode,type BlissTransformOperation} from './bliss-transformations.ts';
 import {BLISS_TOOL_ICON_COLUMNS,BLISS_TOOL_ICON_SIZE,BLISS_TOOL_ICON_SPRITE} from './bliss-tool-icons.ts';
+import {setBlissEditorActive} from './bliss-editor-presence.ts';
 
 export interface BrowserBlissEditorHost {
  canvas:HTMLCanvasElement;
@@ -200,7 +201,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const saveAs=button('Save As',()=>{void saveTrack(true);});
  const done=button('Done',()=>{void finish();});
  footer.append(coords,newTrackButton,undo,redo,validate,save,saveAs,done);
- overlay.append(top,main,footer);document.body.append(overlay);
+ overlay.append(top,main,footer);setBlissEditorActive(true);document.body.append(overlay);
 
  const context=map.getContext('2d',{alpha:false})!;
  const setZoom=(next:number)=>{
@@ -590,7 +591,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(closed)return;if(core.modified){const choice=window.confirm('Save changes to '+(host.track.name||'UNTITLED')+'.TRK before leaving the Bliss editor?');if(choice&&!await saveTrack())return;}
   closed=true;cleanup();resolveDone?.();
  }
- const cleanup=()=>{window.removeEventListener('keydown',keyDown,true);overlay.remove();};
+ const cleanup=()=>{window.removeEventListener('keydown',keyDown,true);setBlissEditorActive(false);overlay.remove();};
  let resolveDone:(()=>void)|undefined;
  renderPalette();renderScenery();renderMap();renderStatus();chooseTool('place');updateArea();overlay.focus();requestAnimationFrame(()=>fitMap());
  await new Promise<void>(resolve=>{resolveDone=resolve;});cleanup();
