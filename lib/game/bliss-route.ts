@@ -6,7 +6,7 @@ import type {BlissTrack} from './bliss-track.ts';
 import {blissCellIndex} from './bliss-track.ts';
 import {blissElementData,type BlissElementData} from './bliss-element-data.ts';
 import {blissTransformations,type BlissTransformations} from './bliss-transformations.ts';
-import {detectBlissTerrainError,findBlissStart} from './bliss-validation.ts';
+import {detectBlissNonStunts,detectBlissTerrainError,findBlissStart} from './bliss-validation.ts';
 
 export interface BlissPoint {x:number;y:number}
 export interface BlissTrackVector extends BlissPoint {bearing:number;origin:number;error:number}
@@ -40,6 +40,9 @@ function parentCoordinates(source:BlissTrack,x:number,y:number){
 }
 
 function exitBearing(mask:number,bearing:number,detour:boolean){
+ // In FreeBASIC newslot is zero-initialised. For cto=0 Bliss sets error 4
+ // but leaves bearing untouched by the Select Case, so it is always North (0).
+ if(mask===0)return 0;
  switch(mask){
   case 1:return 0;case 2:return 1;case 4:return 2;case 8:return 3;
   case 3:return bearing===1?(detour?0:1):(detour?1:0);
@@ -266,8 +269,12 @@ export function blissPathLength(
 }
 
 export const BLISS_RACER_WEIGHT=7.2955;
+const blissRoundToEven=(value:number)=>{
+ const low=Math.floor(value),high=Math.ceil(value),dl=value-low,dh=high-value;
+ if(dl<dh)return low;if(dh<dl)return high;return (low&1)===0?low:high;
+};
 export function blissEstimatedTimeCentiseconds(tokens:number,carHandicap=1,racerWeight=BLISS_RACER_WEIGHT){
- return Math.max(0,Math.round(tokens*racerWeight*carHandicap));
+ return Math.max(0,blissRoundToEven(tokens*racerWeight*carHandicap));
 }
 export function blissTimey(centiseconds:number){
  let value=Math.max(0,Math.round(centiseconds));
@@ -276,6 +283,76 @@ export function blissTimey(centiseconds:number){
  const m=value%60;const h=Math.floor(value/60);
  const cc=String(c).padStart(2,'0'),ss=String(s).padStart(2,'0');
  return h?String(h)+':'+String(m).padStart(2,'0')+':'+ss+'.'+cc:String(m)+':'+ss+'.'+cc;
+}
+
+
+export interface BlissAnalysisPathSummary {
+ index:number;tiles:number;tokens:number;finishes:boolean;error:number;
+ safe:boolean;wrongWay:boolean;cyclic:boolean;opponentPath:boolean;fastest:boolean;
+}
+export interface BlissAnalysisSummary {
+ totalPaths:number;winningPaths:number;safePaths:number;cycles:number;
+ shortestWinning:number|null;shortestSafe:number|null;
+ briefestWinning:number|null;briefestSafe:number|null;
+ flowFatal:boolean;terrainCrash:boolean;terrainFatal:boolean;terrainWarning:boolean;
+ compatibility:ReturnType<typeof detectBlissNonStunts>;
+ prognosis:
+  |'terrain-crash'|'terrain-fatal'|'flow-fatal'|'terrain-warning'
+  |'non-stunts'|'ok'|'no-winning-path';
+ paths:BlissAnalysisPathSummary[];
+}
+
+/** Exact statistics/prognosis calculated by Bliss 2.6.1 Menu_Analysis page 0/1. */
+export function summarizeBlissTrackAnalysis(
+ source:BlissTrack,
+ analysis:BlissRouteAnalysis,
+ definitions:BlissTransformations=blissTransformations,
+ elements:readonly BlissElementData[]=blissElementData,
+):BlissAnalysisSummary{
+ const terrain=detectBlissTerrainError(source);
+ const terrainCrash=terrain?.code===40;
+ const terrainFatal=!!terrain&&terrain.code>=41&&terrain.code<=49;
+ const terrainWarning=!!terrain&&terrain.code>=50&&terrain.code<=59;
+ const compatibility=detectBlissNonStunts(source,definitions);
+
+ let winningPaths=0,safePaths=0,cycles=0,flowFatal=false;
+ let shortestWinning=10000,shortestSafe=10000,briefestWinning=100000,briefestSafe=1000000;
+ const interim:{index:number;tiles:number;tokens:number;finishes:boolean;error:number;safe:boolean;wrongWay:boolean;cyclic:boolean}[]=[];
+
+ for(let i=0;i<analysis.paths.length;i++){
+  const path=analysis.paths[i],tiles=blissPathLength(source,analysis,i,false,definitions,elements),tokens=blissPathLength(source,analysis,i,true,definitions,elements);
+  if(path.finishes){
+   winningPaths++;
+   if(tiles<shortestWinning)shortestWinning=tiles;
+   if(tokens<briefestWinning)briefestWinning=tokens;
+   if(path.error===0){
+    safePaths++;
+    if(tiles<shortestSafe)shortestSafe=tiles;
+    if(tokens<briefestSafe)briefestSafe=tokens;
+   }
+  }
+  if(path.error===82)cycles++;
+  else if(path.error>=70&&path.error<=79)flowFatal=true;
+  const lastSection=analysis.sections[path.sections[path.sections.length-1]];
+  interim.push({
+   index:i,tiles,tokens,finishes:path.finishes,error:path.error,safe:path.finishes&&path.error===0,
+   wrongWay:!path.finishes&&path.error===72,
+   cyclic:!path.finishes&&! (path.error===72) && !!lastSection?.cycle,
+  });
+ }
+
+ const sw=winningPaths?shortestWinning:null,ss=safePaths?shortestSafe:null,bw=winningPaths?briefestWinning:null,bs=safePaths?briefestSafe:null;
+ const prognosis:BlissAnalysisSummary['prognosis']=terrainCrash?'terrain-crash':
+  terrainFatal?'terrain-fatal':
+  winningPaths?(flowFatal?'flow-fatal':terrainWarning?'terrain-warning':compatibility?'non-stunts':'ok'):
+  'no-winning-path';
+
+ return {
+  totalPaths:analysis.paths.length,winningPaths,safePaths,cycles,
+  shortestWinning:sw,shortestSafe:ss,briefestWinning:bw,briefestSafe:bs,
+  flowFatal,terrainCrash,terrainFatal,terrainWarning,compatibility,prognosis,
+  paths:interim.map(row=>({...row,opponentPath:sw!==null&&row.finishes&&row.tiles===sw,fastest:bw!==null&&row.finishes&&row.tokens===bw})),
+ };
 }
 
 export interface BlissTrackCheck {
