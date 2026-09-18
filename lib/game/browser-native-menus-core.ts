@@ -44,7 +44,6 @@ import {runNativeOpponentMenu,type NativeOpponentHost} from './native-opponent-r
 import {runNativeOptions,type NativeOptionsHost} from './native-options-runtime.ts';
 import {runNativeTrackMenu,type NativeTrackMenuHost} from './native-track-runtime.ts';
 import type {NativeEditorHost} from './native-editor-runtime.ts';
-import {runBrowserBlissEditor} from './browser-bliss-editor.ts';
 import {createBrowserMenuInput} from './browser-menu-input.ts';
 import {createNativeFileStore,openNativeFilePersistence,nativeFileKey} from './native-file-store.ts';
 import {createNativeEditorFileWrites} from './native-editor-file-writes.ts';
@@ -150,6 +149,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  const editTrack=async()=>{
   show('editor');input.setActive(false);
   try{
+   const {runBrowserBlissEditor}=await import('./browser-bliss-editor.ts');
    await runBrowserBlissEditor({
     canvas,track,palette,
     resources:{art,terrainNames:terrainNames.names,images:editor.screenResources.images},
