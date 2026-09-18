@@ -27,6 +27,7 @@ export interface BrowserBlissEditorHost {
  customTrackExists?(name:string):Promise<boolean>;
  readCustomTrack?(name:string):Promise<Uint8Array>;
  persistCustomTrack?(name:string,bytes:Uint8Array):Promise<string>;
+ persistTrackShot?(filename:string,bytes:Uint8Array):Promise<string>;
  fetchUrl?(url:string):Promise<Uint8Array>;
  enumerateTracks?():Promise<string[]>;
  readTrack?(path:string,name:string):Promise<Uint8Array>;
@@ -1466,7 +1467,14 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   else if(format==='jpeg'){extension='jpg';blob=await new Promise<Blob|null>(resolve=>shot.toBlob(resolve,'image/jpeg',.92));}
   else blob=await new Promise<Blob|null>(resolve=>shot.toBlob(resolve,'image/png'));
   if(!blob){status.textContent='Could not create track-shot.';status.style.color='#ff9b9b';return;}
-  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=(host.track.name||'TRACK')+'-trackshot.'+extension;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  const filename=(host.track.name||'TRACK')+'-trackshot.'+extension;
+  if(host.persistTrackShot){
+   try{
+    const location=await host.persistTrackShot(filename,new Uint8Array(await blob.arrayBuffer()));
+    status.textContent='Track-shot saved to '+location+(selection?' from selected region':'')+'.';status.style.color='#aee18a';return;
+   }catch(error){status.textContent='Could not save track-shot: '+String(error);status.style.color='#ff9b9b';return;}
+  }
+  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   status.textContent='Track-shot exported as '+extension.toUpperCase()+(selection?' from selected region':'')+'.';status.style.color='#aee18a';
  }
 
