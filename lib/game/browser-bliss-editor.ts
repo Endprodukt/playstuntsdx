@@ -9,6 +9,7 @@ import {transformBlissTerrainCode,transformBlissTrackCode,type BlissTransformOpe
 import {BLISS_TOOL_ICON_COLUMNS,BLISS_TOOL_ICON_SIZE,BLISS_TOOL_ICON_SPRITE} from './bliss-tool-icons.ts';
 import {setBlissEditorActive} from './bliss-editor-presence.ts';
 import {blissTerrainPresets,type BlissTerrainPreset} from './bliss-terrain-presets.ts';
+import type {BlissMetadata} from './bliss-metadata.ts';
 
 export interface BrowserBlissEditorHost {
  canvas:HTMLCanvasElement;
@@ -20,7 +21,9 @@ export interface BrowserBlissEditorHost {
  clearScores(path:string,name:string):Promise<void>;
  exists(path:string,name:string):Promise<boolean>;
  customTrackExists?(name:string):Promise<boolean>;
+ readCustomTrack?(name:string):Promise<Uint8Array>;
  persistCustomTrack?(name:string,bytes:Uint8Array):Promise<string>;
+ fetchUrl?(url:string):Promise<Uint8Array>;
  enumerateTracks?():Promise<string[]>;
  readTrack?(path:string,name:string):Promise<Uint8Array>;
  presets?:readonly {terrain:number[]}[];
@@ -128,7 +131,13 @@ const EDIT_TOOL_HELP:Record<Tool,HoverHelp>={
  * Track/terrain art comes from the user's Stunts data. Behaviour and shortcuts
  * intentionally follow Bliss so experienced Bliss users can work by muscle memory. */
 export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
- const core=BlissEditorCore.fromBytes(Uint8Array.from(host.track.raw));
+ let initialBytes=Uint8Array.from(host.track.raw);
+ if(host.track.name&&host.customTrackExists&&host.readCustomTrack){
+  try{if(await host.customTrackExists(host.track.name))initialBytes=await host.readCustomTrack(host.track.name);}catch{}
+ }
+ const core=BlissEditorCore.fromBytes(initialBytes);
+ const editorOpenedAt=performance.now();
+ let metadataEditingBase=core.metadata()?.metadata.editingTime??0;
  let tool:Tool='place',brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,selecting=false,selectionAnchor:{x:number;y:number}|null=null,closed=false,zoom=1;
  let activeArea:EditorArea='grid',paletteCursor=0,lastPlaced:{x:number;y:number}|null=null;
  let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false;
