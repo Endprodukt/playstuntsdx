@@ -18,9 +18,10 @@ export async function interactNativeFileDialog(host:NativeFileDialogServices&{in
   }else{
    const input=await host.input();
    if(input.wheelDelta){
-    // Wheel scrolling moves a complete seven-row page and never enters the path field.
+    // Wheel moves only the visible list window by one row.
+    // The selected file is intentionally left unchanged.
     hoverLock={x:input.x,y:input.y};
-    reply={key:input.wheelDelta<0?0x4900:0x5100,buttons:0,hit:-1};
+    reply={key:input.wheelDelta<0?0x4a00:0x5200,buttons:0,hit:-1};
    }else{
     if(hoverLock&&(input.x!==hoverLock.x||input.y!==hoverLock.y))hoverLock=null;
     const hit=input.mouseActive&&!hoverLock?presentation!.hits.findIndex(r=>input.x>=r.left&&input.x<=r.right&&input.y>=r.top&&input.y<=r.bottom):-1;
