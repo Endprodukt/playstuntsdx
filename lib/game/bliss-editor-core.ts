@@ -60,6 +60,11 @@ export class BlissEditorCore {
  buildClosedCircuit(currentBrush:number){if(!this.selection)return false;const s=this.selection,before=cloneBlissTrack(this.track),built=buildBlissClosedCircuit(this.track,{x1:s.x,y1:s.y,x2:s.x+s.width-1,y2:s.y+s.height-1},currentBrush,this.definitions);if(built){this.history.push(before);this.modified=true;}return built;}
  copySelection(){if(!this.selection)return null;const s=this.selection;this.clipboard=captureBlissRegion(this.track,s.x,s.y,s.width,s.height);return this.clipboard;}
  cutSelection(options:{track?:boolean;terrain?:boolean}={}){if(!this.selection)return null;const s=this.selection;this.change(()=>{this.clipboard=cutBlissRegion(this.track,s.x,s.y,s.width,s.height,options);});return this.clipboard;}
+ deleteSelection(options:{track?:boolean;terrain?:boolean}={}){
+  if(!this.selection)return false;const s=this.selection,affectTrack=options.track!==false,affectTerrain=options.terrain===true;
+  this.change(()=>{for(let y=s.y;y<s.y+s.height;y++)for(let x=s.x;x<s.x+s.width;x++){const index=y*30+x;if(affectTrack)this.track.track[index]=0;if(affectTerrain)this.track.terrain[index]=0;}});
+  this.selection=null;return true;
+ }
  paste(x:number,y:number,options:{track?:boolean;terrain?:boolean}={}){if(!this.clipboard)return false;this.change(()=>pasteBlissRegion(this.track,x,y,this.clipboard!,options));return true;}
  hflipSelection(){if(!this.selection)return false;const s=this.selection,region=hflipBlissRegion(captureBlissRegion(this.track,s.x,s.y,s.width,s.height),this.definitions);this.change(()=>pasteBlissRegion(this.track,s.x,s.y,region));return true;}
  vflipSelection(){if(!this.selection)return false;const s=this.selection,region=vflipBlissRegion(captureBlissRegion(this.track,s.x,s.y,s.width,s.height),this.definitions);this.change(()=>pasteBlissRegion(this.track,s.x,s.y,region));return true;}
