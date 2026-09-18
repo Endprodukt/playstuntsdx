@@ -32,16 +32,25 @@ if(FIELD_RAW.length<182*17)throw Error('Embedded Bliss element table is incomple
 const FIELD_BYTES=new Uint8Array(256*17);
 FIELD_BYTES.set(FIELD_RAW.subarray(0,FIELD_BYTES.length));
 
-export const blissElementData:readonly BlissElementData[]=Object.freeze(Array.from({length:256},(_,code)=>{
+const elementAt=(code:number):BlissElementData=>{
  const o=code*17;
- return Object.freeze({
+ return {
   id:NAMES[code],xsmall:FIELD_BYTES[o],ysmall:FIELD_BYTES[o+1],
   ctype:[FIELD_BYTES[o+2],FIELD_BYTES[o+3],FIELD_BYTES[o+4],FIELD_BYTES[o+5]] as const,
   cto:[FIELD_BYTES[o+6],FIELD_BYTES[o+7],FIELD_BYTES[o+8],FIELD_BYTES[o+9]] as const,
   cisalt:[signed(FIELD_BYTES[o+10]),signed(FIELD_BYTES[o+11]),signed(FIELD_BYTES[o+12]),signed(FIELD_BYTES[o+13])] as const,
   length:FIELD_BYTES[o+14],material:signed(FIELD_BYTES[o+15]),entity:FIELD_BYTES[o+16],
- });
-}));
+ };
+};
+const elementRows=Array.from({length:256},(_,code)=>elementAt(code));
+// The compact xlation.dat dump currently ends with a partial record and the
+// paved start/finish rotations at 0xB3..0xB5 are therefore corrupt. Those
+// three records are route-critical. Their connectivity is exactly the paved
+// straight connectivity, while the four codes encode the four start bearings.
+elementRows[0xb3]={...elementRows[0xb3],ctype:[1,0,1,0],cto:[4,0,1,0],cisalt:[0,0,0,0],length:15,material:1,entity:111};
+elementRows[0xb4]={...elementRows[0xb4],ctype:[0,1,0,1],cto:[0,8,0,2],cisalt:[0,0,0,0],length:15,material:1,entity:111};
+elementRows[0xb5]={...elementRows[0xb5],ctype:[0,1,0,1],cto:[0,8,0,2],cisalt:[0,0,0,0],length:15,material:1,entity:111};
+export const blissElementData:readonly BlissElementData[]=Object.freeze(elementRows.map(row=>Object.freeze(row)));
 
 const PALETTE_BYTES=decodeBase64('AAYFBwG0SgQICbO1CgoLC0xSCgoLC1BODAwNDU9LDAwNDU1RABAPEYaIfQ4SE4eJFBQVFX+FFBQVFYOBFhYXF4J+FhYXF4CEABoZG5OVihgcHZSWHh4fH4ySHh4fH5COICAhIY+LICAhIY2RAABzO0dAODl0OkRASUVUSFNVQUFWVkZVQgAAAAAAQwAAAAAAACkyLy4qAC0zKzAxNDQ1NSgsNDQ1NQAANjY3NwAANjY3NwAAAABbW1dXAABbW1dXXFxZWV1dXFxZWV1dWlpYWF5eWlpYWF5eAABwbnJxAAAAAABtPDw9PQBvPDw9PQAAPj4/PwAAPj4/PwAAAAAkI2glAABfZmRgaWlqaidiaWlqaiJla2tsbGdja2tsbCZhAAB3d3t7AAB3d3t7eHh5eXV1eHh5eXV1enp8fHZ2enp8fHZ2mQCjpqSlmACfoqChlwCbnpydmgCnqqipAgCrrqytAwCvsrCxAAAAAAAAAAAAAQYAAAADAggHAAAEBQkKAAANDBEQAAAOCxIPAAAAAAAAAAAAAAAAAAEBBgYAAAEBBgYAAAAAAAAAAAAAAAAA');
 if(PALETTE_BYTES.length!==12*36)throw Error('Embedded Bliss palette table has the wrong size');
