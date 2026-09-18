@@ -1017,16 +1017,58 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  }
 
  function showTrackAnalysis(){
-  const analysis=core.analyze();
-  const finishing=analysis.paths.filter(path=>path.finishes).length;
-  showTextModal('Track Analysis',[
-   'Sections: '+Math.max(0,analysis.sections.length-1),
-   'Paths: '+analysis.paths.length,
-   'Finishing paths: '+finishing,
-   'Errors: '+analysis.errors.length,
-   'Too complex: '+(analysis.tooComplex?'yes':'no'),
-   analysis.errors.length?'First error: '+analysis.errors[0].error+' at '+(analysis.errors[0].x+1)+','+(analysis.errors[0].y+1):'No route errors detected.',
-  ]);
+  let analysis:ReturnType<BlissEditorCore['analyze']>;
+  try{analysis=core.analyze();}catch(error){void centeredNotice('Track Analysis','Analysis failed: '+String(error));return;}
+  if(!analysis.sections.length){void centeredNotice('Track Analysis','A start/finish line is required before the track can be analysed.');return;}
+  if(analysis.tooComplex){void centeredNotice('Track Analysis','Track too complex. Bliss supports up to 254 sections and 1000 paths.');return;}
+  const pathLength=(path:(typeof analysis.paths)[number])=>path.sections.reduce((sum,section)=>sum+(analysis.sections[section]?.length??0),0);
+  const lengths=analysis.paths.map(pathLength),winning=analysis.paths.map((path,index)=>({path,index,length:lengths[index]})).filter(row=>row.path.finishes);
+  const safe=winning.filter(row=>row.path.error===0),cycles=analysis.sections.slice(1).filter(section=>section.cycle).length;
+  const shortest=winning.reduce<typeof winning[number]|null>((best,row)=>!best||row.length<best.length?row:best,null);
+  modalOpen=true;
+  const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
+  const box=document.createElement('div');box.style.cssText='width:min(720px,92vw);max-height:86vh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:18px 20px;box-shadow:0 22px 70px #000;border-radius:6px;font:13px/1.4 system-ui,Segoe UI,sans-serif;';
+  const heading=document.createElement('h2');heading.textContent='Track Analysis';heading.style.cssText='text-align:center;font-size:18px;margin:0 0 12px;border-bottom:1px solid #aaa;padding-bottom:8px;';
+  const body=document.createElement('div');body.style.cssText='overflow:auto;';
+  let page:'summary'|'paths'='summary';
+  const draw=()=>{
+   body.replaceChildren();
+   if(page==='summary'){
+    const table=document.createElement('div');table.style.cssText='display:grid;grid-template-columns:210px minmax(0,1fr);gap:8px 14px;';
+    const rows:[string,string][]=[
+     ['Sections',String(Math.max(0,analysis.sections.length-1))],
+     ['Paths',String(analysis.paths.length)],
+     ['Winning paths',String(winning.length)],
+     ['Safe winning paths',String(safe.length)],
+     ['Cycles',String(cycles)],
+     ['Shortest winning path',shortest?shortest.length+' tiles':'none'],
+     ['Route errors / warnings',String(analysis.errors.length)],
+    ];
+    for(const [label,value] of rows){const a=document.createElement('strong'),b=document.createElement('span');a.textContent=label;a.style.color='#c8c8dc';b.textContent=value;b.style.color='#ddd';table.append(a,b);}
+    const note=document.createElement('p');note.textContent='Safe paths contain no Bliss warning. The opponent chooses the shortest winning path by tile count.';note.style.cssText='margin:16px 0 0;color:#aaa;';
+    body.append(table,note);
+   }else{
+    const table=document.createElement('div');table.style.cssText='display:grid;gap:4px;';
+    analysis.paths.forEach((path,index)=>{
+     const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:42px 90px 90px 90px minmax(120px,1fr);gap:8px;padding:7px 8px;border:1px solid #3d3d55;background:#111126;';
+     const values=[
+      '#'+(index+1),
+      lengths[index]+' tiles',
+      path.finishes?'winning':'open',
+      path.error===0?'safe':('error '+path.error),
+      shortest?.index===index?'Opponent choice':'',
+     ];
+     values.forEach((value,column)=>{const span=document.createElement(column===0?'strong':'span');span.textContent=value;row.append(span);});table.append(row);
+    });
+    body.append(table);
+   }
+  };
+  const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;margin-top:14px;';
+  const pathsButton=button('See paths',()=>{page=page==='summary'?'paths':'summary';pathsButton.textContent=page==='summary'?'See paths':'Summary';draw();});
+  const close=()=>{modalOpen=false;shade.remove();},closeButton=button('Close',close);
+  actions.append(pathsButton,closeButton);box.append(heading,body,actions);shade.append(box);document.body.append(shade);draw();
+  shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();close();}});
+  shade.addEventListener('pointerdown',event=>{if(event.target===shade)close();});requestAnimationFrame(()=>shade.focus());
  }
 
  function showHelp(initial:0|1){
