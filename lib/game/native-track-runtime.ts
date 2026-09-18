@@ -13,6 +13,7 @@ export interface NativeTrackMenuHost extends NativeDialogHost {
  loadTrack(selection:{path:string;name:string}):Promise<number[]>;
  editTrack(track:NativeMenuTrack):Promise<void>;
  captureOverviewBackdrop?:(pixels:Uint8Array,layout:{horizon:number;height:number})=>void;
+ setOverviewActive?:(active:boolean)=>void;
 }
 export interface NativeTrackMenuPresentation {
  draw(track:NativeMenuTrack,score:ReadonlyArray<number>|null):void|Promise<void>;
@@ -41,7 +42,10 @@ export async function runNativeTrackMenu(host:NativeTrackMenuHost,editImmediatel
   const input=await host.input(),hover=input.mouseActive?originalTrackMenuBounds.findIndex(r=>input.x>=r.left&&input.x<=r.right&&input.y>=r.top&&input.y<=r.bottom):-1,result=advanceOriginalTrackMenu(selected,input.key,hover,expired);selected=result.selected;
   if(result.action==='done')return;
   if(result.action==='load'){
-   const selection=await dialogs.file(host.track.path,'.trk',String.fromCharCode(...host.resources.etrk).split('\0')[0],path=>{host.track.path=path;});
+   host.setOverviewActive?.(false);
+   let selection:{path:string;name:string}|undefined;
+   try{selection=await dialogs.file(host.track.path,'.trk',String.fromCharCode(...host.resources.etrk).split('\0')[0],path=>{host.track.path=path;});}
+   finally{host.setOverviewActive?.(true);}
    if(selection){const raw=await host.loadTrack(selection);if(raw.length!==1802)throw Error('Original track requires1802 bytes');host.track.raw=raw;host.track.name=selection.name;host.track.path=selection.path;host.configuration.splice(13,9,...Array.from({length:9},(_,i)=>selection.name.charCodeAt(i)||0));rebuild=true;}
    else previous=-1;
   }else if(result.action==='edit'){await edit();rebuild=true;}
