@@ -20,4 +20,4 @@ jobs:
             Set-Content -Path ("public/game/" + $_ + ".json") -Value "{}"
           }
       - run: npm run desktop:web:build
-      - run: cargo check --manifest-path src-tauri/Cargo.toml
+      - run: cargo check --manifest-path src-tauri/Cargo.toml --features tauri/protocol-asset
