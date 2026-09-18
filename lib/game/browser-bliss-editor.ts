@@ -195,23 +195,17 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  mapWrap.append(map);mapPanel.append(zoomBar,mapWrap);
 
  const toolsPanel=panel('Bliss tools');
- const toolHint=document.createElement('div');toolHint.style.cssText='min-height:54px;margin:0 0 8px;padding:7px 8px;border:1px solid #34344a;background:#0c0c17;color:#bdbdd0;border-radius:4px;font:11px/1.35 system-ui,Segoe UI,sans-serif;';
- const defaultToolHint='Hover a Bliss tool to see what it does and its shortcut.';
- const showToolHint=(help:HoverHelp)=>{
-  const shortcut=help.shortcut?(' · Shortcut: '+help.shortcut):'';
-  toolHint.innerHTML='<strong style="color:#fff">'+help.name+'</strong><span style="color:#d6c95f">'+shortcut+'</span><br><span>'+help.description+'</span>';
- };
- const clearToolHint=()=>{toolHint.textContent=defaultToolHint;};
- clearToolHint();
  const attachHoverHelp=(control:HTMLElement,help:HoverHelp)=>{
-  const show=()=>showToolHint(help),hide=()=>clearToolHint();
-  control.addEventListener('mouseenter',show);control.addEventListener('focus',show);
-  control.addEventListener('mouseleave',hide);control.addEventListener('blur',hide);
+  const shortcut=help.shortcut?('Shortcut: '+help.shortcut+'\n'):'';
+  // Use the browser's native hover tooltip instead of reserving permanent
+  // editor space. The tooltip contains the name, shortcut and explanation.
+  control.title=help.name+'\n'+shortcut+help.description;
+  control.setAttribute('aria-label',help.name+(help.shortcut?' — '+help.shortcut:'')+'. '+help.description);
  };
  const quick=document.createElement('div');quick.style.cssText='display:grid;grid-template-columns:repeat(4,48px);gap:4px;justify-content:center;padding:6px;background:#17172a;border:1px solid #303047;border-radius:5px;';
  const quickButton=(icon:number,titleText:string,action?:()=>void)=>{
   const help=QUICK_TOOL_HELP[icon]??{name:titleText,description:titleText};
-  const control=button('',()=>action?.());control.title=help.name+(help.shortcut?' ('+help.shortcut+')':'');control.setAttribute('aria-label',control.title);
+  const control=button('',()=>action?.());
   control.style.cssText+='width:48px;height:48px;padding:1px;display:grid;place-items:center;background:#222238;border-color:#4a4a64;';
   const image=document.createElement('span'),column=icon%BLISS_TOOL_ICON_COLUMNS,row=Math.floor(icon/BLISS_TOOL_ICON_COLUMNS);
   image.style.cssText='display:block;width:'+BLISS_TOOL_ICON_SIZE+'px;height:'+BLISS_TOOL_ICON_SIZE+'px;background-image:url("'+BLISS_TOOL_ICON_SPRITE+'");background-repeat:no-repeat;background-size:'+(BLISS_TOOL_ICON_SIZE*BLISS_TOOL_ICON_COLUMNS)+'px '+(BLISS_TOOL_ICON_SIZE*5)+'px;background-position:-'+(column*BLISS_TOOL_ICON_SIZE)+'px -'+(row*BLISS_TOOL_ICON_SIZE)+'px;image-rendering:pixelated;';
@@ -231,8 +225,8 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  quickButton(10,'Rotate whole track / selection clockwise',()=>toolbarRotate(false));
  quickButton(11,'Rotate whole track / selection counter-clockwise',()=>toolbarRotate(true));
  quickButton(12,'Track Information — metadata editing port pending');
- quickButton(13,'Undo',()=>{if(core.undo())changed('Undo');});
- quickButton(14,'Redo',()=>{if(core.redo())changed('Redo');});
+ const undoTool=quickButton(13,'Undo',()=>{if(core.undo())changed('Undo');});
+ const redoTool=quickButton(14,'Redo',()=>{if(core.redo())changed('Redo');});
  quickButton(15,'Help',()=>showHelp(0));
  quickButton(16,'Generate Scenery — port pending');
  quickButton(17,'Track Analysis — paths/errors; racer time estimates pending',()=>showTrackAnalysis());
@@ -241,7 +235,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
 
  const switches=document.createElement('div');switches.style.cssText='display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:10px;';
  const switchButtons=new Map<string,HTMLButtonElement>();
- const addSwitch=(id:string,label:string,action:()=>void)=>{const b=button(label,action),help=SWITCH_TOOL_HELP[id]??{name:label,description:label};b.title=help.name+(help.shortcut?' ('+help.shortcut+')':'');attachHoverHelp(b,help);switchButtons.set(id,b);switches.append(b);return b;};
+ const addSwitch=(id:string,label:string,action:()=>void)=>{const b=button(label,action),help=SWITCH_TOOL_HELP[id]??{name:label,description:label};attachHoverHelp(b,help);switchButtons.set(id,b);switches.append(b);return b;};
  addSwitch('clip','CLIP',()=>{core.clearClipboard();pasteMode=false;renderMap();renderStatus();status.textContent='Clipboard cleared.';});
  addSwitch('warn','WAR',()=>{showConflicts=!showConflicts;renderMap();renderStatus();});
  addSwitch('manual','MAN',()=>{allowConflicts=!allowConflicts;renderStatus();});
@@ -257,10 +251,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const toolButtons=new Map<Tool,HTMLButtonElement>();
  const chooseTool=(next:Tool)=>{tool=next;for(const [key,value] of toolButtons)setActive(value,key===tool);renderStatus();};
  for(const [key,label] of [['place','Place'],['erase','Erase'],['link','Auto link'],['flood','Flood'],['dry','Dry'],['raise','Raise'],['lower','Lower'],['terrain','Terrain tile']] as const){
-  const control=button(label,()=>chooseTool(key)),help=EDIT_TOOL_HELP[key];control.title=help.name+(help.shortcut?' ('+help.shortcut+')':'');attachHoverHelp(control,help);toolButtons.set(key,control);terrainTools.append(control);
+  const control=button(label,()=>chooseTool(key)),help=EDIT_TOOL_HELP[key];attachHoverHelp(control,help);toolButtons.set(key,control);terrainTools.append(control);
  }
  const help=document.createElement('p');help.textContent='Bliss keys are active: F/Shift+F, R/Shift+R, F1–F12, Ctrl+C/X/V/W, arrows, Tab, Enter, Del, P, U, C and tile shortcuts.';help.style.cssText='font-size:11px;line-height:1.35;color:#999;margin:10px 0 0;';
- toolsPanel.append(quick,toolHint,switches,terrainTools,help);
+ toolsPanel.append(quick,switches,terrainTools,help);
 
  main.append(palettePanel,mapPanel,toolsPanel);
 
@@ -268,15 +262,15 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const coords=document.createElement('span');coords.style.cssText='font-size:11px;color:#888;margin-right:auto;';
  const newTrackButton=button('New',()=>{void createNewTrack();});
  const loadTrackButton=button('Load',()=>{void loadTrack();});
- const undo=button('Undo',()=>{if(core.undo())changed('Undo');});
- const redo=button('Redo',()=>{if(core.redo())changed('Redo');});
- const validate=button('Check track',()=>checkTrack());
  const save=button('Save',()=>{void saveTrack();});
  const saveAs=button('Save As',()=>{void saveTrack(true);});
  const done=button('Done',()=>{void finish();});
- newTrackButton.title='Create a new track from a terrain preset';
- loadTrackButton.title='Load an existing track';
- footer.append(coords,newTrackButton,loadTrackButton,undo,redo,validate,save,saveAs,done);
+ newTrackButton.title='New\nCreate a new track from a terrain preset.';
+ loadTrackButton.title='Load\nLoad an existing track.';
+ save.title='Save\nSave the current track into Custom Tracks.';
+ saveAs.title='Save As\nSave a copy under a new track name.';
+ done.title='Done\nLeave the editor; unsaved changes will be offered for saving.';
+ footer.append(coords,newTrackButton,loadTrackButton,save,saveAs,done);
  overlay.append(top,main,footer);setBlissEditorActive(true);document.body.append(overlay);
 
  const context=map.getContext('2d',{alpha:false})!;
@@ -339,7 +333,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   status.style.color=core.modified?'#f2d36d':'#c8c8c8';
   const selection=core.selection;
   coords.textContent='Cell '+(cellX+1)+','+(cellY+1)+(selection?' · selection '+selection.width+'×'+selection.height:'')+' · '+(activeArea==='grid'?'GRID':'PALETTE');
-  undo.disabled=!core.history.canUndo;redo.disabled=!core.history.canRedo;
+  undoTool.disabled=!core.history.canUndo;redoTool.disabled=!core.history.canRedo;
   for(const [id,b] of switchButtons){
    const active=id==='clip'?!!core.clipboardSize():id==='warn'?showConflicts:id==='manual'?allowConflicts:id==='grid'?showGrid:id==='trk'?affectTrack:id==='ter'?affectTerrain:id==='debug'?debugMode:false;
    setActive(b,active);
