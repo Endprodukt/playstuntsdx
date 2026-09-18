@@ -28,27 +28,35 @@ The editor does **not** bundle Bliss `biggfx.tga`. The native map renderer compo
 
 The normal Track menu's editor entry now opens the first PlayStunts DX Bliss editor shell on this branch. It currently supports:
 
-- full-map terrain/track view
-- track-piece palette pages
-- place / erase
-- automatic link
+- full-map terrain/track view and zoom
+- Bliss-style visual palette pages
+- original Bliss 4×5 toolbar icons
+- place / erase and keyboard cursor
+- Ctrl-drag selection, select-all, copy / cut / paste
+- horizontal/vertical flip and clockwise/counter-clockwise rotate
+- automatic link and closed-circuit creation
 - flood / dry / raise / lower
-- brush rotate / horizontal flip
 - undo / redo
+- F1–F12 palette switching and the Bliss tile shortcut keys
+- Bliss-style shortcut help pages
+- conflict/grid/debug toggles and track hash
+- track information and route-analysis summaries
+- track-shot export
+- New / Load / Save / Save As
+- desktop saves physically into `Custom Tracks` and become immediately selectable
 - Bliss validation
-- save back to the current TRK
 - return to the Track menu
 
 The existing reconstructed original editor remains in the source tree for reference/fallback while the port is completed.
 
 ## Still to port/integrate
 
-- full selection/clipboard UI and Bliss colour annotations
-- New / Load / Save As dialogs
+- live Bliss paste preview/accept workflow instead of immediate paste
+- Bliss colouring/annotation UI (Ctrl+O currently only toggles mode state)
 - metadata editor
-- all Bliss keyboard/mouse shortcuts and convenience tools
-- detailed analysis/path UI
-- track-shot export
+- scenery generator
+- full detailed path/section analysis UI
+- Bliss tournament integration is intentionally unresolved for PlayStunts DX
 - test-drive/save-and-race flow
 - reuse the same 2D renderer for the in-race left-side map panel
 - regression tests against Bliss 2.6.1 for route/error edge cases
