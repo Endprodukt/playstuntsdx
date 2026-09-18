@@ -34,11 +34,22 @@ export function renderBlissOriginalMap(source:BlissTrack,resources:BlissOriginal
   if(image)drawEditorClippedRaster(pixels,BLISS_ORIGINAL_MAP_SIZE,image,x*16,y*16,'or',clip);
  }
  if(!showGrid){
-  // Bliss draws the grid separately from the tile graphics. The reconstructed
-  // Stunts editor art contains a one-pixel cell edge, so remove those seams
-  // after composition when Ctrl+G hides the grid.
-  for(let x=16;x<BLISS_ORIGINAL_MAP_SIZE;x+=16)for(let y=0;y<BLISS_ORIGINAL_MAP_SIZE;y++)pixels[y*BLISS_ORIGINAL_MAP_SIZE+x]=pixels[y*BLISS_ORIGINAL_MAP_SIZE+x-1];
-  for(let y=16;y<BLISS_ORIGINAL_MAP_SIZE;y+=16)for(let x=0;x<BLISS_ORIGINAL_MAP_SIZE;x++)pixels[y*BLISS_ORIGINAL_MAP_SIZE+x]=pixels[(y-1)*BLISS_ORIGINAL_MAP_SIZE+x];
+  // The original editor sprites carry the grid on the LAST pixel of each
+  // 16×16 cell (15, 31, 47, ...), not on the first pixel of the next cell.
+  // Removing 16, 32, ... duplicated the dark edge instead and produced the
+  // thick horizontal/vertical bars reported in the DX editor.
+  for(let x=BLISS_ORIGINAL_MAP_TILE-1;x<BLISS_ORIGINAL_MAP_SIZE-1;x+=BLISS_ORIGINAL_MAP_TILE){
+   for(let y=0;y<BLISS_ORIGINAL_MAP_SIZE;y++){
+    const at=y*BLISS_ORIGINAL_MAP_SIZE+x;
+    pixels[at]=pixels[at-1];
+   }
+  }
+  for(let y=BLISS_ORIGINAL_MAP_TILE-1;y<BLISS_ORIGINAL_MAP_SIZE-1;y+=BLISS_ORIGINAL_MAP_TILE){
+   for(let x=0;x<BLISS_ORIGINAL_MAP_SIZE;x++){
+    const at=y*BLISS_ORIGINAL_MAP_SIZE+x;
+    pixels[at]=pixels[at-BLISS_ORIGINAL_MAP_SIZE];
+   }
+  }
  }
  return pixels;
 }
