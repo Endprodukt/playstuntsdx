@@ -109,7 +109,7 @@ const QUICK_TOOL_HELP:readonly HoverHelp[]=[
  {name:'Generate Scenery',description:'Open the Bliss automatic scenery generator and configure scenery percentages and placement rules.'},
  {name:'Track Analysis',description:'Analyse route sections, winning and safe paths, cycles, errors and path lengths.'},
  {name:'Tournaments',description:'Manage Bliss-compatible tournament sites, connect to tour.cfg, view scoreboards and retrieve the current track.'},
- {name:'Settings',description:'Bliss editor settings. Full settings port still pending.'},
+ {name:'Settings',description:'Configure track-shot format and editor display preferences.'},
 ];
 const SWITCH_TOOL_HELP:Record<string,HoverHelp>={
  clip:{name:'CLIP',description:'Shows whether the clipboard contains a block. Click to clear it.'},
@@ -152,8 +152,23 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  let helpOverlay:HTMLDivElement|null=null;
  let borderColour=0xF800,backgroundColour=0xFFE0;
  const shortcutHelpStorageKey='playstunts-bliss-shortcuts-visible';
+ const editorSettingsStorageKey='playstunts-bliss-editor-settings-v1';
+ type TrackShotFormat='png'|'jpeg'|'bmp';
+ type BlissEditorSettings={trackShotFormat:TrackShotFormat;jpegQuality:number;trackShotGrid:boolean;trackShotAnnotations:boolean;trackShotCarMarkers:boolean};
  let showShortcutReference=true;
- try{showShortcutReference=localStorage.getItem(shortcutHelpStorageKey)!=='0';}catch{}
+ let editorSettings:BlissEditorSettings={trackShotFormat:'png',jpegQuality:.92,trackShotGrid:true,trackShotAnnotations:true,trackShotCarMarkers:true};
+ try{
+  showShortcutReference=localStorage.getItem(shortcutHelpStorageKey)!=='0';
+  const saved=JSON.parse(localStorage.getItem(editorSettingsStorageKey)??'null') as Partial<BlissEditorSettings>|null;
+  if(saved){
+   if(saved.trackShotFormat==='png'||saved.trackShotFormat==='jpeg'||saved.trackShotFormat==='bmp')editorSettings.trackShotFormat=saved.trackShotFormat;
+   if(typeof saved.jpegQuality==='number'&&Number.isFinite(saved.jpegQuality))editorSettings.jpegQuality=Math.max(.5,Math.min(1,saved.jpegQuality));
+   if(typeof saved.trackShotGrid==='boolean')editorSettings.trackShotGrid=saved.trackShotGrid;
+   if(typeof saved.trackShotAnnotations==='boolean')editorSettings.trackShotAnnotations=saved.trackShotAnnotations;
+   if(typeof saved.trackShotCarMarkers==='boolean')editorSettings.trackShotCarMarkers=saved.trackShotCarMarkers;
+  }
+ }catch{}
+ const persistEditorSettings=()=>{try{localStorage.setItem(editorSettingsStorageKey,JSON.stringify(editorSettings));}catch{}};
 
  const overlay=document.createElement('div');overlay.tabIndex=-1;overlay.style.cssText='position:fixed;inset:0;z-index:2147483000;background:#090909;color:#ddd;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:10px;padding:12px;box-sizing:border-box;font-family:system-ui,Segoe UI,sans-serif;';
  const top=document.createElement('div');top.style.cssText='display:flex;align-items:center;gap:8px;min-width:0;';
@@ -253,7 +268,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  quickButton(16,'Generate Scenery',()=>showSceneryGenerator());
  quickButton(17,'Track Analysis',()=>showTrackAnalysis());
  quickButton(18,'Tournaments',()=>showTournaments());
- quickButton(19,'Editor Settings — full Bliss settings port pending');
+ quickButton(19,'Editor Settings',()=>showEditorSettings());
 
  const switches=document.createElement('div');switches.style.cssText='display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:10px;';
  const switchButtons=new Map<string,HTMLButtonElement>();
@@ -836,6 +851,47 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   });
   const cancel=button('Cancel',close);set.style.cssText+='background:#4e5b2b;border-color:#a9bd58;';actions.append(set,clear,uncolour,cancel);box.append(heading,form,actions);shade.append(box);document.body.append(shade);
   shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();close();}});shade.addEventListener('pointerdown',event=>{if(event.target===shade)close();});requestAnimationFrame(()=>shade.focus());
+ }
+
+ function showEditorSettings(){
+  modalOpen=true;
+  const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
+  const box=document.createElement('div');box.style.cssText='width:min(560px,92vw);max-height:86vh;overflow:auto;background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:20px 22px;box-shadow:0 22px 70px #000;border-radius:6px;font:13px/1.4 system-ui,Segoe UI,sans-serif;';
+  const heading=document.createElement('h2');heading.textContent='Editor Settings';heading.style.cssText='text-align:center;font-size:18px;margin:0 0 15px;border-bottom:1px solid #aaa;padding-bottom:8px;';
+  const form=document.createElement('div');form.style.cssText='display:grid;grid-template-columns:minmax(160px,1fr) minmax(180px,1fr);gap:12px 16px;align-items:center;';
+  const addLabel=(text:string)=>{const label=document.createElement('strong');label.textContent=text;label.style.color='#c8c8dc';form.append(label);return label;};
+
+  addLabel('Track-shot format');
+  const format=document.createElement('select');format.style.cssText='padding:7px 8px;background:#0d0d18;border:1px solid #676783;color:#fff;border-radius:3px;';
+  for(const [value,label] of [['png','PNG'],['jpeg','JPEG'],['bmp','BMP']] as const){const option=document.createElement('option');option.value=value;option.textContent=label;option.selected=editorSettings.trackShotFormat===value;format.append(option);}form.append(format);
+
+  addLabel('JPEG quality');
+  const qualityWrap=document.createElement('div');qualityWrap.style.cssText='display:flex;align-items:center;gap:8px;';
+  const quality=document.createElement('input');quality.type='range';quality.min='50';quality.max='100';quality.step='1';quality.value=String(Math.round(editorSettings.jpegQuality*100));quality.style.flex='1';
+  const qualityValue=document.createElement('span');qualityValue.textContent=quality.value+'%';qualityValue.style.cssText='min-width:40px;color:#d8d66d;text-align:right;';quality.addEventListener('input',()=>qualityValue.textContent=quality.value+'%');qualityWrap.append(quality,qualityValue);form.append(qualityWrap);
+
+  const addCheckbox=(labelText:string,checked:boolean)=>{
+   addLabel(labelText);const wrap=document.createElement('label');wrap.style.cssText='display:flex;align-items:center;gap:8px;color:#ddd;';const input=document.createElement('input');input.type='checkbox';input.checked=checked;wrap.append(input,document.createTextNode('Enabled'));form.append(wrap);return input;
+  };
+  const grid=addCheckbox('Grid in track shots',editorSettings.trackShotGrid);
+  const annotations=addCheckbox('Annotations in track shots',editorSettings.trackShotAnnotations);
+  const carMarkers=addCheckbox('Player/Opponent markers in track shots',editorSettings.trackShotCarMarkers);
+  const shortcuts=addCheckbox('Shortcut reference on startup',showShortcutReference);
+
+  const note=document.createElement('p');note.textContent='Track shots are saved to the “Track Shots” folder next to PlayStunts DX.exe.';note.style.cssText='grid-column:1/-1;color:#999;margin:4px 0 0;font-size:11px;';
+  form.append(note);
+
+  const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;margin-top:18px;';
+  const close=()=>{modalOpen=false;shade.remove();overlay.focus();};
+  const saveSettings=button('Save',()=>{
+   editorSettings={trackShotFormat:format.value as TrackShotFormat,jpegQuality:Number(quality.value)/100,trackShotGrid:grid.checked,trackShotAnnotations:annotations.checked,trackShotCarMarkers:carMarkers.checked};
+   showShortcutReference=shortcuts.checked;persistEditorSettings();try{localStorage.setItem(shortcutHelpStorageKey,showShortcutReference?'1':'0');}catch{}
+   renderShortcutReference();close();status.textContent='Editor settings saved.';status.style.color='#aee18a';
+  });
+  const cancel=button('Cancel',close);saveSettings.style.cssText+='min-width:105px;background:#4e5b2b;border-color:#a9bd58;';cancel.style.minWidth='105px';actions.append(saveSettings,cancel);
+  box.append(heading,form,actions);shade.append(box);document.body.append(shade);
+  const syncQuality=()=>{const jpeg=format.value==='jpeg';quality.disabled=!jpeg;qualityValue.style.opacity=jpeg?'1':'.45';quality.style.opacity=jpeg?'1':'.45';};format.addEventListener('change',syncQuality);syncQuality();
+  shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();close();}});shade.addEventListener('pointerdown',event=>{if(event.target===shade)close();});requestAnimationFrame(()=>format.focus());
  }
 
  function showTextModal(titleText:string,rows:readonly string[]){
@@ -1424,23 +1480,6 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   draw();requestAnimationFrame(()=>shade.focus());
  }
 
- type TrackShotFormat='png'|'jpeg'|'bmp';
- function chooseTrackShotFormat():Promise<TrackShotFormat|null>{
-  modalOpen=true;
-  return new Promise(resolve=>{
-   const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
-   const box=document.createElement('div');box.style.cssText='width:min(440px,90vw);background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:20px 22px;box-shadow:0 22px 70px #000;border-radius:6px;font:13px/1.4 system-ui,Segoe UI,sans-serif;text-align:center;';
-   const heading=document.createElement('h2');heading.textContent='Track Shot';heading.style.cssText='font-size:18px;margin:0 0 8px;';
-   const message=document.createElement('p');message.textContent='Choose image format';message.style.cssText='margin:0 0 16px;color:#bbb;';
-   const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;flex-wrap:wrap;';
-   const complete=(format:TrackShotFormat|null)=>{modalOpen=false;shade.remove();overlay.focus();resolve(format);};
-   const png=button('PNG',()=>complete('png')),jpeg=button('JPEG',()=>complete('jpeg')),bmp=button('BMP',()=>complete('bmp')),cancel=button('Cancel',()=>complete(null));
-   png.style.cssText+='min-width:82px;background:#4e5b2b;border-color:#a9bd58;';jpeg.style.minWidth='82px';bmp.style.minWidth='82px';cancel.style.minWidth='82px';
-   actions.append(png,jpeg,bmp,cancel);box.append(heading,message,actions);shade.append(box);document.body.append(shade);
-   shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();complete(null);}});
-   shade.addEventListener('pointerdown',event=>{if(event.target===shade)complete(null);});requestAnimationFrame(()=>png.focus());
-  });
- }
  function canvasBmpBlob(canvas:HTMLCanvasElement){
   const width=canvas.width,height=canvas.height,image=canvas.getContext('2d')!.getImageData(0,0,width,height),rowSize=((width*3+3)>>2)<<2,pixelSize=rowSize*height,fileSize=54+pixelSize;
   const bytes=new Uint8Array(fileSize),view=new DataView(bytes.buffer);
@@ -1454,9 +1493,9 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   return new Blob([bytes],{type:'image/bmp'});
  }
  async function takeTrackShot(){
-  const format=await chooseTrackShotFormat();if(!format)return;
+  const format=editorSettings.trackShotFormat;
   const full=document.createElement('canvas');full.width=BLISS_ORIGINAL_MAP_SIZE;full.height=BLISS_ORIGINAL_MAP_SIZE;
-  const fullContext=full.getContext('2d',{alpha:false})!;fullContext.putImageData(blissOriginalMapImageData(core.track,host.resources,host.palette,showGrid),0,0);drawCarMarkers(core.track,fullContext);drawColouring(fullContext);
+  const fullContext=full.getContext('2d',{alpha:false})!;fullContext.putImageData(blissOriginalMapImageData(core.track,host.resources,host.palette,editorSettings.trackShotGrid),0,0);if(editorSettings.trackShotCarMarkers)drawCarMarkers(core.track,fullContext);if(editorSettings.trackShotAnnotations)drawColouring(fullContext);
   const selection=core.selection,shot=document.createElement('canvas');
   if(selection){
    shot.width=selection.width*16;shot.height=selection.height*16;
@@ -1464,7 +1503,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   }else{shot.width=full.width;shot.height=full.height;shot.getContext('2d',{alpha:false})!.drawImage(full,0,0);}
   let blob:Blob|null=null,extension=format;
   if(format==='bmp')blob=canvasBmpBlob(shot);
-  else if(format==='jpeg'){extension='jpg';blob=await new Promise<Blob|null>(resolve=>shot.toBlob(resolve,'image/jpeg',.92));}
+  else if(format==='jpeg'){extension='jpg';blob=await new Promise<Blob|null>(resolve=>shot.toBlob(resolve,'image/jpeg',editorSettings.jpegQuality));}
   else blob=await new Promise<Blob|null>(resolve=>shot.toBlob(resolve,'image/png'));
   if(!blob){status.textContent='Could not create track-shot.';status.style.color='#ff9b9b';return;}
   const filename=(host.track.name||'TRACK')+'-trackshot.'+extension;
