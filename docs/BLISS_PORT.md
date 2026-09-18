@@ -40,7 +40,7 @@ The normal Track menu's editor entry now opens the first PlayStunts DX Bliss edi
 - F1–F12 palette switching and the Bliss tile shortcut keys
 - Bliss-style shortcut help pages
 - conflict/grid/debug toggles and track hash
-- track information and Bliss-style route/path/time analysis
+- track information and Bliss-style route/path/time analysis with Follow path playback
 - track-shot export
 - New / Load / Save / Save As
 - desktop saves physically into `Custom Tracks` and become immediately selectable
@@ -54,7 +54,6 @@ The existing reconstructed original editor remains in the source tree for refere
 - live Bliss paste preview/accept workflow instead of immediate paste
 - Bliss colouring/annotation UI (Ctrl+O currently only toggles mode state)
 - Bliss colouring/annotation editor
-- Follow Path visualisation from the analysis path list
 - Bliss tournament integration is intentionally unresolved for PlayStunts DX
 - test-drive/save-and-race flow
 - reuse the same 2D renderer for the in-race left-side map panel
