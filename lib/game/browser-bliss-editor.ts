@@ -1,7 +1,7 @@
 import {BlissEditorCore} from './bliss-editor-core.ts';
 import {blissElementData,blissPalettePages} from './bliss-element-data.ts';
 import {blissOriginalMapImageData,blissOriginalPaletteImageData,type BlissOriginalMapResources,BLISS_ORIGINAL_MAP_SIZE} from './bliss-original-map.ts';
-import {encodeBlissTrack} from './bliss-track.ts';
+import {createBlissTrack,encodeBlissTrack} from './bliss-track.ts';
 import {blissParentElement} from './bliss-edit.ts';
 import {blissTrackHash} from './bliss-track.ts';
 import {changeBlissMaterial,findBlissElementByName,smartSelectBliss} from './bliss-shortcuts.ts';
