@@ -765,27 +765,31 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
 
  async function loadTrack(){
   if(!host.enumerateTracks||!host.readTrack){status.textContent='Track loading is unavailable in this build.';status.style.color='#ffbd7a';return;}
-  if(core.modified&&!window.confirm('Discard the current unsaved changes and load another track?'))return;
+  if(core.modified&&!await centeredConfirm('Load Track','Discard the current unsaved changes and load another track?','Discard and Load','Cancel'))return;
   let filenames:string[];
   try{filenames=(await host.enumerateTracks()).filter(value=>/\.trk$/i.test(value)).sort((a,b)=>a.localeCompare(b));}
   catch(error){status.textContent='Could not list tracks: '+String(error);status.style.color='#ff9b9b';return;}
   if(!filenames.length){status.textContent='No tracks found.';status.style.color='#ffbd7a';return;}
-  const shade=document.createElement('div');shade.style.cssText='position:fixed;inset:0;z-index:2147483640;background:rgba(0,0,0,.72);display:grid;place-items:center;padding:30px;';
-  const box=document.createElement('div');box.style.cssText='width:min(560px,90vw);max-height:82vh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#1e1e34;border:2px solid #80809a;padding:16px;box-shadow:0 18px 60px #000;';
-  const heading=document.createElement('h2');heading.textContent='Load Track';heading.style.cssText='text-align:center;font:16px ui-monospace,Consolas,monospace;margin:0 0 10px;color:#eee;';
+  modalOpen=true;
+  const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
+  const box=document.createElement('div');box.style.cssText='width:min(560px,90vw);max-height:82vh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#1e1e34;border:2px solid #9090ad;padding:18px 20px;box-shadow:0 22px 70px #000;border-radius:6px;';
+  const heading=document.createElement('h2');heading.textContent='Load Track';heading.style.cssText='text-align:center;font:17px ui-monospace,Consolas,monospace;margin:0 0 12px;color:#eee;border-bottom:1px solid #aaa;padding-bottom:8px;';
   const list=document.createElement('div');list.style.cssText='display:grid;gap:4px;overflow:auto;min-height:120px;max-height:60vh;';
-  const close=button('Cancel',()=>shade.remove());
+  const closeModal=()=>{modalOpen=false;shade.remove();};
+  const close=button('Cancel',closeModal);
   const choose=async(filename:string)=>{
    const stem=filename.replace(/\.trk$/i,'');
    try{
     const bytes=await host.readTrack!('',stem);if(bytes.length!==1802)throw Error('Track must contain exactly 1802 bytes');
     core.loadBytes(bytes);host.track.name=stem;host.track.path='';host.track.raw=Array.from(bytes);name.textContent=stem+'.TRK';
-    cellX=0;cellY=0;lastPlaced=null;core.setSelection(null);shade.remove();renderPalette();renderScenery();renderMap();renderStatus();status.textContent='Loaded '+stem+'.TRK';status.style.color='#aee18a';
+    cellX=0;cellY=0;lastPlaced=null;core.setSelection(null);closeModal();renderPalette();renderScenery();renderMap();renderStatus();status.textContent='Loaded '+stem+'.TRK';status.style.color='#aee18a';
    }catch(error){status.textContent='Could not load '+filename+': '+String(error);status.style.color='#ff9b9b';}
   };
   for(const filename of filenames){const entry=button(filename,()=>void choose(filename));entry.style.textAlign='left';entry.style.fontFamily='ui-monospace,Consolas,monospace';list.append(entry);}
   box.append(heading,list,close);shade.append(box);document.body.append(shade);
-  shade.addEventListener('pointerdown',event=>{if(event.target===shade)shade.remove();});
+  shade.addEventListener('pointerdown',event=>{if(event.target===shade)closeModal();});
+  shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();closeModal();}});
+  requestAnimationFrame(()=>shade.focus());
  }
 
  function showTrackAnalysis(){
