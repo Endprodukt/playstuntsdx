@@ -153,7 +153,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    await runBrowserBlissEditor({
     canvas,track,palette,
     resources:{art,terrainNames:terrainNames.names,images:editor.screenResources.images},
-    writeTrack:editor.writeTrack,clearScores:editor.clearScores,
+    writeTrack:editor.writeTrack,clearScores:editor.clearScores,exists:editor.exists,presets,
    });
   }finally{input.setActive(true);await input.release();}
  };
