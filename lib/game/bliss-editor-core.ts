@@ -53,6 +53,11 @@ export class BlissEditorCore {
  dry(x:number,y:number){this.change(()=>dryBlissTerrain(this.track,x,y));}
  raise(x:number,y:number){this.change(()=>raiseBlissTerrain(this.track,x,y));}
  lower(x:number,y:number){this.change(()=>lowerBlissTerrain(this.track,x,y));}
+ setLandscape(landscape:number){
+  if(!Number.isInteger(landscape)||landscape<0||landscape>4)throw Error('Bliss landscape must be between 0 and 4');
+  if(this.track.landscape===landscape)return false;
+  const before=cloneBlissTrack(this.track);this.track.landscape=landscape;this.history.push(before);this.modified=true;return true;
+ }
  paintTerrain(x:number,y:number,code:number){
   if(!Number.isInteger(x)||!Number.isInteger(y)||x<0||x>=30||y<0||y>=30)throw Error(`Track coordinates out of range: ${x},${y}`);
   if(!Number.isInteger(code)||code<0||code>255)throw Error(`Invalid terrain code: ${code}`);
