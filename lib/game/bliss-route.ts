@@ -14,7 +14,7 @@ export interface BlissSection {
  initial:BlissPoint;final:BlissPoint|null;
  solving:boolean;origin:number;bearing:number;
  parent:[number,number];child:[number,number];
- finishes:boolean;cycle:boolean;wrongway:boolean;errors:boolean;error:number;
+ length:number;finishes:boolean;cycle:boolean;wrongway:boolean;errors:boolean;error:number;
 }
 export interface BlissPath {sections:number[];error:number;finishes:boolean}
 export interface BlissRouteAnalysis {
@@ -112,7 +112,7 @@ export function getNextBlissVector(
 
 const newSection=(initial:BlissPoint,bearing:number,origin:number):BlissSection=>({
  initial:{...initial},final:null,solving:false,origin,bearing,parent:[0,0],child:[0,0],
- finishes:false,cycle:false,wrongway:false,errors:false,error:0,
+ length:0,finishes:false,cycle:false,wrongway:false,errors:false,error:0,
 });
 
 /** Port of GenerateSections/SolveSection/SolvePath. Section index 0 is intentionally unused. */
@@ -129,10 +129,10 @@ export function analyzeBlissRoute(
  let tooComplex=false;
 
  const solveSection=(sn:number)=>{
-  const section=sections[sn];section.error=0;section.errors=false;section.solving=true;section.finishes=false;section.cycle=false;section.final=null;section.wrongway=false;
+  const section=sections[sn];section.error=0;section.errors=false;section.solving=true;section.length=0;section.finishes=false;section.cycle=false;section.final=null;section.wrongway=false;
   let vector:BlissTrackVector={x:section.initial.x,y:section.initial.y,bearing:section.bearing,origin:section.origin,error:0};
   for(let guard=0;guard<10000;guard++){
-   const old={...vector};vector=getNextBlissVector(source,vector,false,definitions,elements);
+   const old={...vector};section.length++;vector=getNextBlissVector(source,vector,false,definitions,elements);
    if(vector.error)errors.push({x:old.x,y:old.y,error:vector.error,section:sn});
    if(vector.error>=70&&vector.error<=79){
     if(section.error<40)section.error=vector.error;section.errors=true;section.solving=false;section.final=point(old.x,old.y);section.child=[0,0];return;
