@@ -449,8 +449,8 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    entry.style.gridColumn=(column+1)+' / span '+width;entry.style.gridRow=(row+1)+' / span '+height;
    const preview=document.createElement('canvas');preview.style.cssText='image-rendering:pixelated;display:block;max-width:100%;max-height:100%;object-fit:contain;';
    drawPreview(preview,code,terrainPage,44,width,height);entry.append(preview);
-   const cursorBlock=blockForCursor(page,paletteCursor);
-   const cursorHere=cursorBlock===block;
+   const cursorRow=Math.floor(paletteCursor/6),cursorColumn=paletteCursor%6;
+   const cursorHere=cursorRow>=row&&cursorRow<row+height&&cursorColumn>=column&&cursorColumn<column+width;
    setActive(entry,code===currentCode||activeArea==='palette'&&cursorHere);paletteGrid.append(entry);
   }
 
