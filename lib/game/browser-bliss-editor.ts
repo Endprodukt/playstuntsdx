@@ -10,7 +10,7 @@ import {BLISS_TOOL_ICON_COLUMNS,BLISS_TOOL_ICON_SIZE,BLISS_TOOL_ICON_SPRITE} fro
 import {setBlissEditorActive} from './bliss-editor-presence.ts';
 import {blissTerrainPresets,type BlissTerrainPreset} from './bliss-terrain-presets.ts';
 import {BLISS_TRANSPARENT_COLOUR,setBlissTrackMetadata,type BlissMetadata} from './bliss-metadata.ts';
-import {blissRoundToEven,blissSceneryDefaults,type BlissSceneryPlacement,type BlissSceneryRule} from './bliss-scenery-generator.ts';
+import {blissRoundToEven,blissSceneryAvailability,blissSceneryDefaults,type BlissSceneryPlacement,type BlissSceneryRule} from './bliss-scenery-generator.ts';
 import {blissTournamentUrl,parseBlissScoreboard,parseBlissTournamentConfig,type BlissTournamentRace} from './bliss-tournaments.ts';
 import {blissEstimatedTimeCentiseconds,blissTimey,summarizeBlissTrackAnalysis,traceBlissPath,type BlissRouteAnalysis} from './bliss-route.ts';
 import {BLISS_PLAYER_CARD_ICON,BLISS_OPPONENT_CARD_ICON} from './bliss-card-icons.ts';
@@ -1394,34 +1394,18 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  function showSceneryGenerator(){
   modalOpen=true;
   const rules=blissSceneryDefaults(core.track.landscape).map(rule=>({...rule}));
+  const availability=blissSceneryAvailability(core.track,false);
+  const eligibleFor=(rule:BlissSceneryRule)=>rule.placement==='everywhere'?availability.openfield:rule.placement==='on-water'?availability.water:availability.byRoad;
+  for(const rule of rules)rule.count=Math.max(0,blissRoundToEven(eligibleFor(rule)*rule.percent/100));
   const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
   const box=document.createElement('div');box.style.cssText='width:min(760px,94vw);max-height:90vh;overflow:auto;background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:18px 22px;box-shadow:0 22px 70px #000;border-radius:6px;font:13px/1.35 system-ui,Segoe UI,sans-serif;';
   const heading=document.createElement('h2');heading.textContent='Generate Scenery';heading.style.cssText='text-align:center;font-size:18px;margin:0 0 14px;color:#fff;';
   const table=document.createElement('div');table.style.cssText='display:grid;grid-template-columns:minmax(180px,1fr) minmax(250px,1.5fr) 155px;gap:8px 12px;align-items:center;';
-  for(const label of ['Scenery','Percentage','Placement']){const h=document.createElement('strong');h.textContent=label;h.style.cssText='color:#d8d8ea;border-bottom:1px solid #555;padding-bottom:5px;';table.append(h);}
-  const percentageInputs:HTMLInputElement[]=[],percentageNumbers:HTMLInputElement[]=[],modeInputs:HTMLSelectElement[]=[];
-  // Bliss only changes lastchanged when the percentage bar itself moves.
-  // Changing a placement selector re-runs normalization with the previous
-  // bar as lastchanged; treating the selector row as lastchanged changes the
-  // percentages and was the source of visible number drift.
-  let lastChanged=0;
-
-  const syncPercent=(index:number,value:number)=>{
-   const percent=Math.max(0,Math.min(100,blissRoundToEven(value)));
-   rules[index].percent=percent;percentageInputs[index].value=String(percent);percentageNumbers[index].value=String(percent);
-  };
-  const normalizeGroups=()=>{
-   const top=rules[9]?.placement==='on-water'?8:9;
-   for(const placement of ['everywhere','secondary'] as const){
-    const matches=(rule:BlissSceneryRule)=>placement==='everywhere'?rule.placement==='everywhere':rule.placement!=='everywhere';
-    const indices=Array.from({length:top+1},(_,i)=>i).filter(i=>matches(rules[i]));
-    const total=indices.reduce((sum,i)=>sum+rules[i].percent,0);
-    if(total<=100)continue;
-    const changedIsHere=lastChanged<=top&&matches(rules[lastChanged]);
-    const own=changedIsHere?rules[lastChanged].percent:0;
-    const factor=changedIsHere?(total-own>0?(100-own)/(total-own):0):100/total;
-    for(const i of indices)if(i!==lastChanged)syncPercent(i,rules[i].percent*factor);
-   }
+  for(const label of ['Scenery','Count','Placement']){const h=document.createElement('strong');h.textContent=label;h.style.cssText='color:#d8d8ea;border-bottom:1px solid #555;padding-bottom:5px;';table.append(h);}
+  const countInputs:HTMLInputElement[]=[],modeInputs:HTMLSelectElement[]=[];
+  const syncCount=(index:number,value:number)=>{
+   const max=eligibleFor(rules[index]),count=Math.max(0,Math.min(max,Math.trunc(value)||0));
+   rules[index].count=count;countInputs[index].value=String(count);
   };
 
   rules.forEach((rule,index)=>{
@@ -1430,22 +1414,20 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    const image=blissOriginalPaletteImageData(rule.baseCode,false,host.resources,host.palette);preview.width=image.width;preview.height=image.height;preview.getContext('2d',{alpha:false})!.putImageData(image,0,0);
    const labelText=document.createElement('span');labelText.textContent=rule.name;labelText.style.color='#ddd';label.append(preview,labelText);
 
-   const percentBox=document.createElement('div');percentBox.style.cssText='display:grid;grid-template-columns:minmax(0,1fr) 68px;gap:8px;align-items:center;';
-   const percentage=document.createElement('input');percentage.type='range';percentage.min='0';percentage.max='100';percentage.step='1';percentage.value=String(rule.percent);percentage.style.width='100%';
-   const number=document.createElement('input');number.type='number';number.min='0';number.max='100';number.step='1';number.value=String(rule.percent);number.style.cssText='box-sizing:border-box;width:100%;padding:6px;background:#0d0d18;border:1px solid #676783;color:#fff;border-radius:3px;text-align:right;';
-   const update=(value:number)=>{lastChanged=index;syncPercent(index,value);normalizeGroups();};
-   percentage.addEventListener('input',()=>update(Number(percentage.value)));
-   number.addEventListener('input',()=>update(Number(number.value)||0));
-   percentBox.append(percentage,number);
+   const countBox=document.createElement('div');countBox.style.cssText='display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;';
+   const number=document.createElement('input');number.type='number';number.min='0';number.max=String(eligibleFor(rule));number.step='1';number.value=String(rule.count??0);number.style.cssText='box-sizing:border-box;width:100%;padding:6px;background:#0d0d18;border:1px solid #676783;color:#fff;border-radius:3px;text-align:right;';
+   const available=document.createElement('span');available.textContent='max '+eligibleFor(rule);available.style.cssText='color:#888;font-size:11px;white-space:nowrap;';
+   number.addEventListener('input',()=>syncCount(index,Number(number.value)||0));
+   countBox.append(number,available);
 
    const mode=document.createElement('select');mode.style.cssText='box-sizing:border-box;width:100%;padding:6px;background:#0d0d18;border:1px solid #676783;color:#fff;border-radius:3px;';
    const isShip=rule.baseCode===0xab;
    const choices:readonly [BlissSceneryPlacement,string][]=isShip?[['on-water','On water'],['everywhere','Everywhere']]:[['everywhere','Everywhere'],['by-road','By the road']];
    for(const [value,text] of choices){const option=document.createElement('option');option.value=value;option.textContent=text;option.selected=value===rule.placement;mode.append(option);}
-   mode.addEventListener('change',()=>{rules[index].placement=mode.value as BlissSceneryPlacement;normalizeGroups();});
+   mode.addEventListener('change',()=>{rules[index].placement=mode.value as BlissSceneryPlacement;const max=eligibleFor(rules[index]);number.max=String(max);if((rules[index].count??0)>max)syncCount(index,max);available.textContent='max '+max;});
 
-   percentageInputs.push(percentage);percentageNumbers.push(number);modeInputs.push(mode);
-   table.append(label,percentBox,mode);
+   countInputs.push(number);modeInputs.push(mode);
+   table.append(label,countBox,mode);
   });
 
   const modeRow=document.createElement('div');modeRow.style.cssText='display:flex;justify-content:center;gap:18px;align-items:center;margin-top:16px;padding-top:12px;border-top:1px solid #555;';
@@ -1453,10 +1435,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   preserve.type=erase.type='radio';preserve.name=erase.name='bliss-scenery-clear-'+Date.now();preserve.checked=true;
   preserveLabel.append(preserve,document.createTextNode(' Use free space'));eraseLabel.append(erase,document.createTextNode(' Remove old scenery'));modeRow.append(preserveLabel,eraseLabel);
 
-  const note=document.createElement('p');note.textContent='Percentages and placement rules now follow Bliss 2.6.1 exactly, including its round-to-even percentage handling and “Everywhere” placement behaviour.';note.style.cssText='margin:12px 0 0;color:#999;text-align:center;font-size:11px;';
+  const note=document.createElement('p');note.textContent='Counts are exact: entering 6 creates 6 objects, provided enough eligible cells exist. Landscape defaults are converted from the original Bliss percentages when this window opens.';note.style.cssText='margin:12px 0 0;color:#999;text-align:center;font-size:11px;';
   const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:14px;';
   const close=()=>{modalOpen=false;shade.remove();};
-  const zero=button('Set Everything to Zero',()=>{rules.forEach((_,index)=>syncPercent(index,0));});
+  const zero=button('Set Everything to Zero',()=>{rules.forEach((_,index)=>syncCount(index,0));});
   const generate=()=>{core.generateScenery({eraseExisting:erase.checked,rules});close();changed('Scenery generated');};
   const generateButton=button('Generate',generate),cancel=button('Cancel',close);generateButton.style.cssText+='min-width:110px;background:#4e5b2b;border-color:#a9bd58;';zero.style.minWidth='150px';cancel.style.cssText+='min-width:105px;';
   actions.append(zero,generateButton,cancel);box.append(heading,table,modeRow,note,actions);shade.append(box);document.body.append(shade);
