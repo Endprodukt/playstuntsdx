@@ -198,27 +198,36 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     target:[signed(0x8fc),signed(0x8fe),-signed(0x900)] as [number,number,number],
     fov:2*Math.atan(100/120)*180/Math.PI
    };
-   let preview:ReturnType<typeof createBlissEditor3DView>|undefined,previewRaw:number[]|undefined;
+   const backdropCanvas=document.createElement('canvas');backdropCanvas.width=320;backdropCanvas.height=200;
+   const backdropContext=backdropCanvas.getContext('2d')!,backdropImage=backdropContext.createImageData(320,200);
+   let backdrop:Uint8Array|undefined,preview:ReturnType<typeof createBlissEditor3DView>|undefined,previewSignature='';
+   menuHost.captureOverviewBackdrop=(captured)=>{backdrop=captured.slice();};
+   const trackSignature=()=>track.name+'/'+track.raw.length+'/'+track.raw.slice(0,1802).reduce((hash,value,index)=>(Math.imul(hash^value,16777619)+index)>>>0,2166136261);
    const ensurePreview=()=>{
-    if(previewRaw===track.raw&&preview)return preview;
+    const signature=trackSignature();
+    if(preview&&previewSignature===signature)return preview;
     const decoded=decodeBlissTrack(Uint8Array.from(track.raw));
-    if(!preview)preview=createBlissEditor3DView(previewCanvas,options.assets,decoded,{initialCamera:originalCamera});
+    if(!preview)preview=createBlissEditor3DView(previewCanvas,options.assets,decoded,{initialCamera:originalCamera,transparentBackground:true,showGround:false});
     else{preview.update(decoded);preview.resetView();}
-    previewRaw=track.raw;return preview;
+    previewSignature=signature;return preview;
+   };
+   const drawBackdropRegion=(top:number,bottom:number)=>{
+    if(!backdrop)return;
+    for(let i=0;i<64000;i++){const color=(backdrop[i]??0)*3;backdropImage.data[i*4]=palette[color];backdropImage.data[i*4+1]=palette[color+1];backdropImage.data[i*4+2]=palette[color+2];backdropImage.data[i*4+3]=255;}
+    backdropContext.putImageData(backdropImage,0,0);
+    const sy=top*canvas.height/200,sh=(bottom-top)*canvas.height/200;
+    context.imageSmoothingEnabled=false;context.drawImage(backdropCanvas,0,top,320,bottom-top,0,sy,canvas.width,sh);
    };
    const presentTrack=()=>{
     paint();if(!options.graphics)return;options.graphics.refresh=presentTrack;
-    if(!options.graphics.enabled)return;
+    if(!options.graphics.enabled||!backdrop)return;
+    const top=38,bottom=169;drawBackdropRegion(top,bottom);
     const view=ensurePreview();view.render();
-    // Keep the original title/high-score area and the Load/Edit/Drive buttons.
-    // Only replace the perspective map itself with the high-resolution 3D view.
-    const sourceY=40*4,sourceH=128*4,destY=40*canvas.height/200,destH=128*canvas.height/200;
-    context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';
-    context.drawImage(previewCanvas,0,sourceY,1280,sourceH,0,destY,canvas.width,destH);
-    context.imageSmoothingEnabled=false;
+    const sy=top*previewCanvas.height/200,sh=(bottom-top)*previewCanvas.height/200,dy=top*canvas.height/200,dh=(bottom-top)*canvas.height/200;
+    context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';context.drawImage(previewCanvas,0,sy,previewCanvas.width,sh,0,dy,canvas.width,dh);context.imageSmoothingEnabled=false;
    };
    let drag:'orbit'|'pan'|null=null,lastX=0,lastY=0;
-   const inMap=(event:{clientX:number;clientY:number})=>{const r=canvas.getBoundingClientRect(),y=(event.clientY-r.top)*200/r.height;return y>=40&&y<168;};
+   const inMap=(event:{clientX:number;clientY:number})=>{const r=canvas.getBoundingClientRect(),y=(event.clientY-r.top)*200/r.height;return y>=38&&y<169;};
    const pointerDown=(event:PointerEvent)=>{
     if(!options.graphics?.enabled||!inMap(event)||!event.ctrlKey||(event.button!==0&&event.button!==2))return;
     event.preventDefault();event.stopPropagation();drag=event.button===0?'orbit':'pan';lastX=event.clientX;lastY=event.clientY;canvas.setPointerCapture(event.pointerId);
@@ -230,7 +239,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    const pointerUp=(event:PointerEvent)=>{drag=null;if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);};
    const wheel=(event:WheelEvent)=>{
     if(!options.graphics?.enabled||!inMap(event))return;
-    event.preventDefault();const view=ensurePreview();view.dolly(event.deltaY,event.clientX,event.clientY);presentTrack();
+    event.preventDefault();ensurePreview().dolly(event.deltaY,event.clientX,event.clientY);presentTrack();
    };
    canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
    menuHost.present=presentTrack;
