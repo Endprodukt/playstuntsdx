@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import trackMaterials from '../../public/game/track-materials.json';
 import trackRenderModels from '../../public/game/track-render-models.json';
 import terrainObjects from '../../public/game/terrain-objects.json';
-import {createTrackModelFactory,type TrackMaterials} from './track-model.ts';
+import {createTrackModel,createTrackModelFactory,type TrackMaterials} from './track-model.ts';
 import {trackRenderPlacement} from './track-render-placement.ts';
 import {hillRenderSelection} from './hill-render-selection.ts';
 import type {Assets} from './types.ts';
@@ -14,6 +14,7 @@ export interface BlissEditor3DView {
  update(track:BlissTrack):void;
  cellAt(clientX:number,clientY:number):BlissEditor3DCell|null;
  setHover(cell:BlissEditor3DCell|null):void;
+ setGhost(cell:BlissEditor3DCell|null,code:number,terrain:boolean,terrainCode:number):void;
  orbit(dx:number,dy:number):void;
  pan(dx:number,dy:number):void;
  dolly(delta:number,clientX:number,clientY:number):void;
@@ -34,7 +35,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
  const light=new THREE.HemisphereLight(0xffffff,0x586030,1.15);scene.add(light);
  const materials=trackMaterials as TrackMaterials;
  let modelFactory=createTrackModelFactory(materials,2);
- const content=new THREE.Group();world.add(content);
+ const content=new THREE.Group(),ghostRoot=new THREE.Group();world.add(content,ghostRoot);
 
  const base=new THREE.Mesh(
   new THREE.PlaneGeometry(30720,30720),
@@ -53,6 +54,43 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   new THREE.MeshBasicMaterial({color:0xffff66,transparent:true,opacity:.38,depthWrite:false,side:THREE.DoubleSide})
  );
  hover.rotation.x=-Math.PI/2;hover.position.y=12;hover.visible=false;scene.add(hover);
+
+ const makeGhost=(model:THREE.Object3D)=>{
+  model.traverse(node=>{
+   const drawable=node as THREE.Mesh|THREE.Line;
+   const material=(drawable as THREE.Mesh).material as THREE.Material|THREE.Material[]|undefined;
+   if(!material)return;
+   const ghostMaterial=(value:THREE.Material)=>{const clone=value.clone();clone.transparent=true;clone.opacity=.5;clone.depthWrite=false;return clone;};
+   (drawable as THREE.Mesh).material=Array.isArray(material)?material.map(ghostMaterial):ghostMaterial(material);
+   node.renderOrder=100;
+  });
+  return model;
+ };
+ const clearGhost=()=>{
+  while(ghostRoot.children.length){const child=ghostRoot.children[ghostRoot.children.length-1];ghostRoot.remove(child);disposeObject(child);}
+ };
+ const setGhost=(cell:BlissEditor3DCell|null,code:number,terrain:boolean,terrainCode:number)=>{
+  clearGhost();if(!cell)return;
+  const row=29-cell.y;
+  if(terrain){
+   const selected=hillRenderSelection(code,0),descriptor=(terrainObjects as Array<{id:number;shape:string;rotation:number}>).find(entry=>entry.id===selected.terrain);
+   if(descriptor){
+    const [group,name]=descriptor.shape.split('.'),shape=assets.shapes[group]?.[name];
+    if(shape){const model=makeGhost(createTrackModel(shape,materials,0,true,2));model.position.set(cell.x*1024+512,code===6?450:18,row*1024+512);model.rotation.y=descriptor.rotation*Math.PI/512;ghostRoot.add(model);}
+   }
+  }else if(code>0&&code<253){
+   const selected=hillRenderSelection(terrainCode,code),descriptor=(trackRenderModels as Record<string,{id:number;shape?:string;overlay?:number;rotation:number;multiTile:number;paint:number}>)[String(selected.tile)];
+   if(descriptor){
+    const parts=[descriptor,...(descriptor.overlay?[(trackRenderModels as Record<string,typeof descriptor>)[String(descriptor.overlay)]]:[])].filter(Boolean);
+    for(const part of parts){
+     if(!part?.shape)continue;const [group,name]=part.shape.split('.'),shape=assets.shapes[group]?.[name];if(!shape)continue;
+     const placement=trackRenderPlacement(part,cell.x,row,terrainCode===6?450:18,0),paint=part.paint===255?0:placement.paint;
+     const model=makeGhost(createTrackModel(shape,materials,paint,false,2));model.position.set(...placement.position);model.rotation.y=placement.rotation;ghostRoot.add(model);
+    }
+   }
+  }
+  render();
+ };
 
  const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();
 
@@ -155,9 +193,10 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   update(source){rebuild(source);render();},
   cellAt,
   setHover,
+  setGhost,
   orbit,
   pan,
   dolly,
-  close(){disposeObject(content);disposeObject(base);hover.geometry.dispose();(hover.material as THREE.Material).dispose();pickPlane.geometry.dispose();(pickPlane.material as THREE.Material).dispose();renderer.dispose();renderer.forceContextLoss();}
+  close(){clearGhost();disposeObject(content);disposeObject(base);hover.geometry.dispose();(hover.material as THREE.Material).dispose();pickPlane.geometry.dispose();(pickPlane.material as THREE.Material).dispose();renderer.dispose();renderer.forceContextLoss();}
  };
 }
