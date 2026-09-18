@@ -80,15 +80,6 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   return primitives.length===shape.primitives.length?shape:{...shape,primitives};
  };
 
- const createFullWaterTile=()=>{
-  const mesh=new THREE.Mesh(
-   new THREE.PlaneGeometry(1024,1024),
-   new THREE.MeshBasicMaterial({color:0x118bd1,side:THREE.DoubleSide,toneMapped:false})
-  );
-  mesh.rotation.x=-Math.PI/2;
-  return mesh;
- };
-
  const makeGhost=(model:THREE.Object3D)=>{
   model.traverse(node=>{
    const drawable=node as THREE.Mesh|THREE.Line;
@@ -107,14 +98,10 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   clearGhost();if(!cell)return;
   const row=29-cell.y;
   if(terrain){
-   if(code===1){
-    const water=makeGhost(createFullWaterTile());water.position.set(cell.x*1024+512,14,row*1024+512);ghostRoot.add(water);
-   }else{
-    const selected=hillRenderSelection(code,0),descriptor=(terrainObjects as Array<{id:number;shape:string;rotation:number}>).find(entry=>entry.id===selected.terrain);
-    if(descriptor){
-     const [group,name]=descriptor.shape.split('.'),shape=assets.shapes[group]?.[name];
-     if(shape){const model=makeGhost(createTrackModel(shape,materials,0,true,2));model.position.set(cell.x*1024+512,code===6?450:18,row*1024+512);model.rotation.y=descriptor.rotation*Math.PI/512;ghostRoot.add(model);}
-    }
+   const selected=hillRenderSelection(code,0),descriptor=(terrainObjects as Array<{id:number;shape:string;rotation:number}>).find(entry=>entry.id===selected.terrain);
+   if(descriptor){
+    const [group,name]=descriptor.shape.split('.'),shape=assets.shapes[group]?.[name];
+    if(shape){const model=makeGhost(createTrackModel(shape,materials,0,true,2));model.position.set(cell.x*1024+512,code===6?450:18,row*1024+512);model.rotation.y=descriptor.rotation*Math.PI/512;ghostRoot.add(model);}
    }
   }else if(code>0&&code<253){
    const selected=hillRenderSelection(terrainCode,code),descriptor=(trackRenderModels as Record<string,{id:number;shape?:string;overlay?:number;rotation:number;multiTile:number;paint:number}>)[String(selected.tile)];
@@ -176,9 +163,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   for(let y=0;y<30;y++)for(let x=0;x<30;x++){
    const at=y*30+x,terrain=source.terrain[at],sourceId=source.track[at],selected=hillRenderSelection(terrain,sourceId);
    const row=29-y;
-   if(terrain===1){
-    const water=createFullWaterTile();water.position.set(x*1024+512,2,row*1024+512);content.add(water);
-   }else if(selected.terrain&&!(terrain===6&&sourceId!==0)){
+   if(selected.terrain&&!(terrain===6&&sourceId!==0)){
     const descriptor=(terrainObjects as Array<{id:number;shape:string;rotation:number}>).find(entry=>entry.id===selected.terrain);
     if(descriptor){
      const [group,name]=descriptor.shape.split('.'),shape=assets.shapes[group]?.[name];
