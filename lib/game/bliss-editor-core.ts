@@ -68,6 +68,7 @@ export class BlissEditorCore {
   this.selection=selection?{...selection}:null;
  }
  place(x:number,y:number,code:number,allowErrors=false){const before=cloneBlissTrack(this.track),placed=placeBlissTrackElement(this.track,x,y,code,this.definitions,{allowErrors});if(placed)this.record(before);return placed;}
+ previewPlace(x:number,y:number,code:number,allowErrors=false){const preview=cloneBlissTrack(this.track);return placeBlissTrackElement(preview,x,y,code,this.definitions,{allowErrors})?preview:null;}
  clear(x:number,y:number,allowErrors=false){const before=cloneBlissTrack(this.track),changed=clearBlissTrackElement(this.track,x,y,this.definitions,{allowErrors});if(changed)this.record(before);return changed;}
  flood(x:number,y:number){this.change(()=>floodBlissTerrain(this.track,x,y));}
  dry(x:number,y:number){this.change(()=>dryBlissTerrain(this.track,x,y));}
