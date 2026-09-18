@@ -13,6 +13,7 @@ import {
   updateDesktopControlDevices,
   type DesktopControlAction,
 } from '../lib/game/desktop-control-bindings';
+import { blissEditorActive } from '../lib/game/bliss-editor-presence';
 import {
   enhancedChaseCameraPosition,
   resetEnhancedChaseCameraPositions,
@@ -122,7 +123,7 @@ export function installDesktopControlBindings(){
  window.addEventListener('keydown',keyboardCapture,true);
 
  const forwardChaseView=(event:KeyboardEvent)=>{
-  if(!event.isTrusted||event.repeat||capture||panelVisible())return;
+  if(blissEditorActive()||!event.isTrusted||event.repeat||capture||panelVisible())return;
   const target=desktopControlKeyboardTarget(event),plainV=event.code==='KeyV'&&!event.ctrlKey&&!event.altKey&&!event.shiftKey&&!event.metaKey;
   if(target?.action==='enhanced-chase-view'){
    event.preventDefault();event.stopImmediatePropagation();dispatchChaseView();return;
@@ -141,7 +142,7 @@ export function installDesktopControlBindings(){
  // If that happens, a trusted Escape would never reach the game canvas. Route
  // it back to the original input adapter instead of requiring a mouse click.
  const forwardEscape=(event:KeyboardEvent)=>{
-  if(event.code!=='Escape'||!event.isTrusted||capture)return;
+  if(blissEditorActive()||event.code!=='Escape'||!event.isTrusted||capture)return;
   const panel=section?.parentElement;
   if(panel&&panel.style.display!=='none')return;
   if(event.target instanceof HTMLCanvasElement)return;
@@ -171,7 +172,7 @@ export function installDesktopControlBindings(){
  }
  function detectChaseButton(next:readonly NativeJoystick[]){
   const binding=desktopControlBindings()['enhanced-chase-view'].button;
-  if(!capture&&!panelVisible()&&binding){
+  if(!blissEditorActive()&&!capture&&!panelVisible()&&binding){
    const device=next.find(candidate=>candidate.id===binding.deviceId),previous=buttonBefore.get(binding.deviceId)?.[binding.button]??0,current=device?.buttons[binding.button]??0;
    if(current>.55&&previous<=.55)dispatchChaseView();
   }
