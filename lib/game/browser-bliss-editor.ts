@@ -12,7 +12,7 @@ import {blissTerrainPresets,type BlissTerrainPreset} from './bliss-terrain-prese
 import {setBlissTrackMetadata,type BlissMetadata} from './bliss-metadata.ts';
 import {blissRoundToEven,blissSceneryDefaults,type BlissSceneryPlacement,type BlissSceneryRule} from './bliss-scenery-generator.ts';
 import {blissTournamentUrl,parseBlissScoreboard,parseBlissTournamentConfig,type BlissTournamentRace} from './bliss-tournaments.ts';
-import {blissEstimatedTimeCentiseconds,blissTimey,summarizeBlissTrackAnalysis} from './bliss-route.ts';
+import {blissEstimatedTimeCentiseconds,blissTimey,summarizeBlissTrackAnalysis,traceBlissPath,type BlissRouteAnalysis} from './bliss-route.ts';
 
 export interface BrowserBlissEditorHost {
  canvas:HTMLCanvasElement;
@@ -1037,6 +1037,39 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   requestAnimationFrame(()=>titleField.focus());
  }
 
+ async function followAnalysisPath(pathIndex:number,analysis:BlissRouteAnalysis){
+  const trace=traceBlissPath(core.track,analysis,pathIndex,0,core.definitions);
+  if(!trace.steps.length){status.textContent='Path '+(pathIndex+1)+' cannot be followed.';status.style.color='#ffbd7a';return;}
+
+  let goFast=false;
+  const speedUp=(event:KeyboardEvent)=>{event.preventDefault();event.stopImmediatePropagation();goFast=true;};
+  const oldPointerEvents=map.style.pointerEvents;
+  modalOpen=true;map.style.pointerEvents='none';window.addEventListener('keydown',speedUp,true);
+  activeArea='grid';pasteMode=false;core.setSelection(null);
+
+  try{
+   for(const step of trace.steps){
+    renderMap();
+    context.save();
+    context.fillStyle='rgba(100,240,240,.52)';
+    context.strokeStyle='rgb(100,240,240)';
+    context.lineWidth=2;
+    context.fillRect(step.x*16,step.y*16,Math.max(1,step.width)*16,Math.max(1,step.height)*16);
+    context.strokeRect(step.x*16+1,step.y*16+1,Math.max(1,step.width)*16-2,Math.max(1,step.height)*16-2);
+    context.restore();
+    cellX=Math.max(0,Math.min(29,step.x));cellY=Math.max(0,Math.min(29,step.y));
+    if(!goFast)await new Promise(resolve=>setTimeout(resolve,100));
+   }
+  }finally{
+   window.removeEventListener('keydown',speedUp,true);map.style.pointerEvents=oldPointerEvents;modalOpen=false;
+  }
+
+  cellX=Math.max(0,Math.min(29,trace.cursor.x));cellY=Math.max(0,Math.min(29,trace.cursor.y));
+  renderMap();renderStatus();
+  status.textContent='Followed path '+(pathIndex+1)+' · cursor at '+(cellX+1)+','+(cellY+1);
+  status.style.color='#aee18a';
+ }
+
  function showTrackAnalysis(){
   let analysis:ReturnType<BlissEditorCore['analyze']>;
   try{analysis=core.analyze();}catch(error){void centeredNotice('Track Analysis','Analysis failed: '+String(error));return;}
@@ -1067,7 +1100,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const heading=document.createElement('h2');heading.textContent='Track Analysis';heading.style.cssText='text-align:center;font-size:18px;margin:0 0 12px;border-bottom:1px solid #aaa;padding-bottom:8px;';
   const body=document.createElement('div');body.style.cssText='overflow:auto;min-height:280px;';
   const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:14px;';
-  let page:0|1|2=0;
+  let page:0|1|2=0,currentPath=0;
 
   const prognosisText=()=>{
    switch(summary.prognosis){
@@ -1116,7 +1149,9 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const drawPaths=()=>{
    const list=document.createElement('div');list.style.cssText='display:grid;gap:6px;';
    summary.paths.forEach(row=>{
-    const item=document.createElement('div');item.style.cssText='padding:8px 10px;border:1px solid #40405b;background:#111126;';
+    const selected=row.index===currentPath;
+    const item=document.createElement('button');item.type='button';
+    item.style.cssText='display:block;width:100%;text-align:left;padding:8px 10px;border:1px solid '+(selected?'#9b9bc5':'#40405b')+';background:'+(selected?'#09090f':'#111126')+';color:inherit;cursor:pointer;border-radius:2px;';
     const first=document.createElement('div');first.style.cssText='color:#c8c8dc;';
     first.textContent='Path '+(row.index+1)+': '+row.tiles+' tiles - '+timeFor(row.tokens);
     const second=document.createElement('div');second.style.cssText='color:#d8d66d;margin-top:2px;';
@@ -1125,10 +1160,14 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
     else if(!row.finishes&&row.cyclic)statusText+=', cyclic';
     if(row.opponentPath)statusText+=" (opp's path)";
     if(row.fastest)statusText+=' - Fastest';
-    second.textContent=statusText;item.append(first,second);list.append(item);
+    second.textContent=statusText;item.append(first,second);
+    item.addEventListener('click',()=>{currentPath=row.index;draw();});
+    if(selected)item.dataset.currentPath='true';
+    list.append(item);
    });
    body.append(list);
    if(summary.winningPaths)body.append(carSelector());
+   requestAnimationFrame(()=>body.querySelector<HTMLElement>('[data-current-path="true"]')?.scrollIntoView({block:'nearest'}));
   };
 
   const drawTimes=()=>{
@@ -1146,15 +1185,23 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
 
   const pathsButton=button('See paths',()=>{page=1;draw();}),timesButton=button('See times',()=>{page=2;draw();}),mainButton=button('Main page',()=>{page=0;draw();});
   const close=()=>{modalOpen=false;shade.remove();},closeButton=button('OK',close);
+  const followButton=button('Follow path',()=>{
+   const selected=currentPath;close();void followAnalysisPath(selected,analysis);
+  });
   const draw=()=>{
    body.replaceChildren();actions.replaceChildren();
    if(page===0){drawSummary();actions.append(pathsButton);if(summary.winningPaths)actions.append(timesButton);actions.append(closeButton);}
-   else if(page===1){drawPaths();if(summary.winningPaths)actions.append(timesButton);actions.append(mainButton,closeButton);}
+   else if(page===1){drawPaths();actions.append(followButton);if(summary.winningPaths)actions.append(timesButton);actions.append(mainButton,closeButton);}
    else{drawTimes();actions.append(mainButton,pathsButton,closeButton);}
   };
 
   box.append(heading,body,actions);shade.append(box);document.body.append(shade);draw();
-  shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();close();}});
+  shade.addEventListener('keydown',event=>{
+   if(event.code==='Escape'){event.preventDefault();close();return;}
+   if(page===1&&event.code==='ArrowUp'){event.preventDefault();currentPath=Math.max(0,currentPath-1);draw();return;}
+   if(page===1&&event.code==='ArrowDown'){event.preventDefault();currentPath=Math.min(summary.paths.length-1,currentPath+1);draw();return;}
+   if(page===1&&event.code==='Enter'){event.preventDefault();const selected=currentPath;close();void followAnalysisPath(selected,analysis);}
+  });
   shade.addEventListener('pointerdown',event=>{if(event.target===shade)close();});
   requestAnimationFrame(()=>shade.focus());
  }
