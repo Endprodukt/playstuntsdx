@@ -811,6 +811,42 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   requestAnimationFrame(()=>shade.focus());
  }
 
+ function showSceneryGenerator(){
+  modalOpen=true;
+  const rules=blissSceneryDefaults(core.track.landscape).map(rule=>({...rule}));
+  const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
+  const box=document.createElement('div');box.style.cssText='width:min(720px,92vw);max-height:88vh;overflow:auto;background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:18px 22px;box-shadow:0 22px 70px #000;border-radius:6px;font:13px/1.35 system-ui,Segoe UI,sans-serif;';
+  const heading=document.createElement('h2');heading.textContent='Generate Scenery';heading.style.cssText='text-align:center;font-size:18px;margin:0 0 7px;color:#fff;';
+  const intro=document.createElement('p');intro.textContent='Set how much of each scenery type Bliss should generate and where it may be placed.';intro.style.cssText='text-align:center;color:#aaa;margin:0 0 14px;';
+  const table=document.createElement('div');table.style.cssText='display:grid;grid-template-columns:minmax(150px,1fr) 100px 150px;gap:6px 10px;align-items:center;';
+  for(const label of ['Scenery','Amount','Placement']){const h=document.createElement('strong');h.textContent=label;h.style.cssText='color:#d8d8ea;border-bottom:1px solid #555;padding-bottom:5px;';table.append(h);}
+  rules.forEach((rule,index)=>{
+   const label=document.createElement('span');label.textContent=rule.name;label.style.color='#ddd';
+   const percentage=document.createElement('input');percentage.type='number';percentage.min='0';percentage.max='100';percentage.step='1';percentage.value=String(rule.percent);percentage.style.cssText='box-sizing:border-box;width:100%;padding:6px;background:#0d0d18;border:1px solid #676783;color:#fff;border-radius:3px;';
+   const mode=document.createElement('select');mode.style.cssText='box-sizing:border-box;width:100%;padding:6px;background:#0d0d18;border:1px solid #676783;color:#fff;border-radius:3px;';
+   const isShip=rule.baseCode===171;
+   const choices:readonly [BlissSceneryPlacement,string][]=isShip?[['on-water','On water'],['everywhere','Everywhere']]:[['everywhere','Everywhere'],['by-road','By the road']];
+   for(const [value,text] of choices){const option=document.createElement('option');option.value=value;option.textContent=text;option.selected=value===rule.placement;mode.append(option);}
+   percentage.addEventListener('input',()=>{rules[index].percent=Math.max(0,Math.min(100,Number(percentage.value)||0));});
+   mode.addEventListener('change',()=>{rules[index].placement=mode.value as BlissSceneryPlacement;});
+   table.append(label,percentage,mode);
+  });
+  const clearRow=document.createElement('div');clearRow.style.cssText='display:flex;justify-content:center;gap:16px;align-items:center;margin-top:15px;padding-top:12px;border-top:1px solid #555;';
+  const preserveLabel=document.createElement('label'),eraseLabel=document.createElement('label'),preserve=document.createElement('input'),erase=document.createElement('input');
+  preserve.type=erase.type='radio';preserve.name=erase.name='bliss-scenery-clear-'+Date.now();preserve.checked=true;
+  preserveLabel.append(preserve,document.createTextNode(' Use free space only'));eraseLabel.append(erase,document.createTextNode(' Erase existing scenery first'));clearRow.append(preserveLabel,eraseLabel);
+  const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;margin-top:15px;';
+  const close=()=>{modalOpen=false;shade.remove();};
+  const generate=()=>{
+   core.generateScenery({eraseExisting:erase.checked,rules});close();changed('Scenery generated');
+  };
+  const generateButton=button('Generate',generate),cancel=button('Cancel',close);generateButton.style.cssText+='min-width:110px;background:#4e5b2b;border-color:#a9bd58;';cancel.style.cssText+='min-width:105px;';
+  actions.append(generateButton,cancel);box.append(heading,intro,table,clearRow,actions);shade.append(box);document.body.append(shade);
+  shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();close();}});
+  shade.addEventListener('pointerdown',event=>{if(event.target===shade)close();});
+  requestAnimationFrame(()=>shade.focus());
+ }
+
  function showTrackInformation(){
   modalOpen=true;
   const current=core.metadata(),now=new Date(),elapsed=metadataEditingBase+Math.max(0,Math.floor((performance.now()-editingSessionStarted)/1000));
