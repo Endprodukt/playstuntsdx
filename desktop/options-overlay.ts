@@ -135,9 +135,7 @@ export function installDesktopOptionsOverlay(assets?:Assets){
  const renderSoundModState=()=>{
   if(!section)return;
   const settings=loadSoundModSettings();
-  const enabled=section.querySelector<HTMLButtonElement>('button[data-sound-mod-toggle]');
   const preset=section.querySelector<HTMLSelectElement>('select[data-sound-mod-default]');
-  if(enabled){enabled.textContent=settings.enabled?'On':'Off';enabled.setAttribute('aria-pressed',String(settings.enabled));}
   if(preset)preset.value=settings.defaultPreset;
  };
 
@@ -181,12 +179,6 @@ export function installDesktopOptionsOverlay(assets?:Assets){
 
   const soundSection=document.createElement('div');soundSection.style.cssText='margin-top:12px;padding-top:10px;border-top:1px solid #333;';
   const soundHeading=document.createElement('div');soundHeading.textContent='Sound Mods';soundHeading.style.cssText='font-size:13px;font-weight:700;margin-bottom:8px;';
-  const soundEnabledRow=document.createElement('div');soundEnabledRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) 84px;gap:8px;align-items:center;';
-  const soundEnabledLabel=document.createElement('div');soundEnabledLabel.textContent='Custom Engine Sounds';soundEnabledLabel.style.cssText='font-size:12px;color:#ddd;';
-  const soundEnabled=document.createElement('button');soundEnabled.type='button';soundEnabled.dataset.soundModToggle='1';soundEnabled.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;text-align:center;';
-  soundEnabled.addEventListener('click',()=>{const settings=loadSoundModSettings();settings.enabled=!settings.enabled;saveSoundModSettings(settings);renderSoundModState();});
-  soundEnabledRow.append(soundEnabledLabel,soundEnabled);
-
   const soundDefaultRow=document.createElement('div');soundDefaultRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) minmax(150px,1fr);gap:8px;align-items:center;margin-top:8px;';
   const soundDefaultLabel=document.createElement('div');soundDefaultLabel.textContent='Default Car Sound';soundDefaultLabel.style.cssText='font-size:12px;color:#ddd;';
   const soundDefault=document.createElement('select');soundDefault.dataset.soundModDefault='1';soundDefault.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;font:12px/1.2 system-ui,Segoe UI,sans-serif;';
@@ -220,7 +212,7 @@ export function installDesktopOptionsOverlay(assets?:Assets){
    actions.append(close);box.append(heading,list,actions);shade.append(box);document.body.append(shade);requestAnimationFrame(()=>shade.focus());
   });
   perCarRow.append(perCarLabel,perCarButton);
-  soundSection.append(soundHeading,soundEnabledRow,soundDefaultRow,perCarRow);
+  soundSection.append(soundHeading,soundDefaultRow,perCarRow);
 
   const deadzoneRow=document.createElement('div');deadzoneRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) minmax(150px,1.5fr) 48px;gap:8px;align-items:center;margin-top:9px;';
   const deadzoneLabel=document.createElement('div');deadzoneLabel.textContent='Steering Deadzone';deadzoneLabel.title='Wheel only. Small steering movements around the calibrated center are ignored.';deadzoneLabel.style.cssText='font-size:12px;color:#ddd;';
