@@ -18,7 +18,7 @@ type DynamicSurface={canvas:HTMLCanvasElement;context:CanvasRenderingContext2D;i
 type SnapshotSurface={canvas:HTMLCanvasElement;context:CanvasRenderingContext2D};
 type LoadedCarAssets={layout:CockpitLayout;panel:PanelData;images:Map<string,LoadedImage>};
 type CarAssets=LoadedCarAssets&{masked:Map<string,MaskedSprite>;dynamic?:DynamicSurface;replaySnapshot?:SnapshotSurface};
-type DrawState={car:string;pixels:Uint8Array;steering:number;knobX:number;knobY:number};
+type DrawState={car:string;pixels:Uint8Array;steering:number;knobX:number;knobY:number;showGear:boolean};
 type ReplayBarArt={keys:string[];resources:Record<string,number[]>};
 type ReplayFrame={x:number;y:number;width:number;height:number;pixels:number[]};
 type ReplayRect={x:number;y:number;width:number;height:number};
@@ -204,7 +204,7 @@ export function createEnhancedCockpitOverlay(){
    }
 
    const gear=panel.gear;
-   if(gear?.base){
+   if(state.showGear&&gear?.base){
     drawFile('gbox.png',gear.base.x,gear.base.y,gear.base.width,gear.base.height);
     const sprite=masked('gnob.png','gnab.png');
     if(sprite)draw(sprite.canvas,sprite.enhanced,gear.base.x+state.knobX-gear.art.anchorX,gear.base.y+state.knobY-gear.art.anchorY,gear.art.width,gear.art.height);
