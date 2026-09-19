@@ -73,10 +73,15 @@ export function snapToBlissRoad(
  for(const trace of traces){
   const points=trace.steps.map(center);
   for(let i=0;i<trace.steps.length;i++){
-   const current=points[i],next=points[i+1];
-   const curve=curvedStepCandidate(x,z,trace.steps[i]);
+   const step=trace.steps[i],current=points[i],next=points[i+1];
+   const curve=curvedStepCandidate(x,z,step);
    if(curve&&(!best||curve.distance<best.distance))best=curve;
-   if(next)best=addCandidate(best,x,z,current.x,current.z,next.x,next.z,false);
+   if(next){
+    const dx=next.x-current.x,dz=next.z-current.z;
+    const bearingVector=step.bearing===0?{x:0,z:1}:step.bearing===1?{x:1,z:0}:step.bearing===2?{x:0,z:-1}:{x:-1,z:0};
+    const reverse=dx*bearingVector.x+dz*bearingVector.z<0;
+    best=addCandidate(best,x,z,current.x,current.z,next.x,next.z,reverse);
+   }
   }
  }
  const threshold=alreadySnapped?950:620;
