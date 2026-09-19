@@ -1,3 +1,4 @@
+import { ensureBundledZapperSounds } from './bundled-zapper-sounds';
 import { allocateOriginalGameBuffers } from '../lib/game/allocate-game-buffers';
 import { allocateOriginalRenderQueue } from '../lib/game/allocate-render-queue';
 import { initializeOriginalDataSegment } from '../lib/game/initialize-data-segment';
@@ -46,6 +47,7 @@ export async function ensureDesktopRuntimeStartup(core: TauriCore) {
     'native-race-startup.bin',
   ];
   if ((await Promise.all(names.map(path => core.invoke<boolean>('runtime_file_exists', { path })))).every(Boolean)) {
+    await ensureBundledZapperSounds(core);
     return;
   }
 
@@ -126,4 +128,5 @@ export async function ensureDesktopRuntimeStartup(core: TauriCore) {
   }
   await writeBinary(core, 'native-render-resources.bin', memory);
   await writeBinary(core, 'native-race-startup.bin', memory);
+  await ensureBundledZapperSounds(core);
 }
