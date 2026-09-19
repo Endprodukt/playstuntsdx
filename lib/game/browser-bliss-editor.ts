@@ -14,7 +14,7 @@ import {blissTournamentUrl,isZakStuntsTournament,parseBlissScoreboard,parseBliss
 import {blissEstimatedTimeCentiseconds,blissTimey,summarizeBlissTrackAnalysis,traceBlissPath,type BlissRouteAnalysis} from './bliss-route.ts';
 import {BLISS_PLAYER_CARD_ICON,BLISS_OPPONENT_CARD_ICON} from './bliss-card-icons.ts';
 import type {Assets} from './types.ts';
-import type {BlissEditor3DView} from './bliss-editor-3d.ts';
+import type {BlissEditor3DView,BlissEditor3DCameraState} from './bliss-editor-3d.ts';
 import {normalizeRaceHeading,type RaceSpawn} from './race-spawn.ts';
 import {snapToBlissRoad} from './bliss-road-snap.ts';
 
@@ -40,7 +40,9 @@ export interface BrowserBlissEditorHost {
  analysisCars?:readonly {id:string;name:string}[];
  testCarId?:string;
  initialViewMode?:'2d'|'3d';
+ initial3DCamera?:BlissEditor3DCameraState;
  onViewModeChange?(mode:'2d'|'3d'):void;
+ on3DCameraChange?(state:BlissEditor3DCameraState):void;
  presets?:readonly {terrain:number[]}[];
  setEditorMusicMuted?(muted:boolean):void;
 }
@@ -904,7 +906,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   zoomFit.style.display=mode==='2d'?'inline-block':'none';
   mapWrap.style.overflow=mode==='2d'?'auto':'hidden';
   if(mode==='3d'){
-   if(!editor3D){const module=await import('./bliss-editor-3d.ts');editor3D=module.createBlissEditor3DView(map3D,host.assets,core.track);}
+   if(!editor3D){const module=await import('./bliss-editor-3d.ts');editor3D=module.createBlissEditor3DView(map3D,host.assets,core.track,{initialCamera:host.initial3DCamera});}
    else editor3D.update(core.track);
    requestAnimationFrame(()=>{editor3D?.render();if(testSpawn)editor3D?.setHover({x:Math.max(0,Math.min(29,Math.floor(testSpawn.x/1024))),y:Math.max(0,Math.min(29,29-Math.floor(testSpawn.z/1024)))});sync3DZoomLabel();});
    status.textContent='3D view · Ctrl + Left drag orbit · Ctrl + Right drag move · Wheel / Ctrl+Wheel dolly';
@@ -2173,7 +2175,7 @@ The editor stores Bliss metadata where supported, including creation date, editi
   }
   closed=true;cleanup();resolveDone?.(undefined);
  }
- const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);window.removeEventListener('pointerdown',capturePointerBinding,true);window.removeEventListener('wheel',captureWheelBinding,true);window.removeEventListener('pointermove',updateSpawnDrag,true);window.removeEventListener('pointerup',finishSpawnDrag,true);window.removeEventListener('wheel',rotateDraggingSpawn,true);dragGhost.remove();editor3D?.close();editor3D=undefined;setBlissEditorActive(false);overlay.remove();};
+ const cleanup=()=>{if(editor3D)host.on3DCameraChange?.(editor3D.cameraState());core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);window.removeEventListener('pointerdown',capturePointerBinding,true);window.removeEventListener('wheel',captureWheelBinding,true);window.removeEventListener('pointermove',updateSpawnDrag,true);window.removeEventListener('pointerup',finishSpawnDrag,true);window.removeEventListener('wheel',rotateDraggingSpawn,true);dragGhost.remove();editor3D?.close();editor3D=undefined;setBlissEditorActive(false);overlay.remove();};
  let resolveDone:((request:BrowserBlissEditorTestRequest|undefined)=>void)|undefined;
  for(const marker of Object.values(markerImages))marker.onload=()=>{if(!closed){renderPalette();renderMap();}};
  renderPalette();renderScenery();renderMap();renderStatus();updateArea();overlay.focus();void setViewMode(viewMode);if(viewMode==='2d')requestAnimationFrame(()=>fitMap());
