@@ -330,16 +330,21 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     }
    };
    try{
-    const spawn=await runBrowserBlissEditor({
+    const testRequest=await runBrowserBlissEditor({
      canvas,track,palette,assets:options.assets,
      resources:{art,terrainNames:terrainNames.names,images:editor.screenResources.images},
      sceneryPreviews,
      writeTrack:editor.writeTrack,clearScores:editor.clearScores,exists:editor.exists,presets,
      analysisCars:options.assets.cars.map(car=>({id:car.id,name:car.name})),
+     testCarId:String.fromCharCode(...configuration.slice(0,4)),
      setEditorMusicMuted,
      enumerateTracks:()=>host.enumerate('','.trk'),readTrack:editor.readTrack,...customTracks,
     });
-    if(spawn){pendingRaceSpawn=spawn;return 'drive' as const;}
+    if(testRequest){
+     pendingRaceSpawn=testRequest.spawn;
+     if(testRequest.carId)configuration.splice(0,4,...Array.from(testRequest.carId.slice(0,4),char=>char.charCodeAt(0)));
+     return 'drive' as const;
+    }
    }finally{
     if(audioContext&&contextWasRunning&&audioContext.state!=='running')void audioContext.resume().catch(()=>{});
     for(const state of mediaState){
