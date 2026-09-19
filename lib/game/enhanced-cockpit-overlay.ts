@@ -17,7 +17,7 @@ type MaskedSprite={canvas:HTMLCanvasElement;enhanced:boolean};
 type DynamicSurface={canvas:HTMLCanvasElement;context:CanvasRenderingContext2D;image:ImageData};
 type SnapshotSurface={canvas:HTMLCanvasElement;context:CanvasRenderingContext2D};
 type LoadedCarAssets={layout:CockpitLayout;panel:PanelData;images:Map<string,LoadedImage>};
-type CarAssets=LoadedCarAssets&{masked:Map<string,MaskedSprite>;dynamic?:DynamicSurface;replaySnapshot?:SnapshotSurface};
+type CarAssets=LoadedCarAssets&{masked:Map<string,MaskedSprite>;dynamic?:DynamicSurface;replayNative?:DynamicSurface};
 type DrawState={car:string;pixels:Uint8Array;steering:number;knobX:number;knobY:number;showGear:boolean};
 type ReplayBarArt={keys:string[];resources:Record<string,number[]>};
 type ReplayFrame={x:number;y:number;width:number;height:number;pixels:number[]};
@@ -151,13 +151,20 @@ export function createEnhancedCockpitOverlay(){
    const assets=ensure(state.car);if(!assets)return false;
    const {layout,panel,images}=assets,sx=width/320,sy=height/200;
    const activeReplay=replayOverlay&&replayControlsVisible(replayOverlay,state.pixels)?replayOverlay:undefined;
-   let replaySnapshot:HTMLCanvasElement|undefined;
+   let replayNative:HTMLCanvasElement|undefined;
    if(activeReplay){
-    if(!assets.replaySnapshot||assets.replaySnapshot.canvas.width!==width||assets.replaySnapshot.canvas.height!==height){
-     const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;assets.replaySnapshot={canvas,context:canvas.getContext('2d')!};
+    const replayTop=144,replayHeight=200-replayTop;
+    if(!assets.replayNative){
+     const canvas=document.createElement('canvas');canvas.width=320;canvas.height=replayHeight;
+     const replayContext=canvas.getContext('2d')!;
+     assets.replayNative={canvas,context:replayContext,image:replayContext.createImageData(320,replayHeight)};
     }
-    replaySnapshot=assets.replaySnapshot.canvas;
-    assets.replaySnapshot.context.setTransform(1,0,0,1,0,0);assets.replaySnapshot.context.clearRect(0,0,width,height);assets.replaySnapshot.context.drawImage(context.canvas,offsetX,0,width,height,0,0,width,height);
+    const native=assets.replayNative;
+    for(let y=0;y<replayHeight;y++)for(let x=0;x<320;x++){
+     const color=state.pixels[(replayTop+y)*320+x]*3,out=(y*320+x)*4;
+     native.image.data[out]=panel.palette[color];native.image.data[out+1]=panel.palette[color+1];native.image.data[out+2]=panel.palette[color+2];native.image.data[out+3]=255;
+    }
+    native.context.putImageData(native.image,0,0);replayNative=native.canvas;
    }
    const draw=(source:CanvasImageSource,enhanced:boolean,x:number,y:number,w:number,h:number)=>{
     const sourceWidth='naturalWidth' in source?(source as HTMLImageElement).naturalWidth:(source as HTMLCanvasElement).width;
@@ -241,14 +248,14 @@ export function createEnhancedCockpitOverlay(){
     if(sprite){const position=cockpitMarker(marker.points,wheel.scaled);draw(sprite.canvas,sprite.enhanced,position.x-marker.art.anchorX,position.y-marker.art.anchorY,marker.art.width,marker.art.height);}
    }
 
-   if(activeReplay&&replaySnapshot){
-    // The replay transport is native 2D UI, not cockpit artwork. Restore the
-    // complete lower strip in one exact copy instead of piecing individual
-    // controls back together after the hires dashboard has been drawn. This
-    // keeps every replay-player pixel identical to the original presentation.
+   if(activeReplay&&replayNative){
+    // The replay transport is native UI, not cockpit artwork. Rebuild it
+    // straight from the original 320x200 indexed framebuffer instead of from
+    // a snapshot of the hires canvas. This makes its pixels independent of
+    // cockpit compositing and preserves the exact native nearest-neighbour look.
     context.imageSmoothingEnabled=false;
     const replayTop=144,replayY=replayTop*sy,replayHeight=(200-replayTop)*sy;
-    context.drawImage(replaySnapshot,0,replayY,width,replayHeight,offsetX,replayY,width,replayHeight);
+    context.drawImage(replayNative,0,0,320,200-replayTop,offsetX,replayY,width,replayHeight);
    }
    return true;
   },
