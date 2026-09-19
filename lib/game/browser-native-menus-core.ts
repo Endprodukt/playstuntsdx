@@ -109,7 +109,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  const drawing=surface.getContext('2d')!,image=drawing.createImageData(320,200),pixels=new Uint8Array(65536),input=createBrowserMenuInput(canvas,{joystickEnabled:()=>activeRace?!!activeRace.session.state.memory[0x2d1a0+0x4602]:drivingSettings.joystick,drivingBindings:()=>activeRace?activeRace.session.state.memory.subarray(0x2d1a0+0x430a,0x2d1a0+0x4314):[57,28,71,72,73,77,81,80,79,75],onPoll:()=>{if(options.signal?.aborted)throw new DOMException('Native menu closed','AbortError');return racePoll?.();}}),palette=materials.palette;
  const configuration=options.configuration??[67,79,85,78,0,1,0,255,0,0,0,0,0,68,69,70,65,85,76,84,0,0,1,0];
  const track=options.track??{name:'DEFAULT',path:'',raw:[...options.assets.tracks.find(t=>t.name==='DEFAULT')!.raw]};
- let entryPolls=0,selectedReplay:{bytes:Uint8Array;name:string;path:string}|undefined;
+ let entryPolls=0,selectedReplay:{bytes:Uint8Array;name:string;path:string}|undefined,pendingRaceSpawn:RaceSpawn|undefined;
  // Original1AD1C forwards its literal1 to the complete device poll.
  // Fast-forward simulation is not gated to one browser frame per step.
  const fastForwardKey=async()=>{if((entryPolls++&15)===0)await input.nextFrame();return input.readImmediate(1).key;};
@@ -330,7 +330,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     }
    };
    try{
-    await runBrowserBlissEditor({
+    const spawn=await runBrowserBlissEditor({
      canvas,track,palette,assets:options.assets,
      resources:{art,terrainNames:terrainNames.names,images:editor.screenResources.images},
      sceneryPreviews,
@@ -339,6 +339,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
      setEditorMusicMuted,
      enumerateTracks:()=>host.enumerate('','.trk'),readTrack:editor.readTrack,...customTracks,
     });
+    if(spawn){pendingRaceSpawn=spawn;return 'drive' as const;}
    }finally{
     if(audioContext&&contextWasRunning&&audioContext.state!=='running')void audioContext.resume().catch(()=>{});
     for(const state of mediaState){
@@ -352,7 +353,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  };
  const selectTrack=async()=>{
   show('track');focusBrowserGameCanvas(canvas);
-  const menuHost:NativeTrackMenuHost={...trackHost,track,configuration,baseline,groundModels:ground.resources,panoramas,loadTrack:async({path,name})=>Array.from(await files.read(path,name,'.trk')),readScores:async(name,path)=>files.exists(path,name,'.hig')?Array.from(await files.read(path,name,'.hig')):null,editTrack:async()=>{await editTrack();show('track');}};
+  const menuHost:NativeTrackMenuHost={...trackHost,track,configuration,baseline,groundModels:ground.resources,panoramas,loadTrack:async({path,name})=>Array.from(await files.read(path,name,'.trk')),readScores:async(name,path)=>files.exists(path,name,'.hig')?Array.from(await files.read(path,name,'.hig')):null,editTrack:async()=>{const result=await editTrack();if(result==='drive')return 'drive';show('track');}};
   if(!options.displayMode){
    if(!enhancedMenuEnabled())return runNativeTrackMenu(menuHost);
    const [{decodeBlissTrack},{createBlissEditor3DView}]=await Promise.all([import('./bliss-track.ts'),import('./bliss-editor-3d.ts')]);
@@ -465,7 +466,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   return runNativeOptions(nativeHost,createNativeDisplayOptionsPresentation(owner,nativeHost,dialogs));
  };
  if(options.displayMode)lastNativeDisplay=await prepareBrowserNativeMenuDisplay({catalog:await loadBrowserOriginalResourceCatalog()},options.displayMode,options.hercules);
- return {configuration,track,elapsedSinceInputPoll:input.elapsedSinceInputPoll,selectOptions,selectCar:car,selectOpponent:opponent,selectTrack,setInputActive:input.setActive,settings:drivingSettings,get replay(){return replay;},get selectedReplay(){return selectedReplay;},raceEntryKey:fastForwardKey,fadeMusic:()=>music.fadeOut(input.waitTicks),close:()=>{window.removeEventListener(ENHANCED_TEXTURES_EVENT,syncEnhancedTextures);window.removeEventListener(ENHANCED_FOV_EVENT,syncEnhancedFov);input.close();files.close();},
+ return {configuration,track,elapsedSinceInputPoll:input.elapsedSinceInputPoll,selectOptions,selectCar:car,selectOpponent:opponent,selectTrack,setInputActive:input.setActive,settings:drivingSettings,get replay(){return replay;},get selectedReplay(){return selectedReplay;},consumeRaceSpawn(){const spawn=pendingRaceSpawn;pendingRaceSpawn=undefined;return spawn;},raceEntryKey:fastForwardKey,fadeMusic:()=>music.fadeOut(input.waitTicks),close:()=>{window.removeEventListener(ENHANCED_TEXTURES_EVENT,syncEnhancedTextures);window.removeEventListener(ENHANCED_FOV_EVENT,syncEnhancedFov);input.close();files.close();},
   /** Use the live allocated game banks and retained framebuffer. */
   async allocatedRacePresentation(runtime:Awaited<ReturnType<typeof createNativeManualRaceRuntime>>,onPoll:()=>void|Promise<void>,alternate?:Awaited<ReturnType<typeof prepareBrowserNativeManualDisplay>>){
    let upgraded:ReturnType<typeof createUpgradedRaceScene>|undefined,loading=false,closed=false,failed=false;
