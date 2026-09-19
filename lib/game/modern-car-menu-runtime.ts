@@ -68,13 +68,14 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
     return;
    }
 
-   if(input.key===27){host.configuration.splice(0,host.configuration.length,...initial);return;}
-   if(input.key===keyUp||input.key===keyDown){
-    if(open){selected=(selected+(input.key===keyDown?1:-1)+cars.length)%cars.length;display.setCars(cars,selected,true);display.render();}
-    else{selected=(selected+(input.key===keyDown?1:-1)+cars.length)%cars.length;await sync(true);}
+   const keyboard=input.keyboardKey??0;
+   if(keyboard===27){host.configuration.splice(0,host.configuration.length,...initial);return;}
+   if(keyboard===keyUp||keyboard===keyDown){
+    if(open){selected=(selected+(keyboard===keyDown?1:-1)+cars.length)%cars.length;display.setCars(cars,selected,true);display.render();}
+    else{selected=(selected+(keyboard===keyDown?1:-1)+cars.length)%cars.length;await sync(true);}
     continue;
    }
-   if(input.key===13||input.key===32){
+   if(keyboard===13||keyboard===32){
     if(open){open=false;await sync(true);}else{open=true;display.setCars(cars,selected,true);display.render();}
    }
   }
