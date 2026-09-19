@@ -162,7 +162,9 @@ export function createEnhancedCockpitOverlay(){
    const draw=(source:CanvasImageSource,enhanced:boolean,x:number,y:number,w:number,h:number)=>{
     const sourceWidth='naturalWidth' in source?(source as HTMLImageElement).naturalWidth:(source as HTMLCanvasElement).width;
     const sourceHeight='naturalHeight' in source?(source as HTMLImageElement).naturalHeight:(source as HTMLCanvasElement).height;
-    context.imageSmoothingEnabled=enhanced&&(sourceWidth!==w||sourceHeight!==h);
+    const scaleX=w?sourceWidth/w:1,scaleY=h?sourceHeight/h:1;
+    const exactPixelScale=Math.abs(scaleX-scaleY)<1e-6&&scaleX>=1&&Math.abs(scaleX-Math.round(scaleX))<1e-6;
+    context.imageSmoothingEnabled=enhanced&&!exactPixelScale;
     if(context.imageSmoothingEnabled)context.imageSmoothingQuality='high';
     context.drawImage(source,offsetX+x*sx,y*sy,w*sx,h*sy);
    };
@@ -186,7 +188,7 @@ export function createEnhancedCockpitOverlay(){
     const sourceScaleX=dash.image.naturalWidth/320,sourceScaleY=dash.image.naturalHeight/logicalHeight;
     const sx0=gear.base.x*sourceScaleX,sy0=(gear.base.y-layout.dashboardTop)*sourceScaleY;
     const sw=gear.base.width*sourceScaleX,sh=gear.base.height*sourceScaleY;
-    context.imageSmoothingEnabled=dash.enhanced&&(dash.image.naturalWidth!==320||dash.image.naturalHeight!==logicalHeight);if(context.imageSmoothingEnabled)context.imageSmoothingQuality='high';
+    const dashScaleX=dash.image.naturalWidth/320,dashScaleY=dash.image.naturalHeight/logicalHeight,exactDashScale=Math.abs(dashScaleX-dashScaleY)<1e-6&&dashScaleX>=1&&Math.abs(dashScaleX-Math.round(dashScaleX))<1e-6;context.imageSmoothingEnabled=dash.enhanced&&!exactDashScale;if(context.imageSmoothingEnabled)context.imageSmoothingQuality='high';
     context.drawImage(dash.image,sx0,sy0,sw,sh,offsetX+gear.base.x*sx,gear.base.y*sy,gear.base.width*sx,gear.base.height*sy);
    }
 
