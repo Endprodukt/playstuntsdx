@@ -243,7 +243,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  let brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,activePaintAction:'paint'|'erase'|null=null,selecting=false,selectionAnchor:{x:number;y:number}|null=null,closed=false,zoom=1;
  let activeArea:EditorArea='grid',paletteCursor=0,lastPlaced:{x:number;y:number}|null=null;
- let viewMode:'2d'|'3d'='2d',editor3D:BlissEditor3DView|undefined,testSpawn:RaceSpawn|undefined;
+ let viewMode:'2d'|'3d'='2d',editor3D:BlissEditor3DView|undefined,testSpawn:RaceSpawn|undefined,spawnTraceHash=-1,spawnTraces:ReturnType<typeof traceBlissPath>[]=[];
  let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false,colouringMode=false;
  let selectionTool=false,pasteMode=false,manualHex='',manualHexDeadline=0,modalOpen=false,analysisCarIndex=-1,suppressMapCursor=false;
  let helpOverlay:HTMLDivElement|null=null;
@@ -332,22 +332,34 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  sceneryBox.append(sceneryTitle,sceneryPreview,sceneryButtons);
  palettePanel.append(selectedPiece,paletteGrid,pageBar,sceneryBox);
 
- const suggestedSpawnHeading=(x:number,z:number)=>{
+ const editorSnapTraces=()=>{
+  const hash=blissTrackHash(core.track);
+  if(hash===spawnTraceHash)return spawnTraces;
+  spawnTraceHash=hash;spawnTraces=[];
   try{
-   const analysis=analyzeBlissRoute(core.track),pathIndex=Math.max(0,analysis.paths.findIndex(path=>path.finishes)),trace=traceBlissPath(core.track,analysis,pathIndex);
-   let best=-1,bestDistance=Infinity;
-   for(let i=0;i<trace.steps.length;i++){
-    const step=trace.steps[i],sx=(step.x+.5)*1024,sz=(29-step.y+.5)*1024,distance=Math.hypot(x-sx,z-sz);
-    if(distance<bestDistance){best=i;bestDistance=distance;}
-   }
-   if(best>=0&&trace.steps.length>1){
-    const a=trace.steps[best],b=trace.steps[Math.min(trace.steps.length-1,best+1)]===a?trace.steps[Math.max(0,best-1)]:trace.steps[Math.min(trace.steps.length-1,best+1)];
-    const ax=(a.x+.5)*1024,az=(29-a.y+.5)*1024,bx=(b.x+.5)*1024,bz=(29-b.y+.5)*1024;
-    if(ax!==bx||az!==bz)return normalizeRaceHeading(-Math.atan2(bx-ax,bz-az)*512/Math.PI);
-   }
+   const analysis=analyzeBlissRoute(core.track);
+   spawnTraces=analysis.paths.slice(0,128).map((_,index)=>traceBlissPath(core.track,analysis,index));
   }catch{}
-  return 0;
+  return spawnTraces;
  };
+ const roadSnap=(x:number,z:number,fallback=0,alreadySnapped=false)=>{
+  let best:{x:number;z:number;heading:number;distance:number}|undefined;
+  for(const trace of editorSnapTraces()){
+   const points=trace.steps.map(step=>({x:(step.x+step.width*.5)*1024,z:(29-step.y-(step.height-1)*.5+.5)*1024}));
+   if(points.length===1){
+    const distance=Math.hypot(x-points[0].x,z-points[0].z);
+    if(!best||distance<best.distance)best={...points[0],heading:normalizeRaceHeading(fallback),distance};
+   }
+   for(let i=0;i+1<points.length;i++){
+    const a=points[i],b=points[i+1],dx=b.x-a.x,dz=b.z-a.z,length2=dx*dx+dz*dz;if(!length2)continue;
+    const t=Math.max(0,Math.min(1,((x-a.x)*dx+(z-a.z)*dz)/length2)),px=a.x+dx*t,pz=a.z+dz*t,distance=Math.hypot(x-px,z-pz);
+    if(!best||distance<best.distance)best={x:px,z:pz,heading:normalizeRaceHeading(-Math.atan2(dx,dz)*512/Math.PI),distance};
+   }
+  }
+  const threshold=alreadySnapped?950:560;
+  return best&&best.distance<=threshold?{x:best.x,z:best.z,heading:best.heading,snapped:true}:{x,z,heading:normalizeRaceHeading(fallback),snapped:false};
+ };
+ const suggestedSpawnHeading=(x:number,z:number)=>roadSnap(x,z,0,false).heading;
  const mapPanel=panel('30 × 30 track');
  mapPanel.style.display='grid';mapPanel.style.gridTemplateRows='auto auto minmax(0,1fr)';mapPanel.style.placeItems='stretch';
  const zoomBar=document.createElement('div');zoomBar.style.cssText='display:flex;justify-content:center;align-items:center;gap:5px;margin:-2px 0 8px;flex-wrap:wrap;';
@@ -372,31 +384,55 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const testHere=button('Test from here',()=>{if(testSpawn)finishTest(testSpawn);});
  for(const control of [spawnLeft,spawnRight,testHere])control.style.display='none';
  const refreshSpawnControls=()=>{const show=!!testSpawn;spawnLeft.style.display=spawnRight.style.display=testHere.style.display=show?'inline-block':'none';};
- let spawnDragging=false,spawnPointerId=-1;
+ const dragGhost=document.createElement('div');
+ dragGhost.style.cssText='position:fixed;display:none;z-index:2147483646;pointer-events:none;width:30px;height:38px;transform:translate(-50%,-85%);filter:drop-shadow(0 2px 2px #000);';
+ dragGhost.innerHTML='<svg viewBox="0 0 30 38" width="30" height="38"><path d="M15 1v13m0-13-5 6m5-6 5 6" fill="none" stroke="#ffca3a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15" cy="18" r="4" fill="#ffca3a"/><path d="M11 23h8l3 8-3 1-2-5v10h-4v-7h-3v7H6V27l-2 5-3-1 3-8z" fill="#ffca3a"/></svg>';
+ document.body.appendChild(dragGhost);
+ let spawnDragging=false,spawnPointerId=-1,dragSnapped=false,dragCandidate:RaceSpawn|undefined;
+ const updateSpawnDrag=(event:PointerEvent)=>{
+  if(!spawnDragging||event.pointerId!==spawnPointerId)return;
+  dragGhost.style.display='block';
+  const target=viewMode==='3d'?map3D:map,rect=target.getBoundingClientRect();
+  let gx=event.clientX,gy=event.clientY,candidate:RaceSpawn|undefined,snapped=false;
+  if(event.clientX>=rect.left&&event.clientX<=rect.right&&event.clientY>=rect.top&&event.clientY<=rect.bottom){
+   let point:{x:number;z:number}|null=null;
+   if(viewMode==='2d'){
+    const px=(event.clientX-rect.left)/Math.max(1,rect.width),py=(event.clientY-rect.top)/Math.max(1,rect.height);
+    point={x:px*30720,z:(1-py)*30720};
+   }else if(editor3D)point=editor3D.worldAt(event.clientX,event.clientY);
+   if(point){
+    const result=roadSnap(point.x,point.z,testSpawn?.heading??0,dragSnapped);dragSnapped=result.snapped;snapped=result.snapped;
+    candidate={x:result.x,z:result.z,heading:result.heading};
+    if(snapped){
+     if(viewMode==='2d'){gx=rect.left+result.x/30720*rect.width;gy=rect.top+(1-result.z/30720)*rect.height;}
+     else if(editor3D){const p=editor3D.projectWorld(result.x,result.z);if(p){gx=rect.left+p.x;gy=rect.top+p.y;}}
+    }
+   }
+  }else dragSnapped=false;
+  dragCandidate=candidate;dragGhost.style.left=gx+'px';dragGhost.style.top=gy+'px';
+  dragGhost.style.filter=snapped?'drop-shadow(0 0 5px #8fd85f)':'drop-shadow(0 2px 2px #000)';
+ };
  const finishSpawnDrag=(event:PointerEvent)=>{
   if(!spawnDragging||event.pointerId!==spawnPointerId)return;
-  spawnDragging=false;spawnTool.style.cursor='grab';spawnTool.releasePointerCapture?.(event.pointerId);
-  const target=viewMode==='3d'?map3D:map,rect=target.getBoundingClientRect();
-  if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)return;
-  if(viewMode==='2d'){
-   const px=(event.clientX-rect.left)/Math.max(1,rect.width),py=(event.clientY-rect.top)/Math.max(1,rect.height);
-   setSpawn(px*30720,(1-py)*30720);
-  }else if(editor3D){
-   const point=editor3D.worldAt(event.clientX,event.clientY);if(point)setSpawn(point.x,point.z);
-  }
+  updateSpawnDrag(event);spawnDragging=false;spawnTool.style.cursor='grab';spawnTool.releasePointerCapture?.(event.pointerId);dragGhost.style.display='none';
+  if(dragCandidate)setSpawn(dragCandidate.x,dragCandidate.z,dragCandidate.heading);
+  dragCandidate=undefined;dragSnapped=false;
  };
  spawnTool.addEventListener('pointerdown',event=>{
   if(event.button!==0)return;
   event.preventDefault();event.stopPropagation();spawnDragging=true;spawnPointerId=event.pointerId;spawnTool.style.cursor='grabbing';spawnTool.setPointerCapture?.(event.pointerId);
+  dragCandidate=undefined;dragSnapped=false;updateSpawnDrag(event);
  });
+ spawnTool.addEventListener('pointermove',updateSpawnDrag);
  spawnTool.addEventListener('pointerup',finishSpawnDrag);
- spawnTool.addEventListener('pointercancel',event=>{if(event.pointerId===spawnPointerId){spawnDragging=false;spawnTool.style.cursor='grab';}});
+ spawnTool.addEventListener('pointercancel',event=>{if(event.pointerId===spawnPointerId){spawnDragging=false;dragCandidate=undefined;dragSnapped=false;dragGhost.style.display='none';spawnTool.style.cursor='grab';}});
+ window.addEventListener('pointermove',updateSpawnDrag,true);
  window.addEventListener('pointerup',finishSpawnDrag,true);
  zoomBar.append(viewSwitch,zoomOut,zoomReset,zoomIn,zoomFit,spawnTool,spawnLeft,spawnRight,testHere);
  const mapWrap=document.createElement('div');mapWrap.style.cssText='min-height:0;min-width:0;display:grid;place-items:center;overflow:auto;background:#050505;border-radius:4px;position:relative;';
  const map=document.createElement('canvas');map.width=BLISS_ORIGINAL_MAP_SIZE;map.height=BLISS_ORIGINAL_MAP_SIZE;map.style.cssText='grid-area:1/1;display:block;image-rendering:pixelated;width:480px;height:480px;max-width:none;max-height:none;cursor:crosshair;box-shadow:0 0 0 1px #333;flex:none;';
  const map3D=document.createElement('canvas');map3D.style.cssText='grid-area:1/1;display:none;width:100%;height:100%;min-width:0;min-height:320px;align-self:stretch;justify-self:stretch;cursor:crosshair;background:#111;';
- const setSpawn=(x:number,z:number)=>{testSpawn={x:Math.max(0,Math.min(30719,x)),z:Math.max(0,Math.min(30719,z)),heading:suggestedSpawnHeading(x,z)};refreshSpawnControls();renderMap();if(viewMode==='3d')editor3D?.setHover({x:Math.max(0,Math.min(29,Math.floor(testSpawn.x/1024))),y:Math.max(0,Math.min(29,29-Math.floor(testSpawn.z/1024)))});};
+ const setSpawn=(x:number,z:number,heading=suggestedSpawnHeading(x,z))=>{testSpawn={x:Math.max(0,Math.min(30719,x)),z:Math.max(0,Math.min(30719,z)),heading:normalizeRaceHeading(heading)};refreshSpawnControls();renderMap();if(viewMode==='3d')editor3D?.setHover({x:Math.max(0,Math.min(29,Math.floor(testSpawn.x/1024))),y:Math.max(0,Math.min(29,29-Math.floor(testSpawn.z/1024)))});};
 
  mapWrap.append(map,map3D);mapPanel.append(zoomBar,mapWrap);
 
@@ -683,6 +719,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   renderColourControls();
  };
  const changed=(message='')=>{
+  spawnTraceHash=-1;spawnTraces=[];
   const bytes=encodeBlissTrack(core.track).subarray(0,1802);host.track.raw=Array.from(bytes);
   renderMap();renderPalette();renderScenery();renderStatus();if(viewMode==='3d')editor3D?.update(core.track);if(message)status.textContent=message+' · '+status.textContent;
  };
@@ -2087,7 +2124,7 @@ The editor stores Bliss metadata where supported, including creation date, editi
   }
   closed=true;cleanup();resolveDone?.(undefined);
  }
- const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);window.removeEventListener('pointerdown',capturePointerBinding,true);window.removeEventListener('wheel',captureWheelBinding,true);window.removeEventListener('pointerup',finishSpawnDrag,true);editor3D?.close();editor3D=undefined;setBlissEditorActive(false);overlay.remove();};
+ const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);window.removeEventListener('pointerdown',capturePointerBinding,true);window.removeEventListener('wheel',captureWheelBinding,true);window.removeEventListener('pointermove',updateSpawnDrag,true);window.removeEventListener('pointerup',finishSpawnDrag,true);dragGhost.remove();editor3D?.close();editor3D=undefined;setBlissEditorActive(false);overlay.remove();};
  let resolveDone:((spawn:RaceSpawn|undefined)=>void)|undefined;
  for(const marker of Object.values(markerImages))marker.onload=()=>{if(!closed){renderPalette();renderMap();}};
  renderPalette();renderScenery();renderMap();renderStatus();updateArea();viewToggle.checked=false;viewKnob.style.transform='translateX(0)';view2D.style.color='#fff';view3D.style.color='#777';overlay.focus();requestAnimationFrame(()=>fitMap());
