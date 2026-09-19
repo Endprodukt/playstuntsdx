@@ -37,6 +37,7 @@ import cameraCollisionPlanes from '../../public/game/collision-planes.json';
 import type {createNativeManualRaceRuntime} from './native-manual-race-runtime';
 import type {TrackObject} from '../physics/track';
 import type {CollisionPlane} from '../physics/plane';
+import {enhancedRaceAspect} from './enhanced-view-settings.ts';
 type Runtime=Pick<Awaited<ReturnType<typeof createNativeManualRaceRuntime>>,'raw'|'session'|'graphicsFrame'|'pixels'>;
 const ENHANCED_BACKGROUND_ROOT='/site/enhanced-backgrounds';
 const alpineSections=['alpine-scen.png','alpine-sce2.png','alpine-sce3.png','alpine-sce4.png'].map(name=>`${ENHANCED_BACKGROUND_ROOT}/${name}`);
@@ -248,10 +249,12 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    const displayUp=chase?.up??[basis.up[0],basis.up[1],-basis.up[2]] as Vector;
    camera.position.set(...position);camera.up.set(...displayUp);camera.lookAt(...target);
    const [cx,cy,fx,fy]=frame.projection;
+   const displayAspect=enhancedRaceAspect(),wideFactor=displayAspect/(4/3);
+   canvas.dataset.enhancedWidescreen=wideFactor>1.001?'true':'false';canvas.style.setProperty('--dx-race-aspect',String(displayAspect));
    const chaseFy=chase?100/Math.tan(chase.fov*Math.PI/360):fy,chaseFx=chase?chaseFy*1.2:fx;
-   camera.projectionMatrix.makePerspective(-cx/chaseFx,(320-cx)/chaseFx,cy/chaseFy,-(200-cy)/chaseFy,1,200000);
+   camera.projectionMatrix.makePerspective(-cx/chaseFx*wideFactor,(320-cx)/chaseFx*wideFactor,cy/chaseFy,-(200-cy)/chaseFy,1,200000);
    camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
-   camera.aspect=4/3;camera.fov=chase?.fov??2*Math.atan(100/fy)*180/Math.PI;
+   camera.aspect=displayAspect;camera.fov=chase?.fov??2*Math.atan(100/fy)*180/Math.PI;
    canvas.dataset.enhancedCamera=chase?`chase-${chaseLevel}`:requestedChaseLevel?'chase-pending':'original';
 
    cars.forEach((models,i)=>models.forEach((model,detail)=>{if(!model)return;const state=i?runtime.session.state.opponent.car:runtime.session.state.player.driving.car,pose=shown.cars[i];
@@ -349,7 +352,7 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    // cut may select a site at another elevation, but that translation must not
    // move the far horizon; only its stabilized pitch determines the framing.
    const effectiveBackgroundHeight=chase||cameraMode===3?0:backgroundHeightCamera===sourceCamera?backgroundHeight:shown.camera.position[1];
-   const background=backdrop.render(backgroundView.angles,effectiveBackgroundHeight,4/3,camera.fov,frame.projection,live[d+0x134]);
+   const background=backdrop.render(backgroundView.angles,effectiveBackgroundHeight,displayAspect,camera.fov,frame.projection,live[d+0x134]);
    const enhancedBackgroundDrawn=enhancedBackground?.draw(context,{width:canvas.width,height:canvas.height,heading:backgroundView.angles[2],horizon:background.panoramaHorizon??enhancedPanoramaHorizon(background.pixels,background.ground,background.width),rotation:backgroundView.rotation,sky:paletteCss[background.sky],ground:paletteCss[background.ground]})??false;
    if(!enhancedBackgroundDrawn){
     for(let i=0;i<64000;i++)skyPixels[i]=opaquePalette[background.pixels[i]];
@@ -364,25 +367,30 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    // its own viewpoint through a crash instead of snapping to the cockpit.
    if(orderedScene&&!chase){context.save();context.setTransform(canvas.width/320,0,0,canvas.height/200,0,0);const [left,right,top,bottom]=frame.rectangle;context.beginPath();context.rect(left,top,right-left,bottom-top);context.clip();for(const call of frame.calls)orderedRaster.draw(context,call,frame.rectangle);context.restore();}else context.drawImage(renderer.domElement,0,0,canvas.width,canvas.height);
    context.imageSmoothingEnabled=false;
+   const overlayWidth=canvas.width/wideFactor,overlayX=(canvas.width-overlayWidth)/2,overlaySx=overlayWidth/320,overlaySy=canvas.height/200;
    if(!chase){
-    context.drawImage(overlay,0,0,canvas.width,canvas.height);
+    const [left,right,top,bottom]=frame.rectangle;
+    if(overlayX>0){
+     context.fillStyle='#000';
+     if(top>0){context.fillRect(0,0,overlayX,top*overlaySy);context.fillRect(overlayX+overlayWidth,0,overlayX,top*overlaySy);}
+     if(bottom<200){const y=bottom*overlaySy,h=canvas.height-y;context.fillRect(0,y,overlayX,h);context.fillRect(overlayX+overlayWidth,y,overlayX,h);}
+    }
+    context.drawImage(overlay,0,0,320,200,overlayX,0,overlayWidth,canvas.height);
     if(cameraMode===0){
      const cockpitState=chaseCar?runtime.session.state.opponent.car:runtime.session.state.player.driving.car;
-     enhancedCockpit.draw(context,canvas.width,canvas.height,{car:carIds[chaseCar],pixels:overlaySource,steering:cockpitState.grip.steeringAngle,knobX:cockpitState.engine.knobX,knobY:cockpitState.engine.knobY});
+     enhancedCockpit.draw(context,overlayWidth,canvas.height,{car:carIds[chaseCar],pixels:overlaySource,steering:cockpitState.grip.steeringAngle,knobX:cockpitState.engine.knobX,knobY:cockpitState.engine.knobY},overlayX);
     }
    }else if(runtime.session.replaying){
-    // Replay controls live outside the original 3D viewport and must remain
-    // usable in chase mode. During normal driving no cockpit overlay is drawn,
-    // giving the external camera the full window and restoring it automatically
-    // when V, C, F1-F4 or the camera control returns to a Stunts view.
-    const [left,right,top,bottom]=frame.rectangle,sx=canvas.width/320,sy=canvas.height/200;
-    const drawOverlayRegion=(x:number,y:number,width:number,height:number)=>{if(width>0&&height>0)context.drawImage(overlay,x,y,width,height,x*sx,y*sy,width*sx,height*sy);};
+    // Keep original replay controls at their corrected 4:3 size while the
+    // enhanced 3D camera itself uses the wider viewport.
+    const [left,right,top,bottom]=frame.rectangle;
+    const drawOverlayRegion=(x:number,y:number,width:number,height:number)=>{if(width>0&&height>0)context.drawImage(overlay,x,y,width,height,overlayX+x*overlaySx,y*overlaySy,width*overlaySx,height*overlaySy);};
     drawOverlayRegion(0,0,320,top);drawOverlayRegion(0,bottom,320,200-bottom);
     drawOverlayRegion(0,top,left,bottom-top);drawOverlayRegion(right,top,320-right,bottom-top);
    }
    lastChaseLevel=chaseLevel;fpsFrames++;if(now-fpsAt>=1000){canvas.dataset.upgradedFps=String(Math.round(fpsFrames*1000/(now-fpsAt)));fpsFrames=0;fpsAt=now;}
    return true;
   },
-  close(){enhancedCockpit.close();enhancedBackground?.close();crashEffects.close();retroLighting.dispose();orderedRaster.dispose();const geometries=new Set<THREE.BufferGeometry>(),materials=new Set<THREE.Material>();scene.traverse(node=>{if(node instanceof THREE.Mesh||node instanceof THREE.LineSegments){geometries.add(node.geometry);for(const material of Array.isArray(node.material)?node.material:[node.material])materials.add(material);}});geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());renderer.dispose();renderer.forceContextLoss();}
+  close(){const active=document.querySelector<HTMLCanvasElement>('canvas[data-enhanced-widescreen]');if(active){active.removeAttribute('data-enhanced-widescreen');active.style.removeProperty('--dx-race-aspect');}enhancedCockpit.close();enhancedBackground?.close();crashEffects.close();retroLighting.dispose();orderedRaster.dispose();const geometries=new Set<THREE.BufferGeometry>(),materials=new Set<THREE.Material>();scene.traverse(node=>{if(node instanceof THREE.Mesh||node instanceof THREE.LineSegments){geometries.add(node.geometry);for(const material of Array.isArray(node.material)?node.material:[node.material])materials.add(material);}});geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());renderer.dispose();renderer.forceContextLoss();}
  };
 }
