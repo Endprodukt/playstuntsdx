@@ -452,10 +452,11 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    }else if(editor3D)point=editor3D.worldAt(event.clientX,event.clientY);
    if(point){
     const result=roadSnap(point.x,point.z,testSpawn?.heading??0,dragSnapped);dragSnapped=result.snapped;snapped=result.snapped;
-    candidate={x:result.x,z:result.z,heading:normalizeRaceHeading(result.heading+dragHeadingOffset)};
+    const roadY=viewMode==='3d'&&editor3D?(editor3D.roadHeightAt(result.x,result.z)??0):testSpawn?.y??0;
+    candidate={x:result.x,y:roadY,z:result.z,heading:normalizeRaceHeading(result.heading+dragHeadingOffset)};
     if(snapped){
      if(viewMode==='2d'){gx=rect.left+result.x/30720*rect.width;gy=rect.top+(1-result.z/30720)*rect.height;}
-     else if(editor3D){const p=editor3D.projectWorld(result.x,result.z);if(p){gx=rect.left+p.x;gy=rect.top+p.y;}}
+     else if(editor3D){const p=editor3D.projectWorld(result.x,result.z,candidate.y??0);if(p){gx=rect.left+p.x;gy=rect.top+p.y;}}
     }
    }
   }else dragSnapped=false;
@@ -466,7 +467,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const finishSpawnDrag=(event:PointerEvent)=>{
   if(!spawnDragging||event.pointerId!==spawnPointerId)return;
   updateSpawnDrag(event);spawnDragging=false;spawnTool.style.cursor='grab';spawnTool.releasePointerCapture?.(event.pointerId);dragGhost.style.display='none';
-  if(dragCandidate)setSpawn(dragCandidate.x,dragCandidate.z,dragCandidate.heading);
+  if(dragCandidate)setSpawn(dragCandidate.x,dragCandidate.z,dragCandidate.heading,dragCandidate.y);
   dragCandidate=undefined;dragSnapped=false;dragHeadingOffset=0;
  };
  spawnTool.addEventListener('pointerdown',event=>{
@@ -491,7 +492,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(viewMode==='2d'){
    mx=rect.left+testSpawn.x/30720*rect.width;my=rect.top+(1-testSpawn.z/30720)*rect.height;
   }else if(editor3D){
-   const p=editor3D.projectWorld(testSpawn.x,testSpawn.z,120);if(!p)return false;mx=rect.left+p.x;my=rect.top+p.y;
+   const p=editor3D.projectWorld(testSpawn.x,testSpawn.z,(testSpawn.y??0)+120);if(!p)return false;mx=rect.left+p.x;my=rect.top+p.y;
   }else return false;
   if(Math.hypot(event.clientX-mx,event.clientY-my)>34)return false;
   event.preventDefault();event.stopImmediatePropagation();
@@ -507,7 +508,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  spawn3DMarker.innerHTML='<svg viewBox="0 0 34 46" width="34" height="46"><path d="M17 1v17m0-17-6 7m6-7 6 7" fill="none" stroke="#ffca3a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="17" cy="23" r="4.5" fill="#ffca3a"/><path d="M13 28h8l3 8-3 1-2-5v13h-4v-9h-3v9H8V32l-2 5-3-1 3-8z" fill="#ffca3a"/></svg>';
  const map=document.createElement('canvas');map.width=BLISS_ORIGINAL_MAP_SIZE;map.height=BLISS_ORIGINAL_MAP_SIZE;map.style.cssText='grid-area:1/1;display:block;image-rendering:pixelated;width:480px;height:480px;max-width:none;max-height:none;cursor:crosshair;box-shadow:0 0 0 1px #333;flex:none;';
  const map3D=document.createElement('canvas');map3D.style.cssText='grid-area:1/1;display:none;width:100%;height:100%;min-width:0;min-height:320px;align-self:stretch;justify-self:stretch;cursor:crosshair;background:#111;';
- const setSpawn=(x:number,z:number,heading=suggestedSpawnHeading(x,z))=>{testSpawn={x:Math.max(0,Math.min(30719,x)),z:Math.max(0,Math.min(30719,z)),heading:normalizeRaceHeading(heading)};refreshSpawnControls();renderMap();if(viewMode==='3d')editor3D?.setHover({x:Math.max(0,Math.min(29,Math.floor(testSpawn.x/1024))),y:Math.max(0,Math.min(29,29-Math.floor(testSpawn.z/1024)))});};
+ const setSpawn=(x:number,z:number,heading=suggestedSpawnHeading(x,z),y?:number)=>{testSpawn={x:Math.max(0,Math.min(30719,x)),y,z:Math.max(0,Math.min(30719,z)),heading:normalizeRaceHeading(heading)};refreshSpawnControls();renderMap();if(viewMode==='3d')editor3D?.setHover({x:Math.max(0,Math.min(29,Math.floor(testSpawn.x/1024))),y:Math.max(0,Math.min(29,29-Math.floor(testSpawn.z/1024)))});};
 
  mapWrap.append(map,map3D,spawn3DMarker);mapPanel.append(zoomBar,mapWrap);
 
