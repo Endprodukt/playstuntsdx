@@ -10,17 +10,17 @@ export type EngineSoundPreset=
  |'prototype'
  |'indy';
 
-export const ENGINE_SOUND_PRESETS:readonly {id:EngineSoundPreset;label:string;source:string}[]=[
- {id:'original',label:'Original Stunts',source:'original'},
- {id:'type-i',label:'Zapper Type I',source:'zapper'},
- {id:'type-ii',label:'Zapper Type II',source:'zapper'},
- {id:'v6',label:'Zapper Type III (V6)',source:'zapper'},
- {id:'type-iv',label:'Zapper Type IV',source:'zapper'},
- {id:'i4',label:'Zapper Type V (I4)',source:'zapper'},
- {id:'v10',label:'Zapper Type VI (V10)',source:'zapper'},
- {id:'sprint',label:'Mario Andretti Sprint',source:'zapper'},
- {id:'prototype',label:'Mario Andretti Prototype',source:'zapper'},
- {id:'indy',label:'Mario Andretti Indy',source:'zapper'},
+export const ENGINE_SOUND_PRESETS:readonly {id:EngineSoundPreset;label:string;source:string;adlibFile?:string}[]=[
+ {id:'original',label:'Original Stunts',source:'original',adlibFile:'ADENG1or.VCE'},
+ {id:'type-i',label:'Zapper Type I',source:'zapper',adlibFile:'adeng1t1.vce'},
+ {id:'type-ii',label:'Zapper Type II',source:'zapper',adlibFile:'adeng1t2.vce'},
+ {id:'v6',label:'Zapper Type III (V6)',source:'zapper',adlibFile:'ADENG1T3.VCE'},
+ {id:'type-iv',label:'Zapper Type IV',source:'zapper',adlibFile:'ADENG1T4.VCE'},
+ {id:'i4',label:'Zapper Type V (I4)',source:'zapper',adlibFile:'ADENG1T5.VCE'},
+ {id:'v10',label:'Zapper Type VI (V10)',source:'zapper',adlibFile:'ADENG1T6.VCE'},
+ {id:'sprint',label:'Mario Andretti Sprint',source:'zapper',adlibFile:'ADENG1_M/ADspnt.VCE'},
+ {id:'prototype',label:'Mario Andretti Prototype',source:'zapper',adlibFile:'ADENG1_M/ADprto.VCE'},
+ {id:'indy',label:'Mario Andretti Indy',source:'zapper',adlibFile:'ADENG1_M/ADindy.VCE'},
 ];
 
 export interface SoundModSettings{
@@ -55,4 +55,9 @@ export function saveSoundModSettings(settings:SoundModSettings){
 export function engineSoundForCar(car:string,settings=loadSoundModSettings()):EngineSoundPreset{
  if(!settings.enabled)return 'original';
  return settings.perCar[car.toUpperCase()]??settings.defaultPreset;
+}
+
+
+export function engineSoundPresetInfo(id:EngineSoundPreset){
+ return ENGINE_SOUND_PRESETS.find(preset=>preset.id===id)??ENGINE_SOUND_PRESETS[0];
 }
