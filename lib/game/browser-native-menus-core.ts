@@ -41,7 +41,7 @@ import {originalMainMenuBounds} from './main-menu-hit.ts';
 import {ENHANCED_TEXTURES_EVENT,enhancedTexturesEnabled} from './enhanced-textures.ts';
 import {runNativeCarMenu,type NativeCarMenuHost} from './native-car-runtime.ts';
 import {runNativeOpponentMenu,type NativeOpponentHost} from './native-opponent-runtime.ts';
-import {enhancedMenuEnabled,interactiveTrackPreviewEnabled,modernTrackEditorEnabled,runNativeOptions,type NativeOptionsHost} from './native-options-runtime.ts';
+import {enhancedMenuEnabled,modernTrackEditorEnabled,runNativeOptions,type NativeOptionsHost} from './native-options-runtime.ts';
 import {createEnhancedTrackMenuPresentation} from './enhanced-track-menu-presentation.ts';
 import {runModernTrackMenu,type ModernTrackMenuAction,type ModernTrackMenuHost} from './modern-track-menu-runtime.ts';
 import {runNativeTrackMenu,type NativeTrackMenuHost} from './native-track-runtime.ts';
@@ -235,12 +235,11 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   show('track');focusBrowserGameCanvas(canvas);
   const menuHost:NativeTrackMenuHost={...trackHost,track,configuration,baseline,groundModels:ground.resources,panoramas,loadTrack:async({path,name})=>Array.from(await files.read(path,name,'.trk')),readScores:async(name,path)=>files.exists(path,name,'.hig')?Array.from(await files.read(path,name,'.hig')):null,editTrack:async()=>{await editTrack();show('track');}};
   if(!options.displayMode){
-   const useModernMenu=enhancedMenuEnabled(),use3DPreview=interactiveTrackPreviewEnabled();
-   if(!useModernMenu&&!use3DPreview)return runNativeTrackMenu(menuHost);
+   if(!enhancedMenuEnabled())return runNativeTrackMenu(menuHost);
    const [{decodeBlissTrack},{createBlissEditor3DView}]=await Promise.all([import('./bliss-track.ts'),import('./bliss-editor-3d.ts')]);
-   // Keep the overview centered a little higher and closer than the editor's
-   // working camera so the complete track uses more of the compact menu view.
-   const overviewTarget=[15360,-1200,-15360] as [number,number,number],overviewDistance=42000,overviewAzimuth=0,overviewElevation=.78;
+   // Modern Track Select always owns the interactive 3D preview. Keep the
+   // overview slightly high in frame so the control strip does not crowd it.
+   const overviewTarget=[15360,-2200,-15360] as [number,number,number],overviewDistance=42000,overviewAzimuth=0,overviewElevation=.78;
    const overviewCamera={
     position:[
      overviewTarget[0]+Math.sin(overviewAzimuth)*Math.cos(overviewElevation)*overviewDistance,
@@ -250,49 +249,8 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     target:overviewTarget,
     fov:50
    };
-   if(!useModernMenu){
-    const previewCanvas=document.createElement('canvas');previewCanvas.width=1280;previewCanvas.height=640;
-    const previewRect={x:8,y:40,w:304,h:126};
-    let preview:ReturnType<typeof createBlissEditor3DView>|undefined,previewSignature='',previewActive=true,drag:'orbit'|'pan'|null=null,lastX=0,lastY=0;
-    const signature=()=>track.name+'/'+track.raw.length+'/'+track.raw.slice(0,1802).reduce((hash,byte,index)=>(Math.imul(hash^byte,16777619)+index)>>>0,2166136261);
-    const ensurePreview=()=>{
-     const next=signature();
-     if(preview&&previewSignature===next)return preview;
-     const decoded=decodeBlissTrack(Uint8Array.from(track.raw));
-     if(!preview)preview=createBlissEditor3DView(previewCanvas,options.assets,decoded,{initialCamera:overviewCamera,transparentBackground:true,showGround:true});
-     else{preview.update(decoded);preview.resetView();}
-     previewSignature=next;return preview;
-    };
-    const presentVanilla3D=()=>{
-     paint();
-     if(!previewActive)return;
-     const view=ensurePreview();view.render();
-     const sx=canvas.width/320,sy=canvas.height/200;
-     context.save();context.beginPath();context.rect(previewRect.x*sx,previewRect.y*sy,previewRect.w*sx,previewRect.h*sy);context.clip();
-     context.fillStyle='#080a07';context.fillRect(previewRect.x*sx,previewRect.y*sy,previewRect.w*sx,previewRect.h*sy);
-     context.imageSmoothingEnabled=true;context.drawImage(previewCanvas,previewRect.x*sx,previewRect.y*sy,previewRect.w*sx,previewRect.h*sy);context.restore();
-    };
-    menuHost.present=presentVanilla3D;
-    menuHost.setOverviewActive=value=>{previewActive=value;if(value)presentVanilla3D();else paint();};
-    const inPreview=(event:{clientX:number;clientY:number})=>{const r=canvas.getBoundingClientRect(),x=(event.clientX-r.left)*320/r.width,y=(event.clientY-r.top)*200/r.height;return previewActive&&x>=previewRect.x&&x<=previewRect.x+previewRect.w&&y>=previewRect.y&&y<=previewRect.y+previewRect.h;};
-    const pointerDown=(event:PointerEvent)=>{
-     if(!inPreview(event)||(event.button!==0&&event.button!==2))return;
-     event.preventDefault();event.stopImmediatePropagation();drag=event.button===0?'orbit':'pan';lastX=event.clientX;lastY=event.clientY;canvas.setPointerCapture(event.pointerId);
-    };
-    const pointerMove=(event:PointerEvent)=>{
-     if(!drag)return;event.preventDefault();event.stopImmediatePropagation();
-     const dx=event.clientX-lastX,dy=event.clientY-lastY;lastX=event.clientX;lastY=event.clientY;
-     if(drag==='orbit')ensurePreview().orbit(dx,dy);else ensurePreview().pan(dx,dy);presentVanilla3D();
-    };
-    const pointerUp=(event:PointerEvent)=>{if(drag){event.preventDefault();event.stopImmediatePropagation();}drag=null;if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);};
-    const wheel=(event:WheelEvent)=>{if(!inPreview(event))return;event.preventDefault();event.stopImmediatePropagation();ensurePreview().dolly(event.deltaY,event.clientX,event.clientY);presentVanilla3D();};
-    canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
-    try{return await runNativeTrackMenu(menuHost);}finally{
-     canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerup',pointerUp,true);canvas.removeEventListener('pointercancel',pointerUp,true);canvas.removeEventListener('wheel',wheel,true);preview?.close();previewCanvas.width=previewCanvas.height=1;
-    }
-   }
 
-   const enhanced=createEnhancedTrackMenuPresentation({canvas,assets:options.assets,decodeTrack:decodeBlissTrack,createPreview:createBlissEditor3DView,originalCamera:overviewCamera,previewEnabled:use3DPreview});
+   const enhanced=createEnhancedTrackMenuPresentation({canvas,assets:options.assets,decodeTrack:decodeBlissTrack,createPreview:createBlissEditor3DView,originalCamera:overviewCamera,previewEnabled:true});
    let active=true,drag:'orbit'|'pan'|null=null,lastX=0,lastY=0;
    const modernActions:ModernTrackMenuAction[]=[];
    const presentEnhanced=()=>{if(!active){paint();return;}enhanced.render();if(options.graphics)options.graphics.refresh=presentEnhanced;};
