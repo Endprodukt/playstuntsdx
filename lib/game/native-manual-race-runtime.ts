@@ -28,15 +28,18 @@ export function createLoadedNativeManualRaceRuntime(...args:Parameters<typeof cr
 function attachManualRaceRuntime(data:Parameters<typeof createNativeManualRaceSession>[0]&{engineSoundOverrides?:Readonly<Record<string,Uint8Array>>},prepared:Awaited<ReturnType<typeof createNativeManualRaceSession>>){
  const {session}=prepared,d=0x2d1a0,bp=0xeefe;
  const engineOverrides=new Map<number,Uint8Array>();
- if(!data.soundDevice&&data.engineSoundOverrides){
+ const rebuildEngineOverrides=(overrides?:Readonly<Record<string,Uint8Array>>)=>{
+  engineOverrides.clear();
+  if(data.soundDevice||!overrides)return;
   const memory=session.state.memory,view=new DataView(memory.buffer,memory.byteOffset,memory.byteLength);
   const attach=(idAt:number,handleAt:number)=>{
-   const id=String.fromCharCode(...memory.slice(d+idAt,d+idAt+4)).toUpperCase(),instrument=data.engineSoundOverrides?.[id];
+   const id=String.fromCharCode(...memory.slice(d+idAt,d+idAt+4)).toUpperCase(),instrument=overrides[id];
    if(!instrument)return;const handle=view.getUint16(d+handleAt,true);if(handle<25)engineOverrides.set(handle,instrument);
   };
   attach(0x8fc2,0x8016);
   if(memory[d+0x8fc8])attach(0x8fc9,0x86de);
- }
+ };
+ rebuildEngineOverrides(data.engineSoundOverrides);
  const audio=createNativeAllocatedSound(()=>session.state.memory,d,0x39e1,data.soundDevice,engineOverrides);
  const patchedVoiceInstrument=new Map<number,string>();
  const liveEnginePatchWrites=()=>{
@@ -63,6 +66,9 @@ function attachManualRaceRuntime(data:Parameters<typeof createNativeManualRaceSe
  const nextGraphicsKey=(live:Uint8Array)=>{const view=renderer.view!,v=new DataView(live.buffer,live.byteOffset,live.byteLength);return [v.getUint16(d+0x8c26,true),live[d+0xa3c2],live[d+0x12f],live[d+0xa9f0],live[d+0x134],live[d+0x9ab6],live[d+0xaae6],live[d+0x90f8],live[d+0x8eab],live[d+0xa42a],live[d+0x8f13],live[d+0x8f14],live[d+0x8fbd],v.getUint16(d+0xa034,true),v.getUint16(d+0x73b2,true),v.getUint16(d+0xa7da,true),...view.position,...view.angles,...view.rectangle,...view.projection].join('/')};
  const controlReplay=createAllocatedReplayControl(()=>session.state.memory,()=>{if(!rendering)throw Error('Replay drawing requires the retained race framebuffer');return rendering;},d);
  return {...prepared,initialWrites:[...prepared.initialWrites,...engineOverrideWrites],audio,
+  updateEngineSoundOverrides(overrides?:Readonly<Record<string,Uint8Array>>){
+   rebuildEngineOverrides(overrides);patchedVoiceInstrument.clear();return liveEnginePatchWrites();
+  },
   enableGraphicsCapture(){captureGraphics=true;},
   graphicsFrame(){if(hasPendingGraphics){hasPendingGraphics=false;renderer.render(pendingGraphics,undefined,undefined,undefined,true,(memory,world)=>{rendering=memory;graphicsSource??=new Uint8Array(memory.length);graphicsLive??=new Uint8Array(pendingGraphics.length);graphicsSource.set(memory);graphicsLive.set(pendingGraphics);const key=nextGraphicsKey(pendingGraphics);if(key!==graphicsKey){graphicsKey=key;graphicsMask=undefined;graphicsRevision++;}drawNativeFullRedrawRaceLayers(memory,pendingGraphics,d,bp,world);});}if(!graphicsSource||!graphicsLive||!renderer.view)return;graphicsMask??=renderGraphicsMask(graphicsSource,graphicsLive,renderer.view.rectangle,renderer.view.fireballMask);return {...renderer.view,mask:graphicsMask,memory:graphicsLive,pixels:rendering!.subarray(0xa0000,0xa0000+64000),revision:graphicsRevision};},
   useDisplay(next:NativeManualRaceDisplay){if(rendering||display||finished)throw Error('A display must be attached before the first manual race frame');display=next;},
