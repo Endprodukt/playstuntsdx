@@ -395,7 +395,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  for(const control of [spawnLeft,spawnRight,testHere])control.style.display='none';
  const refreshSpawnControls=()=>{const show=!!testSpawn;spawnLeft.style.display=spawnRight.style.display=testHere.style.display=show?'inline-block':'none';};
  const dragGhost=document.createElement('div');
- dragGhost.style.cssText='position:fixed;display:none;z-index:2147483646;pointer-events:none;width:30px;height:38px;transform:translate(-50%,-85%);filter:drop-shadow(0 2px 2px #000);';
+ dragGhost.style.cssText='position:fixed;display:none;z-index:2147483646;pointer-events:none;width:30px;height:38px;transform:translate(-50%,-85%);transform-origin:50% 85%;filter:drop-shadow(0 2px 2px #000);';
  dragGhost.innerHTML='<svg viewBox="0 0 30 38" width="30" height="38"><path d="M15 1v13m0-13-5 6m5-6 5 6" fill="none" stroke="#ffca3a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15" cy="18" r="4" fill="#ffca3a"/><path d="M11 23h8l3 8-3 1-2-5v10h-4v-7h-3v7H6V27l-2 5-3-1 3-8z" fill="#ffca3a"/></svg>';
  document.body.appendChild(dragGhost);
  let spawnDragging=false,spawnPointerId=-1,dragSnapped=false,dragHeadingOffset=0,dragCandidate:RaceSpawn|undefined;
