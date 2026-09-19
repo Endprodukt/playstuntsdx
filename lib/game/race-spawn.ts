@@ -1,5 +1,6 @@
 export interface RaceSpawn {
  x:number;
+ y?:number;
  z:number;
  heading:number;
 }
