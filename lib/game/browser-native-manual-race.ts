@@ -8,6 +8,7 @@ import {createBrowserRaceAudio} from './browser-race-audio.ts';
 import {createBrowserPcSpeakerRaceAudio} from './browser-pc-speaker-race-audio.ts';
 import {createBrowserTandyRaceAudio} from './browser-tandy-race-audio.ts';
 import {runBrowserAllocatedRaceLoop} from './browser-allocated-race-loop.ts';
+import {loadConfiguredEngineSoundOverrides} from './browser-engine-sound-mod.ts';
 import type {createBrowserNativeMenus} from './browser-native-menus.ts';
 import type {NativeDemoData,NativeDemoMenuState} from './native-demo-runtime.ts';
 type Menus=Awaited<ReturnType<typeof createBrowserNativeMenus>>;
@@ -17,7 +18,9 @@ export async function runBrowserNativeManualRace(options:{context:AudioContext;d
  if(options.data.soundDevice?.kind==='mt32'&&!options.mt32Output)throw Error('Roland race requires an initialized synthesizer output');
  let rolandAudio:ReturnType<typeof createBrowserMt32RaceAudio>|undefined;
  const {context,menus,signal}=options;let pcAudio:ReturnType<typeof createBrowserPcSpeakerRaceAudio>|undefined;
- const data=options.data.soundDevice?.kind==='pc-speaker'?{...options.data,soundDevice:{kind:'pc-speaker' as const,port61:()=>pcAudio?.port61??0}}:options.data.soundDevice?.kind==='tandy'?{...options.data,soundDevice:{...options.data.soundDevice,port61:()=>pcAudio?.port61??0}}:options.data;
+ const deviceData=options.data.soundDevice?.kind==='pc-speaker'?{...options.data,soundDevice:{kind:'pc-speaker' as const,port61:()=>pcAudio?.port61??0}}:options.data.soundDevice?.kind==='tandy'?{...options.data,soundDevice:{...options.data.soundDevice,port61:()=>pcAudio?.port61??0}}:options.data;
+ const engineSoundOverrides=await loadConfiguredEngineSoundOverrides(deviceData);
+ const data=engineSoundOverrides?{...deviceData,engineSoundOverrides}:deviceData;
  const aborted=()=>{if(signal.aborted)throw new DOMException('Native race closed','AbortError');};
  const progress=(stage:number)=>{const name=({2:'SDTITL.PVS',3:'TEDIT.PRE',4:'OPP1.PRE'} as Record<number,string>)[stage];if(!name||!data.catalog.exists(name))throw Error('Original disk-presence resource missing for stage '+stage);};
  let presentation:Awaited<ReturnType<Menus['allocatedRacePresentation']>>|undefined,audio:Awaited<ReturnType<typeof createBrowserRaceAudio>>|undefined;
