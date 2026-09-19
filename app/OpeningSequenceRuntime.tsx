@@ -180,7 +180,7 @@ export default function OpeningSequence({assets,onBack,backLabel="← Back",soun
    let openingKey=await playOpening();
    if(disposed)return;
    openingInput.setActive(false);
-   menus=await createBrowserNativeMenus({settings:{mouse:false,joystick:false,graphics:0},graphics:graphics.current,canvas:element,assets,music,displayMode,hercules,signal:demoAbort.signal,track:{name:'DEFAULT',path:directory,raw:initialTrack??[...assets.tracks.find(t=>t.name==='DEFAULT')!.raw]},onScreen:screen=>{if(!disposed)setStatus(screen==='main'?'Original main menu':screen==='editor'?'Original track editor':screen==='race'?'Stunts':screen==='results'?'Race results':screen==='replay'?'Replay':'Original '+screen+' menu');}});
+   menus=await createBrowserNativeMenus({settings:{mouse:false,joystick:false,graphics:0},graphics:graphics.current,canvas:element,assets,music,audioContext:runAudio,displayMode,hercules,signal:demoAbort.signal,track:{name:'DEFAULT',path:directory,raw:initialTrack??[...assets.tracks.find(t=>t.name==='DEFAULT')!.raw]},onScreen:screen=>{if(!disposed)setStatus(screen==='main'?'Original main menu':screen==='editor'?'Original track editor':screen==='race'?'Stunts':screen==='results'?'Race results':screen==='replay'?'Replay':'Original '+screen+' menu');}});
    if(disposed){menus.close();return;}
    element.dataset.openingComplete='true';
    for(;;){
