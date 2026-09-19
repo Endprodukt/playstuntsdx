@@ -20,7 +20,8 @@ export async function runBrowserNativeManualRace(options:{context:AudioContext;d
  const {context,menus,signal}=options;let pcAudio:ReturnType<typeof createBrowserPcSpeakerRaceAudio>|undefined;
  const deviceData=options.data.soundDevice?.kind==='pc-speaker'?{...options.data,soundDevice:{kind:'pc-speaker' as const,port61:()=>pcAudio?.port61??0}}:options.data.soundDevice?.kind==='tandy'?{...options.data,soundDevice:{...options.data.soundDevice,port61:()=>pcAudio?.port61??0}}:options.data;
  const engineSoundOverrides=await loadConfiguredEngineSoundOverrides(deviceData);
- const data=engineSoundOverrides?{...deviceData,engineSoundOverrides}:deviceData;
+ if(engineSoundOverrides)console.info('[Sound Mod] Presets loaded successfully; live injection is temporarily disabled until the remaining OPL controller path is reconstructed.',Object.keys(engineSoundOverrides));
+ const data=deviceData;
  const aborted=()=>{if(signal.aborted)throw new DOMException('Native race closed','AbortError');};
  const progress=(stage:number)=>{const name=({2:'SDTITL.PVS',3:'TEDIT.PRE',4:'OPP1.PRE'} as Record<number,string>)[stage];if(!name||!data.catalog.exists(name))throw Error('Original disk-presence resource missing for stage '+stage);};
  let presentation:Awaited<ReturnType<Menus['allocatedRacePresentation']>>|undefined,audio:Awaited<ReturnType<typeof createBrowserRaceAudio>>|undefined;
