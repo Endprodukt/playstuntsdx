@@ -17,12 +17,21 @@ export type RaceAudioState=Omit<EngineRuntimeStartState,'car'>&{cars:Uint8Array[
 /** Car-handle operations over one original driver, timer pool and voice pool.
  * The caller owns allocation and the original ordering of game requests.
  */
-export function createRaceAudio(before:RaceAudioState,resources:LoadedEffectResource[],enabled=true,master=127){
+export function createRaceAudio(before:RaceAudioState,resources:LoadedEffectResource[],enabled=true,master=127,engineOverrides:ReadonlyMap<number,Uint8Array>=new Map()){
  let state=structuredClone(before);
+ const runtimeResources=[...resources];
+ for(const [handle,instrument] of engineOverrides){
+  const car=state.cars[handle];if(!car||instrument.length<100)continue;
+  // Synthetic far pointers are only identifiers inside the reconstructed audio
+  // runtime; no DOS memory dereference is performed for these resources.
+  const segment=0xf000+(handle&0xff),offset=0;
+  const view=new DataView(car.buffer,car.byteOffset,car.byteLength);view.setUint16(0x24,offset,true);view.setUint16(0x26,segment,true);
+  runtimeResources.push({headerOffset:0,headerSegment:0,header:new Uint8Array(),instrumentOffset:offset,instrumentSegment:segment,instrument:instrument.slice(0,100),sequenceOffset:0,sequenceSegment:0,sequence:new Uint8Array()});
+ }
  const carAt=(handle:number)=>{const car=state.cars[handle];if(!car)throw Error('Missing original car audio handle');return car;};
  const instrumentAt=(car:Uint8Array)=>{
   const v=new DataView(car.buffer,car.byteOffset,car.byteLength),offset=v.getUint16(0x24,true),segment=v.getUint16(0x26,true);
-  const resource=resources.find(r=>r.instrumentOffset===offset&&r.instrumentSegment===segment);
+  const resource=runtimeResources.find(r=>r.instrumentOffset===offset&&r.instrumentSegment===segment);
   if(!resource)throw Error('Missing original car engine instrument');return resource.instrument;
  };
  const apply=(handle:number,next:Omit<EngineRuntimeStartState,'command'>&{command?:Uint8Array;writes:number[][]})=>{
@@ -33,18 +42,18 @@ export function createRaceAudio(before:RaceAudioState,resources:LoadedEffectReso
  return {
   setEnabled(value:boolean,savedVolumes:Uint8Array){
    const next=setEffectsEnabled({...state,enabled:enabled?1:0,savedVolumes},value,(offset,segment)=>{
-    const resource=resources.find(r=>r.instrumentOffset===offset&&r.instrumentSegment===segment);
+    const resource=runtimeResources.find(r=>r.instrumentOffset===offset&&r.instrumentSegment===segment);
     if(!resource)throw Error('Missing original mute instrument');return resource.instrument;
    });
    const {writes,savedVolumes:restored,enabled:nextEnabled,...audio}=next;
    state={...state,...audio};enabled=nextEnabled===1;return {writes,savedVolumes:restored,enabled:nextEnabled};
   },
   start(handle:number){const car=carAt(handle);return apply(handle,startEngineRuntime({...state,car},instrumentAt(car)));},
-  impacts(handle:number,flags:number,active:boolean){return apply(handle,impactAudioRuntime({...state,car:carAt(handle)},flags,active,resources,enabled,master));},
-  crash(handle:number){return apply(handle,startCrashRuntime({...state,car:carAt(handle)},resources,enabled,master));},
-  skid(handle:number,variant:1|2|'stop'){return apply(handle,updateSkidRuntime({...state,car:carAt(handle)},variant,resources,enabled,master));},
+  impacts(handle:number,flags:number,active:boolean){return apply(handle,impactAudioRuntime({...state,car:carAt(handle)},flags,active,runtimeResources,enabled,master));},
+  crash(handle:number){return apply(handle,startCrashRuntime({...state,car:carAt(handle)},runtimeResources,enabled,master));},
+  skid(handle:number,variant:1|2|'stop'){return apply(handle,updateSkidRuntime({...state,car:carAt(handle)},variant,runtimeResources,enabled,master));},
   driveSounds(handle:number,flags:number){
-   const next=updateDrivingSoundRuntime({...state,car:carAt(handle),soundFlags:state.soundFlags[handle]??0},flags,resources,enabled,master);
+   const next=updateDrivingSoundRuntime({...state,car:carAt(handle),soundFlags:state.soundFlags[handle]??0},flags,runtimeResources,enabled,master);
    const previousFlags=state.soundFlags.slice();previousFlags[handle]=next.soundFlags;
    const writes=apply(handle,next);state.soundFlags=previousFlags;return writes;
   },
@@ -53,11 +62,11 @@ export function createRaceAudio(before:RaceAudioState,resources:LoadedEffectReso
    cars[handle]=updateCarAudioTarget(car,rpm,previous,current,interval,instrument[14],instrument[15]);state={...state,cars};
   },
   tick(){
-   const next=stepCarAudioInterrupt({...state,car:carAt(0)},resources,enabled,master);
+   const next=stepCarAudioInterrupt({...state,car:carAt(0)},runtimeResources,enabled,master);
    state={...state,...next};return next.writes;
   },
   exit(queue:DrivingAudioExitState){
-   const {audio,queue:nextQueue}=exitRaceAudio({...state,paused:0},queue,resources,enabled,master);
+   const {audio,queue:nextQueue}=exitRaceAudio({...state,paused:0},queue,runtimeResources,enabled,master);
    const {writes,...next}=audio;state=next;return {writes,queue:nextQueue};
   },
   /** Execute already-decoded producer requests once, preserving their order.
@@ -74,7 +83,7 @@ export function createRaceAudio(before:RaceAudioState,resources:LoadedEffectReso
     const handle=request.handle,car=carAt(handle);
     if(request.kind==='engine-start')writes.push(...apply(handle,startEngineRuntime({...state,car},instrumentAt(car))));
     else if(request.kind==='engine-stop')writes.push(...apply(handle,stopEngineRuntime({...state,car})));
-    else writes.push(...apply(handle,updateSkidRuntime({...state,car},request.kind==='skid-start'?1:request.kind==='skid2-start'?2:'stop',resources,enabled,master)));
+    else writes.push(...apply(handle,updateSkidRuntime({...state,car},request.kind==='skid-start'?1:request.kind==='skid2-start'?2:'stop',runtimeResources,enabled,master)));
    }
    state.soundFlags=[...soundFlags];return writes;
   },
