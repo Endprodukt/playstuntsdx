@@ -172,9 +172,9 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     const snapshot=document.createElement('canvas');snapshot.width=width;snapshot.height=height;
     const snapshotContext=snapshot.getContext('2d');if(!snapshotContext)return null;
     const memory=modelMemory;
-    const renderAngle=(angle:number,pitch=0)=>{
+    const renderAngle=(angle:number,pitch=0,zoom=1)=>{
      new DataView(memory.buffer,memory.byteOffset,memory.byteLength).setInt16(0x2d1a0+0xb00e,angle&1023,true);
-     const rendered=modernShowroom!.draw(memory,width,height,{pitch});
+     const rendered=modernShowroom!.draw(memory,width,height,{pitch,zoom});
      snapshotContext.clearRect(0,0,width,height);snapshotContext.drawImage(rendered,0,0);
     };
     renderAngle(0);
@@ -234,6 +234,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    };
    const pointerLeave=()=>{if(!rotating)modern.clearHover();};
    const wheel=(event:WheelEvent)=>{
+    if(modern.inPreview(event)){event.preventDefault();event.stopImmediatePropagation();modern.zoomBy(event.deltaY);return;}
     const action=modern.wheelAction(event.deltaY);
     if(action){event.preventDefault();event.stopImmediatePropagation();actions.push(action);return;}
     if(modern.scrollDropdown(event.deltaY)){event.preventDefault();event.stopImmediatePropagation();}
