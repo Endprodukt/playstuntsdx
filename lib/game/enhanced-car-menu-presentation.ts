@@ -138,7 +138,7 @@ export function createEnhancedCarMenuPresentation(options:{
   ctx.save();ctx.beginPath();ctx.roundRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy(),4*Math.min(sx(),sy()));ctx.clip();
   ctx.fillStyle='#0a0b0a';ctx.fillRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
   if(previewCanvas){
-   ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+   ctx.imageSmoothingEnabled=false;
    const targetX=previewRect.x*sx(),targetY=previewRect.y*sy(),targetW=previewRect.w*sx(),targetH=previewRect.h*sy();
    // The car itself occupies the upper showroom portion of the original
    // 320x200 frame. Crop that logical showroom window first, then scale it
@@ -216,6 +216,11 @@ export function createEnhancedCarMenuPresentation(options:{
   scrollDropdown(delta){
    if(!dropdownOpen||cars.length<=dropdownRows)return false;
    const maxStart=Math.max(0,cars.length-dropdownRows);dropdownStart=Math.max(0,Math.min(maxStart,dropdownStart+(delta>0?1:-1)));render();return true;
+  },
+  wheelAction(delta){
+   if(dropdownOpen||hover.type!=='selector'||!cars.length)return undefined;
+   const direction=delta>0?1:-1;
+   return {type:'car',index:(selected+direction+cars.length)%cars.length};
   },
   render,
   close(){closed=true;cancelAnimationFrame(animation);previewRender=undefined;}
