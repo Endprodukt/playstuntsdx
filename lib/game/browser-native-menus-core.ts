@@ -165,7 +165,10 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     // The original showroom projection is authored for the 320x200 Stunts
     // viewport. Keep that 1.6:1 render aspect here; rendering it into a wider
     // target stretches the car before the menu compositor ever sees it.
-    const width=960,height=600;
+    // Match the physical width of the modern preview as closely as possible.
+    // The showroom itself must stay 320:200, but choosing a 1:1-ish source
+    // width avoids an extra soft resample when compositing into the menu.
+    const width=Math.max(320,Math.round(canvas.width*218/320)),height=Math.round(width*200/320);
     const snapshot=document.createElement('canvas');snapshot.width=width;snapshot.height=height;
     const snapshotContext=snapshot.getContext('2d');if(!snapshotContext)return null;
     const memory=modelMemory;
@@ -219,7 +222,11 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    };
    const pointerMove=(event:PointerEvent)=>modern.hoverAt(event);
    const pointerLeave=()=>modern.clearHover();
-   const wheel=(event:WheelEvent)=>{if(modern.scrollDropdown(event.deltaY)){event.preventDefault();event.stopImmediatePropagation();}};
+   const wheel=(event:WheelEvent)=>{
+    const action=modern.wheelAction(event.deltaY);
+    if(action){event.preventDefault();event.stopImmediatePropagation();actions.push(action);return;}
+    if(modern.scrollDropdown(event.deltaY)){event.preventDefault();event.stopImmediatePropagation();}
+   };
    canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerleave',pointerLeave,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
    try{return await runModernCarMenu(modernHost,modern);}finally{
     canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerleave',pointerLeave,true);canvas.removeEventListener('wheel',wheel,true);
@@ -360,6 +367,8 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    const pointerLeave=()=>{if(!drag)enhanced.clearHover();};
    const wheel=(event:WheelEvent)=>{
     if(enhanced.inPreview(event)){event.preventDefault();enhanced.dolly(event.deltaY,event.clientX,event.clientY);return;}
+    const action=enhanced.wheelAction(event.deltaY);
+    if(action){event.preventDefault();event.stopImmediatePropagation();modernActions.push(action);return;}
     if(enhanced.scrollDropdown(event.deltaY)){event.preventDefault();event.stopImmediatePropagation();}
    };
    canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('pointerleave',pointerLeave,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
