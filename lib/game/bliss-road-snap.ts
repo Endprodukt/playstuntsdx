@@ -27,7 +27,7 @@ function addCandidate(
  return !best||candidate.distance<best.distance?candidate:best;
 }
 
-function curvedStepCandidate(x:number,z:number,step:BlissPathTraceStep){
+function curvedStepCandidate(x:number,z:number,step:BlissPathTraceStep,previous:{x:number;z:number}|undefined,next:{x:number;z:number}|undefined){
  const data=blissElementData[step.code],connections=data?data.ctype.map((value,index)=>value?index:-1).filter(index=>index>=0):[];
  if(connections.length!==2||step.width!==step.height)return undefined;
  const a=connections[0],b=connections[1];
@@ -46,7 +46,11 @@ function curvedStepCandidate(x:number,z:number,step:BlissPathTraceStep){
  else if(key==='2,3'){cx=x0;cz=zSouth;}
  else if(key==='0,3'){cx=x0;cz=zNorth;}
  else return undefined;
- const p0=edges[a],p1=edges[b],start=Math.atan2(p0.z-cz,p0.x-cx),end0=Math.atan2(p1.z-cz,p1.x-cx);
+ const d=(edge:{x:number;z:number},point:{x:number;z:number})=>Math.hypot(edge.x-point.x,edge.z-point.z);
+ let entry=a,exit=b;
+ if(previous){entry=d(edges[a],previous)<=d(edges[b],previous)?a:b;exit=entry===a?b:a;}
+ else if(next){exit=d(edges[a],next)<=d(edges[b],next)?a:b;entry=exit===a?b:a;}
+ const p0=edges[entry],p1=edges[exit],start=Math.atan2(p0.z-cz,p0.x-cx),end0=Math.atan2(p1.z-cz,p1.x-cx);
  let delta=end0-start;
  while(delta<=-Math.PI)delta+=Math.PI*2;
  while(delta>Math.PI)delta-=Math.PI*2;
@@ -58,8 +62,7 @@ function curvedStepCandidate(x:number,z:number,step:BlissPathTraceStep){
   const t0=i/samples,t1=(i+1)/samples;
   const q0={x:cx+Math.cos(start+delta*t0)*radius,z:cz+Math.sin(start+delta*t0)*radius};
   const q1={x:cx+Math.cos(start+delta*t1)*radius,z:cz+Math.sin(start+delta*t1)*radius};
-  const reverse=a===step.bearing;
-  best=addCandidate(best,x,z,q0.x,q0.z,q1.x,q1.z,reverse);
+  best=addCandidate(best,x,z,q0.x,q0.z,q1.x,q1.z,false);
  }
  return best;
 }
@@ -73,15 +76,10 @@ export function snapToBlissRoad(
  for(const trace of traces){
   const points=trace.steps.map(center);
   for(let i=0;i<trace.steps.length;i++){
-   const step=trace.steps[i],current=points[i],next=points[i+1];
-   const curve=curvedStepCandidate(x,z,step);
+   const step=trace.steps[i],previous=points[i-1],current=points[i],next=points[i+1];
+   const curve=curvedStepCandidate(x,z,step,previous,next);
    if(curve&&(!best||curve.distance<best.distance))best=curve;
-   if(next){
-    const dx=next.x-current.x,dz=next.z-current.z;
-    const bearingVector=step.bearing===0?{x:0,z:1}:step.bearing===1?{x:1,z:0}:step.bearing===2?{x:0,z:-1}:{x:-1,z:0};
-    const reverse=dx*bearingVector.x+dz*bearingVector.z<0;
-    best=addCandidate(best,x,z,current.x,current.z,next.x,next.z,reverse);
-   }
+   if(next&&!curve)best=addCandidate(best,x,z,current.x,current.z,next.x,next.z,false);
   }
  }
  const threshold=alreadySnapped?950:620;
