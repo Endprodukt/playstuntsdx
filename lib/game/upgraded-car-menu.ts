@@ -15,11 +15,11 @@ export function createUpgradedCarMenu(palette:number[],indices:number[]){
  const camera=new THREE.PerspectiveCamera();camera.near=1;camera.far=30000;
  let model:THREE.Group|undefined,bank:Uint8Array|undefined,lastPaint=-1,lastBuildMilliseconds:number|undefined;
  const disposeModel=(old:THREE.Group|undefined)=>{old?.traverse(node=>{if(node instanceof THREE.Mesh||node instanceof THREE.LineSegments){node.geometry.dispose();for(const material of Array.isArray(node.material)?node.material:[node.material])material.dispose();}});if(old)world.remove(old);};
- return {draw(memory:Uint8Array,width:number,height:number){
+ return {draw(memory:Uint8Array,width:number,height:number,rotation?:{pitch?:number;roll?:number}){
   const d=0x2d1a0,v=new DataView(memory.buffer,memory.byteOffset,memory.byteLength),word=(at:number)=>v.getInt16(d+at,true),paint=memory[d+0xb013];
   let retired:THREE.Group|undefined,buildStarted:number|undefined;
   if(bank!==memory||lastPaint!==paint){buildStarted=performance.now();retired=model;retired?.removeFromParent();const shape=readUpgradedShape(memory,0x7f16);model=createCarModel(shape,0xffffff,{palette,indices,paint,paletteMaterial:memory[d+0x9b28],...readOriginalMaterialPatterns(memory)});applyUpgradedCarMaterials(model,shape);model.scale.setScalar(400);world.add(model);bank=memory;lastPaint=paint;}
-  model!.position.set(0,-840,2880);model!.rotation.y=word(0xb00e)*Math.PI/512;
+  model!.position.set(0,-840,2880);model!.rotation.order='YXZ';model!.rotation.set(rotation?.pitch??0,word(0xb00e)*Math.PI/512,rotation?.roll??0);
   const inverse=transpose(rotateZXY(0,-46,0,true)),forward=vecTransform([0,0,16384],inverse),up=vecTransform([0,16384,0],inverse);
   camera.position.set(0,0,0);camera.up.set(up[0],up[1],-up[2]);camera.lookAt(forward[0],forward[1],-forward[2]);
   const [cx,cy,fx,fy]=[0,1,2,3].map(i=>word(0x4b88+i*2));camera.projectionMatrix.makePerspective(-cx/fx,(320-cx)/fx,cy/fy,-(200-cy)/fy,1,30000);camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
