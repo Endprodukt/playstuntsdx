@@ -20,8 +20,8 @@ export type EnhancedTrackMenuPresentation=ModernTrackMenuPresentation&{
 };
 
 const text=(bytes:ReadonlyArray<number>)=>String.fromCharCode(...bytes).replace(/\0.*$/s,'');
-const selector={x:12,y:38,w:174,h:21},importButton={x:191,y:38,w:54,h:21},editButton={x:250,y:38,w:55,h:21},doneButton={x:266,y:10,w:39,h:15};
-const previewRect={x:8,y:66,w:218,h:126};
+const selector={x:105,y:10,w:101,h:22},importButton={x:210,y:10,w:46,h:22},editButton={x:260,y:10,w:45,h:22},doneButton={x:232,y:174,w:81,h:23};
+const previewRect={x:8,y:45,w:218,h:147};
 const dropdownRowHeight=15,dropdownRows=8;
 
 export function createEnhancedTrackMenuPresentation(options:{
@@ -85,18 +85,16 @@ export function createEnhancedTrackMenuPresentation(options:{
   ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=true;ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.fillStyle='#090909';ctx.fillRect(0,0,canvas.width,canvas.height);
 
-  rect(7,6,306,25,'#111','#3b3b3b',6);
-  label('TRACK SELECT',15,18.5,10,'#aeb56e',700);
-  button(doneButton,'DONE','done');
+  rect(7,6,306,30,'#111','#3b3b3b',6);
+  label('TRACK SELECT',15,21,9,'#aeb56e',700);
 
-  rect(7,34,306,29,'#111','#3b3b3b',6);
   rect(selector.x,selector.y,selector.w,selector.h,hovered('selector')?'#2f341c':'#191919',dropdownOpen||hovered('selector')?'#b4c35a':'#555',4,dropdownOpen||hovered('selector')?1.5:1);
-  label(fit(tracks[selectedTrack]??track.name??'UNTITLED',23),selector.x+7,selector.y+selector.h/2,8,'#f2f2f2',600);
+  label(fit(tracks[selectedTrack]??track.name??'UNTITLED',13),selector.x+6,selector.y+selector.h/2,7,'#f2f2f2',600);
   label(dropdownOpen?'▴':'▾',selector.x+selector.w-9,selector.y+selector.h/2,8,'#aaa',700,'center');
   button(importButton,'IMPORT','import');
   button(editButton,'EDIT','edit');
 
-  rect(7,65,220,132,'#111','#3b3b3b',6);
+  rect(7,44,220,153,'#111','#3b3b3b',6);
   ctx.save();ctx.beginPath();ctx.roundRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy(),4*Math.min(sx(),sy()));ctx.clip();
   ctx.fillStyle='#0b0d0a';ctx.fillRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
   if(options.previewEnabled){
@@ -104,21 +102,23 @@ export function createEnhancedTrackMenuPresentation(options:{
   }else label('3D PREVIEW DISABLED',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,8,'#777',600,'center');
   ctx.restore();
 
-  rect(232,65,81,132,'#111','#3b3b3b',6);
-  label('TRACK INFO',239,77,8,'#aaa',700);
-  label('NAME',239,91,6,'#777',600);label(fit(track.name||'UNTITLED',13),239,101,8,'#eee',650);
+  rect(232,44,81,126,'#111','#3b3b3b',6);
+  label('TRACK INFO',239,56,8,'#aaa',700);
+  label('NAME',239,70,6,'#777',600);label(fit(track.name||'UNTITLED',13),239,80,8,'#eee',650);
   if(score&&(score[50]|score[51]<<8)!==65535){
    const row=originalHighScoreRow(score),fields=row.fields.map(text);
-   label('HIGH SCORE',239,118,7,'#aaa',700);
-   label(fit(fields[0]||'—',13),239,130,7,'#eee',600);
-   label(fit(fields[1]||'',13),239,141,6,'#aaa');
-   label(fit(fields[2]||'',13),239,151,6,'#aaa');
-   label(fields[3]||'',239,164,9,'#d8d66d',700);
+   label('HIGH SCORE',239,96,7,'#aaa',700);
+   label(fit(fields[0]||'—',13),239,108,7,'#eee',600);
+   label(fit(fields[1]||'',13),239,119,6,'#aaa');
+   label(fit(fields[2]||'',13),239,129,6,'#aaa');
+   label(fields[3]||'',239,141,8,'#d8d66d',700);
   }else{
-   label('HIGH SCORE',239,118,7,'#aaa',700);label('No record yet',239,131,6,'#777');
+   label('HIGH SCORE',239,96,7,'#aaa',700);label('No record yet',239,108,6,'#777');
   }
-  label('MOUSE',239,178,4.5,'#777',700);
-  label('LMB Orbit   ·   RMB Pan   ·   Wheel Zoom',239,189,4.2,'#aaa',500);
+  label('MOUSE',239,150,4.5,'#777',700);
+  label('LMB Orbit  ·  RMB Pan',239,159,4.2,'#aaa',500);
+  label('Wheel Zoom',239,166,4.2,'#aaa',500);
+  button(doneButton,'DONE','done');
 
   if(dropdownOpen)drawDropdown();
   ctx.restore();
