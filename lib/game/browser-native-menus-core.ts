@@ -41,7 +41,8 @@ import {originalMainMenuBounds} from './main-menu-hit.ts';
 import {ENHANCED_TEXTURES_EVENT,enhancedTexturesEnabled} from './enhanced-textures.ts';
 import {runNativeCarMenu,type NativeCarMenuHost} from './native-car-runtime.ts';
 import {runNativeOpponentMenu,type NativeOpponentHost} from './native-opponent-runtime.ts';
-import {interactiveTrackPreviewEnabled,runNativeOptions,type NativeOptionsHost} from './native-options-runtime.ts';
+import {enhancedMenuEnabled,interactiveTrackPreviewEnabled,runNativeOptions,type NativeOptionsHost} from './native-options-runtime.ts';
+import {createEnhancedTrackMenuPresentation} from './enhanced-track-menu-presentation.ts';
 import {runNativeTrackMenu,type NativeTrackMenuHost} from './native-track-runtime.ts';
 import type {NativeEditorHost} from './native-editor-runtime.ts';
 import {createBrowserMenuInput} from './browser-menu-input.ts';
@@ -198,6 +199,30 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     target:[signed(0x8fc),signed(0x8fe),-signed(0x900)] as [number,number,number],
     fov:2*Math.atan(100/120)*180/Math.PI
    };
+   if(enhancedMenuEnabled()){
+    const dialogs=createNativeDialogRuntime(menuHost);
+    const enhanced=createEnhancedTrackMenuPresentation({canvas,assets:options.assets,decodeTrack:decodeBlissTrack,createPreview:createBlissEditor3DView,originalCamera,previewEnabled:interactiveTrackPreviewEnabled(),file:dialogs.file});
+    let active=true,drag:'orbit'|'pan'|null=null,lastX=0,lastY=0;
+    const presentEnhanced=()=>{if(!active){paint();return;}enhanced.render();if(options.graphics)options.graphics.refresh=presentEnhanced;};
+    menuHost.present=presentEnhanced;
+    menuHost.setOverviewActive=(value)=>{active=value;enhanced.active(value);if(!value)paint();};
+    const pointerDown=(event:PointerEvent)=>{
+     if(!enhanced.inPreview(event)||(event.button!==0&&event.button!==2))return;
+     event.preventDefault();event.stopImmediatePropagation();drag=event.button===0?'orbit':'pan';lastX=event.clientX;lastY=event.clientY;canvas.setPointerCapture(event.pointerId);
+    };
+    const pointerMove=(event:PointerEvent)=>{
+     if(!drag)return;event.preventDefault();event.stopImmediatePropagation();const dx=event.clientX-lastX,dy=event.clientY-lastY;lastX=event.clientX;lastY=event.clientY;
+     if(drag==='orbit')enhanced.orbit(dx,dy);else enhanced.pan(dx,dy);
+    };
+    const pointerUp=(event:PointerEvent)=>{if(drag){event.preventDefault();event.stopImmediatePropagation();}drag=null;if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);};
+    const wheel=(event:WheelEvent)=>{if(!enhanced.inPreview(event))return;event.preventDefault();enhanced.dolly(event.deltaY,event.clientX,event.clientY);};
+    canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
+    pixels.fill(0);
+    try{return await runNativeTrackMenu(menuHost,false,enhanced);}finally{
+     canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerup',pointerUp,true);canvas.removeEventListener('pointercancel',pointerUp,true);canvas.removeEventListener('wheel',wheel,true);
+     enhanced.close();if(options.graphics?.refresh===presentEnhanced)options.graphics.refresh=undefined;
+    }
+   }
    const backdropCanvas=document.createElement('canvas');backdropCanvas.width=320;backdropCanvas.height=200;
    const backdropContext=backdropCanvas.getContext('2d')!,backdropImage=backdropContext.createImageData(320,200);
    let backdrop:Uint8Array|undefined,preview:ReturnType<typeof createBlissEditor3DView>|undefined,previewSignature='',overviewActive=true;
