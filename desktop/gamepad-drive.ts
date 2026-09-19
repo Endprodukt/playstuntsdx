@@ -102,7 +102,9 @@ const steeringDeadzoneStorageKey = 'playstunts-dx-steering-deadzone-percent';
 const defaultSteeringDeadzonePercent = 4;
 
 function steeringDeadzonePercent() {
-  const saved = Number(window.localStorage.getItem(steeringDeadzoneStorageKey));
+  const stored = window.localStorage.getItem(steeringDeadzoneStorageKey);
+  if (stored === null) return defaultSteeringDeadzonePercent;
+  const saved = Number(stored);
   return Number.isFinite(saved) ? Math.max(0, Math.min(15, saved)) : defaultSteeringDeadzonePercent;
 }
 
