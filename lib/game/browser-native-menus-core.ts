@@ -152,7 +152,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   const carHost:NativeCarMenuHost={...host,configuration:config,opponent,opponentArt:opponent?opponentArt.resources['opp'+opponent]:undefined,baseline,cars:options.assets.cars as unknown as NativeCarMenuHost['cars'],art:carArt.resources,descriptions:carArt.descriptions,bank};
   if(enhancedMenuEnabled()){
    const actions:ModernCarMenuAction[]=[];
-   const modern=createEnhancedCarMenuPresentation({canvas,palette,materialIndices:showroomMaterials.indices,baseline,stopArt:carArt.resources.stop,bank});
+   const modern=createEnhancedCarMenuPresentation({canvas,palette});
    const pickZip=()=>new Promise<File|null>(resolve=>{
     const picker=document.createElement('input');picker.type='file';picker.accept='.zip,application/zip';picker.style.display='none';
     const finish=(file:File|null)=>{picker.remove();resolve(file);};
