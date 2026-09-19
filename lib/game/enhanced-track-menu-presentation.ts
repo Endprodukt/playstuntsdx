@@ -96,7 +96,7 @@ export function createEnhancedTrackMenuPresentation(options:{
   button(importButton,'IMPORT','import');
   button(editButton,'EDIT','edit');
 
-  rect(7,65,220,128,'#111','#3b3b3b',6);
+  rect(7,65,220,132,'#111','#3b3b3b',6);
   ctx.save();ctx.beginPath();ctx.roundRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy(),4*Math.min(sx(),sy()));ctx.clip();
   ctx.fillStyle='#0b0d0a';ctx.fillRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
   if(options.previewEnabled){
@@ -104,7 +104,7 @@ export function createEnhancedTrackMenuPresentation(options:{
   }else label('3D PREVIEW DISABLED',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,8,'#777',600,'center');
   ctx.restore();
 
-  rect(232,65,81,128,'#111','#3b3b3b',6);
+  rect(232,65,81,132,'#111','#3b3b3b',6);
   label('TRACK INFO',239,77,8,'#aaa',700);
   label('NAME',239,91,6,'#777',600);label(fit(track.name||'UNTITLED',13),239,101,8,'#eee',650);
   if(score&&(score[50]|score[51]<<8)!==65535){
