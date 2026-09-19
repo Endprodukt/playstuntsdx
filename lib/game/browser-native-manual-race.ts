@@ -12,10 +12,11 @@ import {loadConfiguredEngineSoundOverrides} from './browser-engine-sound-mod.ts'
 import {SOUND_MOD_SETTINGS_KEY} from './sound-mod-settings.ts';
 import type {createBrowserNativeMenus} from './browser-native-menus.ts';
 import type {NativeDemoData,NativeDemoMenuState} from './native-demo-runtime.ts';
+import type {RaceSpawn} from './race-spawn.ts';
 type Menus=Awaited<ReturnType<typeof createBrowserNativeMenus>>;
 /** Original manual race/results repetition, retaining one recording bank,
  * saved menu state and browser OPL stream until the player returns to menus. */
-export async function runBrowserNativeManualRace(options:{context:AudioContext;data:NativeDemoData;menus:Menus;menu:NativeDemoMenuState&{mouse?:boolean;joystick?:boolean};signal:AbortSignal;displayMode?:NativeBrowserDisplayMode;hercules?:boolean;mt32Output?:Mt32StereoOutput;replay?:NativeSelectedReplay;stopMusic():void;onStage?:(stage:'loading'|'race'|'results'|'seeking')=>void;onFrame?:(frame:number,mode:number,clock:number,blocked:number)=>void}){
+export async function runBrowserNativeManualRace(options:{context:AudioContext;data:NativeDemoData;menus:Menus;menu:NativeDemoMenuState&{mouse?:boolean;joystick?:boolean};spawn?:RaceSpawn;signal:AbortSignal;displayMode?:NativeBrowserDisplayMode;hercules?:boolean;mt32Output?:Mt32StereoOutput;replay?:NativeSelectedReplay;stopMusic():void;onStage?:(stage:'loading'|'race'|'results'|'seeking')=>void;onFrame?:(frame:number,mode:number,clock:number,blocked:number)=>void}){
  if(options.data.soundDevice?.kind==='mt32'&&!options.mt32Output)throw Error('Roland race requires an initialized synthesizer output');
  let rolandAudio:ReturnType<typeof createBrowserMt32RaceAudio>|undefined;
  const {context,menus,signal}=options;let pcAudio:ReturnType<typeof createBrowserPcSpeakerRaceAudio>|undefined;
@@ -28,7 +29,7 @@ export async function runBrowserNativeManualRace(options:{context:AudioContext;d
  let onSoundSettingsChanged:()=>void=()=>{},soundSettingsTimer=0;
  aborted();options.onStage?.(options.replay?'seeking':'loading');menus.setInputActive(true);const waiting=options.replay?data.base.slice():data.base;if(options.replay)new DataView(waiting.buffer).setUint16(0x2d1a0+0x8a10,150,true);menus.showRaceWaiting(waiting);
  try{
-  let runtime=options.replay?await createNativeReplayRaceRuntime(data,options.menu,options.replay,{resetMouse:menus.resetRaceMouse,async key(){aborted();return menus.raceEntryKey();}},progress):await createNativeManualRaceRuntime(data,options.menu,{resetMouse:menus.resetRaceMouse},progress);aborted();
+  let runtime=options.replay?await createNativeReplayRaceRuntime(data,options.menu,options.replay,{resetMouse:menus.resetRaceMouse,async key(){aborted();return menus.raceEntryKey();}},progress):await createNativeManualRaceRuntime(data,options.menu,{resetMouse:menus.resetRaceMouse},progress);if(options.spawn&&!options.replay)runtime.session.teleportPlayer(options.spawn);aborted();
   let soundUpdateSerial=0;
   onSoundSettingsChanged=()=>{
    const serial=++soundUpdateSerial;
