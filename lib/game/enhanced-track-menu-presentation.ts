@@ -15,6 +15,8 @@ export type EnhancedTrackMenuPresentation=ModernTrackMenuPresentation&{
  orbit(dx:number,dy:number):void;
  pan(dx:number,dy:number):void;
  dolly(delta:number,x:number,y:number):void;
+ hoverAt(event:{clientX:number;clientY:number}):void;
+ clearHover():void;
 };
 
 const text=(bytes:ReadonlyArray<number>)=>String.fromCharCode(...bytes).replace(/\0.*$/s,'');
@@ -33,7 +35,7 @@ export function createEnhancedTrackMenuPresentation(options:{
  const {canvas}=options,ctx=canvas.getContext('2d')!;
  const previewCanvas=document.createElement('canvas');previewCanvas.width=1280;previewCanvas.height=800;
  let preview:BlissEditor3DView|undefined,signature='',track:NativeMenuTrack|undefined,score:ReadonlyArray<number>|null=null,enabled=true;
- let tracks:string[]=[],selectedTrack=0,dropdownOpen=false,dropdownStart=0;
+ let tracks:string[]=[],selectedTrack=0,dropdownOpen=false,dropdownStart=0,hoverAction:ModernTrackMenuAction={type:'none'};
 
  const sx=()=>canvas.width/320,sy=()=>canvas.height/200;
  const rect=(x:number,y:number,w:number,h:number,fill:string,stroke='#3b3b3b',radius=5,lineWidth=1)=>{
@@ -54,9 +56,11 @@ export function createEnhancedTrackMenuPresentation(options:{
   else{preview.update(decoded);preview.resetView();}
   signature=next;return preview;
  };
- const button=(bounds:{x:number;y:number;w:number;h:number},caption:string,accent=false)=>{
-  rect(bounds.x,bounds.y,bounds.w,bounds.h,accent?'#5b6330':'#232323',accent?'#b4c35a':'#555',4);
-  label(caption,bounds.x+bounds.w/2,bounds.y+bounds.h/2+.2,7,accent?'#fff':'#e8e8e8',600,'center');
+ const hovered=(type:ModernTrackMenuAction['type'])=>hoverAction.type===type;
+ const button=(bounds:{x:number;y:number;w:number;h:number},caption:string,type:ModernTrackMenuAction['type'])=>{
+  const over=hovered(type);
+  rect(bounds.x,bounds.y,bounds.w,bounds.h,over?'#5b6330':'#232323',over?'#b4c35a':'#555',4,over?1.5:1);
+  label(caption,bounds.x+bounds.w/2,bounds.y+bounds.h/2+.2,7,over?'#fff':'#e8e8e8',600,'center');
  };
  const updateDropdownStart=()=>{
   if(!tracks.length){dropdownStart=0;return;}
@@ -69,8 +73,9 @@ export function createEnhancedTrackMenuPresentation(options:{
   rect(selector.x,selector.y+selector.h+2,selector.w,height,'#111','#666',4);
   visible.forEach((name,row)=>{
    const index=dropdownStart+row,y=selector.y+selector.h+4+row*dropdownRowHeight;
-   if(index===selectedTrack)rect(selector.x+2,y-1,selector.w-4,dropdownRowHeight,'#5b6330','#879044',3);
-   label(fit(name,24),selector.x+7,y+dropdownRowHeight/2-1,7,index===selectedTrack?'#fff':'#ddd',index===selectedTrack?650:450);
+   const over=hoverAction.type==='track'&&hoverAction.index===index;
+   if(index===selectedTrack||over)rect(selector.x+2,y-1,selector.w-4,dropdownRowHeight,over?'#646d34':'#5b6330',over?'#c1d064':'#879044',3,over?1.5:1);
+   label(fit(name,24),selector.x+7,y+dropdownRowHeight/2-1,7,index===selectedTrack||over?'#fff':'#ddd',index===selectedTrack||over?650:450);
   });
   if(tracks.length>dropdownRows)label(`${selectedTrack+1} / ${tracks.length}`,selector.x+selector.w-6,selector.y+selector.h+height-6,6,'#888',400,'right');
  };
@@ -82,14 +87,14 @@ export function createEnhancedTrackMenuPresentation(options:{
 
   rect(7,6,306,25,'#111','#3b3b3b',6);
   label('TRACK SELECT',15,18.5,10,'#aeb56e',700);
-  button(doneButton,'DONE');
+  button(doneButton,'DONE','done');
 
   rect(7,34,306,29,'#111','#3b3b3b',6);
-  rect(selector.x,selector.y,selector.w,selector.h,'#191919',dropdownOpen?'#b4c35a':'#555',4);
+  rect(selector.x,selector.y,selector.w,selector.h,hovered('selector')?'#2f341c':'#191919',dropdownOpen||hovered('selector')?'#b4c35a':'#555',4,dropdownOpen||hovered('selector')?1.5:1);
   label(fit(tracks[selectedTrack]??track.name??'UNTITLED',23),selector.x+7,selector.y+selector.h/2,8,'#f2f2f2',600);
   label(dropdownOpen?'▴':'▾',selector.x+selector.w-9,selector.y+selector.h/2,8,'#aaa',700,'center');
-  button(importButton,'IMPORT');
-  button(editButton,'EDIT');
+  button(importButton,'IMPORT','import');
+  button(editButton,'EDIT','edit');
 
   rect(7,65,220,128,'#111','#3b3b3b',6);
   ctx.save();ctx.beginPath();ctx.roundRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy(),4*Math.min(sx(),sy()));ctx.clip();
@@ -112,7 +117,13 @@ export function createEnhancedTrackMenuPresentation(options:{
   }else{
    label('HIGH SCORE',239,118,7,'#aaa',700);label('No record yet',239,131,6,'#777');
   }
-  label('Drag  orbit',239,176,6,'#777');label('R-drag pan',239,184,6,'#777');label('Wheel zoom',239,191,6,'#777');
+  label('MOUSE CONTROLS',239,174,6,'#777',700);
+  const control=(key:string,action:string,y:number)=>{
+   rect(239,y-4.5,24,9,'#202020','#555',3);
+   label(key,251,y,5.5,'#ddd',650,'center');
+   label(action,267,y,5.8,'#aaa',500);
+  };
+  control('LMB','Orbit',180);control('RMB','Pan',187.5);control('WHEEL','Zoom',195);
 
   if(dropdownOpen)drawDropdown();
   ctx.restore();
@@ -139,6 +150,12 @@ export function createEnhancedTrackMenuPresentation(options:{
   setTracks(names,nextSelected,open){tracks=[...names];selectedTrack=Math.max(0,Math.min(Math.max(0,tracks.length-1),nextSelected));dropdownOpen=open;updateDropdownStart();},
   hit,
   actionAt(event){const r=canvas.getBoundingClientRect();return hit((event.clientX-r.left)*320/r.width,(event.clientY-r.top)*200/r.height);},
+  hoverAt(event){
+   const next=this.actionAt(event);
+   const changed=JSON.stringify(next)!==JSON.stringify(hoverAction);
+   hoverAction=next;if(changed)render();
+  },
+  clearHover(){if(hoverAction.type!=='none'){hoverAction={type:'none'};render();}},
   scrollDropdown(delta){
    if(!dropdownOpen||tracks.length<=dropdownRows)return false;
    const maxStart=Math.max(0,tracks.length-dropdownRows),direction=delta>0?1:-1;
