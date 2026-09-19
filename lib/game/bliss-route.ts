@@ -364,7 +364,7 @@ export function summarizeBlissTrackAnalysis(
 
 
 export interface BlissPathTraceStep {
- x:number;y:number;width:number;height:number;code:number;section:number;
+ x:number;y:number;width:number;height:number;code:number;section:number;bearing:number;
 }
 export interface BlissPathTrace {
  steps:BlissPathTraceStep[];
@@ -399,7 +399,7 @@ export function traceBlissPath(
    if(!inside(slot.x,slot.y)){last={x:slot.x,y:slot.y};break;}
 
    const code=trackAt(source,slot.x,slot.y),shape=definitions.track[code];
-   steps.push({x:slot.x,y:slot.y,width:shape?.width??1,height:shape?.height??1,code,section:sectionNumber});
+   steps.push({x:slot.x,y:slot.y,width:shape?.width??1,height:shape?.height??1,code,section:sectionNumber,bearing:slot.bearing});
 
    const old={...slot};
    slot=getNextBlissVector(source,slot,false,definitions,elements);
