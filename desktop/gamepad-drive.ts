@@ -98,6 +98,21 @@ const storageKey = 'playstunts-dx-wheel-bindings-v2';
 const oldStorageKey = 'playstunts-dx-wheel-bindings-v1';
 const axisCaptureThreshold = 0.42;
 const buttonCaptureThreshold = 0.55;
+const steeringDeadzoneStorageKey = 'playstunts-dx-steering-deadzone-percent';
+const defaultSteeringDeadzonePercent = 4;
+
+function steeringDeadzonePercent() {
+  const saved = Number(window.localStorage.getItem(steeringDeadzoneStorageKey));
+  return Number.isFinite(saved) ? Math.max(0, Math.min(15, saved)) : defaultSteeringDeadzonePercent;
+}
+
+function applySteeringDeadzone(value: number) {
+  const deadzone = steeringDeadzonePercent() / 100;
+  const magnitude = Math.abs(value);
+  if (magnitude <= deadzone) return 0;
+  if (deadzone >= 1) return 0;
+  return Math.sign(value) * Math.min(1, (magnitude - deadzone) / (1 - deadzone));
+}
 
 let nativeDevices: InputDevice[] = [];
 
@@ -575,7 +590,8 @@ export function installDesktopDriveControls() {
     const range = binding.right - binding.left;
     if (Math.abs(range) < 0.05) return 0;
     const value = device.axes[binding.index] ?? binding.center;
-    return Math.max(-1, Math.min(1, ((value - binding.left) / range) * 2 - 1));
+    const normalized = Math.max(-1, Math.min(1, ((value - binding.left) / range) * 2 - 1));
+    return applySteeringDeadzone(normalized);
   }
 
   function inputAmount(binding: InputBinding | undefined) {
