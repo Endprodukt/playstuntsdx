@@ -80,5 +80,5 @@ export function snapToBlissRoad(
   }
  }
  const threshold=alreadySnapped?950:620;
- return best&&best.distance<=threshold?best:{x,z,heading:normalizeRaceHeading(fallbackHeading),distance:best?.distance??Infinity,snapped:false};
+ return best&&best.distance<=threshold?best:{x,z,heading:best?.heading??normalizeRaceHeading(fallbackHeading),distance:best?.distance??Infinity,snapped:false};
 }
