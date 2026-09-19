@@ -84,3 +84,53 @@ export function blissTournamentUrl(base:string,relative:string){
  const root=base.endsWith('/')?base:base+'/';
  return new URL(relative,root).toString();
 }
+
+
+export function isZakStuntsTournament(url:string){
+ try{
+  const host=new URL(url).hostname.toLowerCase();
+  return host==='zak.stunts.hu'||host.endsWith('.zak.stunts.hu');
+ }catch{return false;}
+}
+
+export function parseZakStuntsCurrentRace(source:string|Uint8Array):BlissTournamentRace{
+ const html=typeof source==='string'?source:decoder.decode(source);
+ const text=html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,' ').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;|&#160;/gi,' ').replace(/&amp;/gi,'&').replace(/\s+/g,' ').trim();
+ const id=/Currently racing on\s+(ZCT\d+)/i.exec(text)?.[1]?.toUpperCase()??'';
+ if(!id)throw Error('ZakStunts did not publish a current ZCT race');
+ const title=/Currently racing on\s+ZCT\d+\s+(.+?)\s+Designed by\s+/i.exec(text)?.[1]?.trim()??id;
+ const author=/Designed by\s+(.+?)\s+Race ends in\s+/i.exec(text)?.[1]?.trim()??'';
+ const deadline=/Race ends in\s+(.+?)(?:\s+Download track|\s+View map)/i.exec(text)?.[1]?.trim()??'';
+ return {
+  tournament:'ZakStunts',
+  trackTitle:title,
+  trackAuthor:author,
+  trackFile:`tracks/${id}.trk`,
+  deadline,
+  scoreboard:`tracks/${id}`,
+  properties:{source:'zakstunts',race:id},
+ };
+}
+
+export function parseZakStuntsScoreboard(source:string|Uint8Array):BlissScoreboardEntry[]{
+ const html=typeof source==='string'?source:decoder.decode(source);
+ if(typeof DOMParser==='undefined')return [];
+ const doc=new DOMParser().parseFromString(html,'text/html'),rows=Array.from(doc.querySelectorAll('table tr'));
+ const entries:BlissScoreboardEntry[]=[];
+ let inMain=false;
+ for(const row of rows){
+  const cells=Array.from(row.querySelectorAll('th,td')).map(cell=>(cell.textContent??'').replace(/\s+/g,' ').trim());
+  if(!cells.length)continue;
+  const joined=cells.join(' | ');
+  if(/\bPos\b/i.test(joined)&&/\bName\b/i.test(joined)&&/\bTime\b/i.test(joined)&&/\bCar\b/i.test(joined)){inMain=true;continue;}
+  if(!inMain)continue;
+  const pos=cells[0]??'';
+  if(!/^\d+$/.test(pos))continue;
+  const time=(cells.find(value=>/^\d+:\d{2}\.\d{2}/.test(value))??'').replace(/\s*\([^)]*\)\s*$/,'');
+  const name=cells[1]??'';
+  const carIndex=cells.findIndex((value,index)=>index>1&&/^[A-Za-z].+/.test(value)&&index>=5);
+  const car=carIndex>=0?cells[carIndex]:'';
+  entries.push({number:pos,name,lapTime:time,lapLength:'',car,carId:'',handicap:'',style:'',verified:false,properties:{}});
+ }
+ return entries;
+}
