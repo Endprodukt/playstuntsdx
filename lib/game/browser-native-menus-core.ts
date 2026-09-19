@@ -43,7 +43,7 @@ import {runNativeCarMenu,type NativeCarMenuHost} from './native-car-runtime.ts';
 import {runNativeOpponentMenu,type NativeOpponentHost} from './native-opponent-runtime.ts';
 import {enhancedMenuEnabled,interactiveTrackPreviewEnabled,modernTrackEditorEnabled,runNativeOptions,type NativeOptionsHost} from './native-options-runtime.ts';
 import {createEnhancedTrackMenuPresentation} from './enhanced-track-menu-presentation.ts';
-import {runModernTrackMenu,type ModernTrackMenuHost} from './modern-track-menu-runtime.ts';
+import {runModernTrackMenu,type ModernTrackMenuAction,type ModernTrackMenuHost} from './modern-track-menu-runtime.ts';
 import {runNativeTrackMenu,type NativeTrackMenuHost} from './native-track-runtime.ts';
 import {runNativeEditor,type NativeEditorHost} from './native-editor-runtime.ts';
 import {createBrowserMenuInput} from './browser-menu-input.ts';
@@ -207,7 +207,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    };
    const enhanced=createEnhancedTrackMenuPresentation({canvas,assets:options.assets,decodeTrack:decodeBlissTrack,createPreview:createBlissEditor3DView,originalCamera:overviewCamera,previewEnabled:interactiveTrackPreviewEnabled()});
    let active=true,drag:'orbit'|'pan'|null=null,lastX=0,lastY=0;
-   const modernActions:ReturnType<typeof enhanced['actionAt']>[]=[];
+   const modernActions:ModernTrackMenuAction[]=[];
    const presentEnhanced=()=>{if(!active){paint();return;}enhanced.render();if(options.graphics)options.graphics.refresh=presentEnhanced;};
    menuHost.present=presentEnhanced;
    menuHost.setOverviewActive=(value)=>{active=value;enhanced.active(value);if(!value)paint();};
