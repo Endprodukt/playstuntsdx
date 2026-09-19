@@ -153,15 +153,17 @@ export function createEnhancedCockpitOverlay(){
    const activeReplay=replayOverlay&&replayControlsVisible(replayOverlay,state.pixels)?replayOverlay:undefined;
    let replayNative:HTMLCanvasElement|undefined;
    if(activeReplay){
-    const replayTop=144,replayHeight=200-replayTop;
+    // Keep a complete native 320x200 copy available. Replay UI rectangles can
+    // then be restored from their exact original pixels regardless of cockpit
+    // texture resolution or filtering.
     if(!assets.replayNative){
-     const canvas=document.createElement('canvas');canvas.width=320;canvas.height=replayHeight;
+     const canvas=document.createElement('canvas');canvas.width=320;canvas.height=200;
      const replayContext=canvas.getContext('2d')!;
-     assets.replayNative={canvas,context:replayContext,image:replayContext.createImageData(320,replayHeight)};
+     assets.replayNative={canvas,context:replayContext,image:replayContext.createImageData(320,200)};
     }
     const native=assets.replayNative;
-    for(let y=0;y<replayHeight;y++)for(let x=0;x<320;x++){
-     const color=state.pixels[(replayTop+y)*320+x]*3,out=(y*320+x)*4;
+    for(let at=0;at<64000;at++){
+     const color=state.pixels[at]*3,out=at*4;
      native.image.data[out]=panel.palette[color];native.image.data[out+1]=panel.palette[color+1];native.image.data[out+2]=panel.palette[color+2];native.image.data[out+3]=255;
     }
     native.context.putImageData(native.image,0,0);replayNative=native.canvas;
@@ -249,13 +251,15 @@ export function createEnhancedCockpitOverlay(){
    }
 
    if(activeReplay&&replayNative){
-    // The replay transport is native UI, not cockpit artwork. Rebuild it
-    // straight from the original 320x200 indexed framebuffer instead of from
-    // a snapshot of the hires canvas. This makes its pixels independent of
-    // cockpit compositing and preserves the exact native nearest-neighbour look.
+    // Replay transport artwork is native UI, not cockpit artwork. Restore the
+    // exact rectangles described by the original replay resources directly
+    // from the native framebuffer. Do not use a guessed horizontal strip:
+    // several replay controls extend above the old y=144 cutoff.
     context.imageSmoothingEnabled=false;
-    const replayTop=144,replayY=replayTop*sy,replayHeight=(200-replayTop)*sy;
-    context.drawImage(replayNative,0,0,320,200-replayTop,offsetX,replayY,width,replayHeight);
+    for(const rect of activeReplay.rects){
+     const dx=offsetX+rect.x*sx,dy=rect.y*sy,dw=rect.width*sx,dh=rect.height*sy;
+     context.drawImage(replayNative,rect.x,rect.y,rect.width,rect.height,dx,dy,dw,dh);
+    }
    }
    return true;
   },
