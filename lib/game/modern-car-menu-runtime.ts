@@ -23,6 +23,7 @@ export interface ModernCarMenuPresentation{
 export interface ModernCarMenuHost extends NativeCarMenuHost{
  importCar?:()=>Promise<{id:string}|null>;
  refreshCars?:()=>Promise<readonly NativeMenuCar[]>;
+ takeModernAction?:()=>ModernCarMenuAction|undefined;
 }
 
 const keyUp=0x4800,keyDown=0x5000;
@@ -49,12 +50,7 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
  await sync();
  try{
   for(;;){
-   const input=await host.input(),action=display.actionAt({clientX:-1,clientY:-1});
-   // Pointer actions are queued by the presentation through actionAt only when
-   // browser events provide real coordinates; the sentinel call stays inert.
-   if(action.type!=='none'){}
-   const queued=(display as ModernCarMenuPresentation&{takeAction?:()=>ModernCarMenuAction}).takeAction?.();
-   const current=queued??{type:'none'} as ModernCarMenuAction;
+   const input=await host.input(),current=host.takeModernAction?.()??{type:'none'} as ModernCarMenuAction;
    if(current.type==='selector'){open=!open;display.setCars(cars,selected,open);display.render();continue;}
    if(current.type==='car'){selected=current.index;open=false;await sync(true);continue;}
    if(current.type==='transmission'){transmission=transmission?0:1;await sync();continue;}
