@@ -32,7 +32,7 @@ const idAt=(configuration:readonly number[],offset:number)=>String.fromCharCode(
 
 export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarMenuPresentation){
  const initial=host.configuration.slice(),offset=host.opponent?7:0,paintOffset=offset+4,transmissionOffset=offset+5;
- let cars=[...host.cars].slice(0,32).sort((a,b)=>a.id.localeCompare(b.id)),open=false;
+ let cars=[...host.cars].sort((a,b)=>(a.name??a.id).localeCompare(b.name??b.id)),open=false;
  let selected=Math.max(0,cars.findIndex(car=>car.id===idAt(host.configuration,offset)));
  let paint=host.configuration[paintOffset]??0,transmission=host.configuration[transmissionOffset]??0,paintCount=1;
 
@@ -59,7 +59,7 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
    if(current.type==='import'&&host.importCar){
     const imported=await host.importCar();
     if(imported){
-     cars=[...(await host.refreshCars?.()??host.cars)].slice(0,32).sort((a,b)=>a.id.localeCompare(b.id));
+     cars=[...(await host.refreshCars?.()??host.cars)].sort((a,b)=>(a.name??a.id).localeCompare(b.name??b.id));
      selected=Math.max(0,cars.findIndex(car=>car.id===imported.id));open=false;await sync(true);
     }
     continue;
