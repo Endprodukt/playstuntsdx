@@ -37,6 +37,8 @@ import {trackRoutePoint,trackOpponentRoutePoint} from '../physics/track-route-po
 import type {RecordedRaceResources} from './recorded-single-player-race.ts';
 import type {TrackGeometry} from '../physics/track-contact.ts';
 import type {Vector} from '../physics/math.ts';
+import {initializePlayerRace} from '../physics/initialize-player-race.ts';
+import {normalizeRaceHeading,type RaceSpawn} from './race-spawn.ts';
 
 type Analysis=Parameters<typeof analyzeRoute>;
 export interface NativeRaceData {
@@ -138,6 +140,20 @@ export function createNativeRaceSession(data:NativeRaceData,options:{transporter
   },
   /** Resource and outer-race coordinators may replace the memory image. Keep
    * the parsed simulation state synchronized with every such replacement. */
+  teleportPlayer(spawn:RaceSpawn){
+   if(recording)return false;
+   const x=Math.max(0,Math.min(30719,Math.round(spawn.x))),z=Math.max(0,Math.min(30719,Math.round(spawn.z))),heading=normalizeRaceHeading(spawn.heading);
+   const column=Math.max(0,Math.min(29,Math.floor(x/1024))),worldRow=Math.max(0,Math.min(29,Math.floor(z/1024))),terrainRow=29-worldRow;
+   const terrain=raw[901+terrainRow*30+column]??0,hill:0|1=terrain===6?1:0,angle=(-heading)&1023;
+   const next=state.memory.slice(),region=initializePlayerRace(next.subarray(d+0x8c06,d+0x8f15),data.simulation,next[d+0x8fc7],column,terrainRow,angle,hill);
+   next.set(region,d+0x8c06);
+   const view=new DataView(next.buffer,next.byteOffset,next.byteLength);
+   view.setInt32(d+0x8c38,x*64,true);view.setInt32(d+0x8c40,z*64,true);
+   view.setInt16(d+0x8c50,heading,true);view.setInt16(d+0x8c52,0,true);view.setInt16(d+0x8c54,0,true);
+   next[d+0xa3c2]=0;next[d+0x7fee]=0;
+   resetOriginalInactiveRaceClock(next,d);
+   state=readRecordedTwoCarRace(next,d);return true;
+  },
   originalMemory:{
    memory:()=>state.memory,
    writeMemory(next:Uint8Array){
