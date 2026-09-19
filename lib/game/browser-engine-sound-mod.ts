@@ -1,6 +1,7 @@
 import type {NativeDemoData} from './native-demo-runtime.ts';
 import {engineSoundForCar,engineSoundPresetInfo,loadSoundModSettings} from './sound-mod-settings.ts';
 import {parseVce,vceResource} from './vce-format.ts';
+import {adlibInstrument} from './adlib.ts';
 
 type Core={invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>};
 
@@ -54,4 +55,22 @@ export async function loadConfiguredEngineSoundOverrides(data:NativeDemoData){
   console.error('[Sound Mod] Could not load configured engine sounds; using original sounds.',reason);
   return undefined;
  }
+}
+
+
+export function engineSoundPatchWrites(memory:Uint8Array,overrides:Readonly<Record<string,Uint8Array>>,d=0x2d1a0){
+ const view=new DataView(memory.buffer,memory.byteOffset,memory.byteLength),handles=new Map<number,Uint8Array>();
+ const attach=(idAt:number,handleAt:number)=>{
+  const id=String.fromCharCode(...memory.slice(d+idAt,d+idAt+4)).toUpperCase(),instrument=overrides[id];
+  if(!instrument)return;const handle=view.getUint16(d+handleAt,true);if(handle<25)handles.set(handle,instrument);
+ };
+ attach(0x8fc2,0x8016);
+ if(memory[d+0x8fc8])attach(0x8fc9,0x86de);
+ const writes:number[][]=[];
+ for(let voice=1;voice<10;voice++){
+  const owner=memory[d+0xa036+voice*46];
+  const instrument=handles.get(owner);
+  if(instrument)writes.push(...adlibInstrument(Array.from(instrument),voice-1));
+ }
+ return writes;
 }
