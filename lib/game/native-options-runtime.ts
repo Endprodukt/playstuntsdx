@@ -10,7 +10,6 @@ type TauriGlobal={core?:{invoke<T>(command:string,args?:Record<string,unknown>):
 const soundKey='playstunts-dx-sound-device';
 const graphicsKey='playstunts-dx-enhanced-graphics';
 const audioUpdateKey='playstunts-dx-audio-update';
-const trackPreviewKey='playstunts-dx-3d-track-preview';
 const enhancedMenuKey='playstunts-dx-enhanced-menu';
 const trackEditorKey='playstunts-dx-modern-track-editor';
 const soundDevices:ReadonlyArray<{id:DesktopSoundDevice;label:string}>=[
@@ -29,7 +28,6 @@ const exitGameDialog=bytes('EXIT GAME?][NO][YES]');
 
 export function enhancedMenuEnabled(){return enabledSetting(enhancedMenuKey,true);}
 export function modernTrackEditorEnabled(){return enabledSetting(trackEditorKey,true);}
-export function interactiveTrackPreviewEnabled(){return enabledSetting(trackPreviewKey,true);}
 function enabledSetting(key:string,defaultValue=true){
  const saved=window.localStorage.getItem(key)?.trim().toLowerCase();
  if(saved===undefined||saved===null||saved==='')return defaultValue;
@@ -60,7 +58,7 @@ function selectDesktopSound(device:DesktopSoundDevice){
  window.setTimeout(()=>window.location.reload(),0);
 }
 function choice(text:string){return [91,...Array.from(text,character=>character.charCodeAt(0)),93];}
-function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,textures:boolean,enhancedMenu:boolean,modernTrackEditor:boolean,trackPreview:boolean,sound:DesktopSoundDevice,audioUpdate:boolean){
+function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,textures:boolean,enhancedMenu:boolean,modernTrackEditor:boolean,sound:DesktopSoundDevice,audioUpdate:boolean){
  const result:number[]=[];let originalChoice=0;
  for(let i=0;i<original.length;i++){
   const value=original[i]&255;
@@ -71,7 +69,6 @@ function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,te
     result.push(...choice(`ENHANCED TEXTURES: ${textures?'ON':'OFF'}`));
     result.push(...choice(`MENUS: ${enhancedMenu?'MODERN':'VANILLA'}`));
     result.push(...choice(`TRACK EDITOR: ${modernTrackEditor?'MODERN':'VANILLA'}`));
-    result.push(...choice(`3D TRACK PREVIEW: ${trackPreview?'ON':'OFF'}`));
     result.push(...choice(`AUDIO UPDATE: ${audioUpdate?'ON':'OFF'}`));
     result.push(...choice('EXIT GAME'));
     while(i+1<original.length&&(original[i+1]&255)!==93)i++;
@@ -114,8 +111,8 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
    const toggle=desktopEnhancedGraphicsButton(),sound=desktopSoundDevice();
    if(!toggle||!sound)result=await dialogs.dialog('emop',2,0,4);
    else{
-    const enhanced=desktopEnhancedGraphicsEnabled(toggle),textures=enhancedTexturesEnabled(),enhancedMenu=enhancedMenuEnabled(),modernTrackEditor=modernTrackEditorEnabled(),trackPreview=interactiveTrackPreviewEnabled(),audioUpdate=enabledSetting(audioUpdateKey,true);
-    host.resources.edxo=optionsWithDxChoices(host.resources.emop,enhanced,textures,enhancedMenu,modernTrackEditor,trackPreview,sound,audioUpdate);
+    const enhanced=desktopEnhancedGraphicsEnabled(toggle),textures=enhancedTexturesEnabled(),enhancedMenu=enhancedMenuEnabled(),modernTrackEditor=modernTrackEditorEnabled(),audioUpdate=enabledSetting(audioUpdateKey,true);
+    host.resources.edxo=optionsWithDxChoices(host.resources.emop,enhanced,textures,enhancedMenu,modernTrackEditor,sound,audioUpdate);
     const selected=await dialogs.dialog('edxo',2,0,4);
     if(selected===3){
      host.resources.edxs=soundDialog;
@@ -147,14 +144,11 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
      window.localStorage.setItem(trackEditorKey,String(!modernTrackEditor));
      result=-2;
     }else if(selected===10){
-     window.localStorage.setItem(trackPreviewKey,String(!trackPreview));
-     result=-2;
-    }else if(selected===11){
      window.localStorage.setItem(audioUpdateKey,String(!audioUpdate));
      window.setTimeout(()=>window.location.reload(),120);
      result=-2;
-    }else if(selected===12)result=5;
-    else if(selected===13)result=6;
+    }else if(selected===11)result=5;
+    else if(selected===12)result=6;
     else result=selected;
    }
   }
