@@ -201,10 +201,17 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   if(!options.displayMode){
    if(!enhancedMenuEnabled())return runNativeTrackMenu(menuHost);
    const [{decodeBlissTrack},{createBlissEditor3DView}]=await Promise.all([import('./bliss-track.ts'),import('./bliss-editor-3d.ts')]);
+   // Match the Bliss editor's default 3D camera exactly so tracks have the
+   // same orientation when moving between Track Select and Edit Track.
+   const overviewTarget=[15360,0,-15360] as [number,number,number],overviewDistance=26000,overviewAzimuth=-.72,overviewElevation=.62;
    const overviewCamera={
-    position:[15360,39000,-43000] as [number,number,number],
-    target:[15360,0,-15360] as [number,number,number],
-    fov:48
+    position:[
+     overviewTarget[0]+Math.sin(overviewAzimuth)*Math.cos(overviewElevation)*overviewDistance,
+     overviewTarget[1]+Math.sin(overviewElevation)*overviewDistance,
+     overviewTarget[2]+Math.cos(overviewAzimuth)*Math.cos(overviewElevation)*overviewDistance,
+    ] as [number,number,number],
+    target:overviewTarget,
+    fov:55
    };
    const enhanced=createEnhancedTrackMenuPresentation({canvas,assets:options.assets,decodeTrack:decodeBlissTrack,createPreview:createBlissEditor3DView,originalCamera:overviewCamera,previewEnabled:interactiveTrackPreviewEnabled()});
    let active=true,drag:'orbit'|'pan'|null=null,lastX=0,lastY=0;
