@@ -68,6 +68,7 @@ export function createEnhancedCarMenuPresentation(options:{
    if(index===selected||isOver)rect(selector.x+2,y-1,selector.w-4,dropdownRowHeight,isOver?'#646d34':'#5b6330',isOver?'#c1d064':'#879044',3,isOver?1.5:1);
    fittedLabel(car.name??car.id,selector.x+6,y+dropdownRowHeight/2-1,selector.w-14,6.2,index===selected||isOver?'#fff':'#ddd',index===selected||isOver?650:450);
   });
+  if(cars.length>dropdownRows)label(`${selected+1} / ${cars.length}`,selector.x+selector.w-6,selector.y+selector.h+height-6,6,'#888',400,'right');
  };
  const drawInfo=()=>{
   if(!current)return;
