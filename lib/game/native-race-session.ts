@@ -149,7 +149,13 @@ export function createNativeRaceSession(data:NativeRaceData,options:{transporter
    const next=state.memory.slice(),region=initializePlayerRace(next.subarray(d+0x8c06,d+0x8f15),data.simulation,next[d+0x8fc7],column,terrainRow,angle,hill);
    next.set(region,d+0x8c06);
    const view=new DataView(next.buffer,next.byteOffset,next.byteLength);
-   view.setInt32(d+0x8c38,x*64,true);if(y!==undefined)view.setInt32(d+0x8c3c,y*64,true);view.setInt32(d+0x8c40,z*64,true);
+   const px=x*64,pz=z*64,py=y!==undefined?y*64:undefined;
+   view.setInt32(d+0x8c38,px,true);view.setInt32(d+0x8c40,pz,true);
+   // Keep current/previous pose coherent. The original initializer starts the
+   // current Y 512 fixed units above the previous Y; preserving that avoids a
+   // fake one-frame fall from ground level when teleporting onto bridges/high roads.
+   view.setInt32(d+0x8c44,px,true);view.setInt32(d+0x8c4c,pz,true);
+   if(py!==undefined){view.setInt32(d+0x8c3c,py+512,true);view.setInt32(d+0x8c48,py,true);}
    view.setInt16(d+0x8c50,heading,true);view.setInt16(d+0x8c52,0,true);view.setInt16(d+0x8c54,0,true);
    next[d+0xa3c2]=0;next[d+0x7fee]=0;
    resetOriginalInactiveRaceClock(next,d);
