@@ -1,4 +1,58 @@
 const fpsStorageKey='playstunts-dx-fps-visible';
+const steeringDeadzoneStorageKey='playstunts-dx-steering-deadzone-percent';
+const optionsButtonStorageKey='playstunts-dx-show-options-button';
+const defaultSteeringDeadzonePercent=4;
+const maxSteeringDeadzonePercent=15;
+
+type TauriGlobal={core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}};
+type NativeConfigFile={content:string};
+
+function tauriCore(){return (window as typeof window&{__TAURI__?:TauriGlobal}).__TAURI__?.core;}
+function clampSteeringDeadzone(value:number){return Math.max(0,Math.min(maxSteeringDeadzonePercent,Math.round(value)));}
+function storedSteeringDeadzone(){
+ const stored=window.localStorage.getItem(steeringDeadzoneStorageKey);if(stored===null)return defaultSteeringDeadzonePercent;
+ const saved=Number(stored);
+ return Number.isFinite(saved)?clampSteeringDeadzone(saved):defaultSteeringDeadzonePercent;
+}
+function saveSteeringDeadzone(value:number){window.localStorage.setItem(steeringDeadzoneStorageKey,String(clampSteeringDeadzone(value)));}
+function storedOptionsButtonVisible(){
+ const saved=window.localStorage.getItem(optionsButtonStorageKey);
+ return saved===null||!['0','false','no','off'].includes(saved.trim().toLowerCase());
+}
+function saveOptionsButtonVisible(visible:boolean){window.localStorage.setItem(optionsButtonStorageKey,String(visible));}
+function configValue(content:string,section:string,key:string){
+ let current='';
+ for(const raw of content.replace(/^\uFEFF/,'').split(/\r?\n/)){
+  const line=raw.trim();if(!line||line.startsWith(';')||line.startsWith('#'))continue;
+  const heading=line.match(/^\[([^\]]+)\]$/);if(heading){current=heading[1].trim();continue;}
+  if(current.toLowerCase()!==section.toLowerCase())continue;
+  const at=line.indexOf('=');if(at<0)continue;
+  if(line.slice(0,at).trim().toLowerCase()===key.toLowerCase())return line.slice(at+1).trim();
+ }
+ return undefined;
+}
+async function loadNativeGeneralSettings(){
+ const core=tauriCore();if(!core)return;
+ try{
+  const file=await core.invoke<NativeConfigFile>('native_config');
+  const value=Number(configValue(file.content,'Controls','SteeringDeadzone'));
+  if(Number.isFinite(value))saveSteeringDeadzone(value);
+  const showButton=configValue(file.content,'Display','ShowOptionsButton')?.trim().toLowerCase();
+  if(showButton)saveOptionsButtonVisible(!['0','false','no','off'].includes(showButton));
+ }catch(reason){console.warn('[Options] General config load failed:',reason);}
+}
+async function persistSteeringDeadzone(value:number){
+ const deadzone=clampSteeringDeadzone(value);saveSteeringDeadzone(deadzone);
+ const core=tauriCore();if(!core)return;
+ try{await core.invoke<void>('native_config_set',{section:'Controls',key:'SteeringDeadzone',value:String(deadzone)});}
+ catch(reason){console.warn('[Options] Steering deadzone config save failed:',reason);}
+}
+async function persistOptionsButtonVisible(visible:boolean){
+ saveOptionsButtonVisible(visible);
+ const core=tauriCore();if(!core)return;
+ try{await core.invoke<void>('native_config_set',{section:'Display',key:'ShowOptionsButton',value:String(visible)});}
+ catch(reason){console.warn('[Options] F8 button visibility save failed:',reason);}
+}
 
 function storedFpsVisible(){
  const saved=window.localStorage.getItem(fpsStorageKey);
@@ -26,6 +80,7 @@ function dispatchFpsShortcut(){
  * existing F shortcut so there remains only one renderer-side toggle path. */
 export function installDesktopOptionsOverlay(){
  let disposed=false,frame=0,section:HTMLDivElement|undefined,fpsStateApplied=false;
+ void loadNativeGeneralSettings().then(()=>{renderSteeringDeadzone();renderOptionsButtonState();});
 
  const applyStoredFps=()=>{
   if(fpsStateApplied||!graphicsEnabled()||!gameCanvas())return;
@@ -37,6 +92,20 @@ export function installDesktopOptionsOverlay(){
   const button=section?.querySelector<HTMLButtonElement>('button[data-fps-toggle]');
   if(!button)return;
   const visible=storedFpsVisible();
+  button.textContent=visible?'On':'Off';
+  button.setAttribute('aria-pressed',String(visible));
+ };
+ const renderSteeringDeadzone=()=>{
+  const slider=section?.querySelector<HTMLInputElement>('input[data-steering-deadzone]');
+  const value=section?.querySelector<HTMLOutputElement>('output[data-steering-deadzone-value]');
+  const deadzone=storedSteeringDeadzone();
+  if(slider)slider.value=String(deadzone);
+  if(value)value.value=`${deadzone}%`;
+ };
+ const renderOptionsButtonState=()=>{
+  const button=section?.querySelector<HTMLButtonElement>('button[data-options-button-toggle]');
+  if(!button)return;
+  const visible=storedOptionsButtonVisible();
   button.textContent=visible?'On':'Off';
   button.setAttribute('aria-pressed',String(visible));
  };
@@ -65,7 +134,23 @@ export function installDesktopOptionsOverlay(){
    if(graphicsEnabled()&&dispatchFpsShortcut())fpsStateApplied=true;else fpsStateApplied=false;
    renderFpsState();
   });
-  row.append(label,fps);section.append(heading,row);panel.insertBefore(section,controlsSection);renderFpsState();applyStoredFps();
+  row.append(label,fps);
+
+  const buttonRow=document.createElement('div');buttonRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) 84px;gap:8px;align-items:center;margin-top:9px;';
+  const buttonLabel=document.createElement('div');buttonLabel.textContent='Show F8 Button';buttonLabel.title='Shows or hides the Options [F8] button in the top-right corner. The F8 keyboard shortcut always remains active.';buttonLabel.style.cssText='font-size:12px;color:#ddd;';
+  const buttonToggle=document.createElement('button');buttonToggle.type='button';buttonToggle.dataset.optionsButtonToggle='1';buttonToggle.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;text-align:center;';
+  buttonToggle.addEventListener('click',()=>{const next=!storedOptionsButtonVisible();void persistOptionsButtonVisible(next);renderOptionsButtonState();});
+  buttonRow.append(buttonLabel,buttonToggle);
+
+  const deadzoneRow=document.createElement('div');deadzoneRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) minmax(150px,1.5fr) 48px;gap:8px;align-items:center;margin-top:9px;';
+  const deadzoneLabel=document.createElement('div');deadzoneLabel.textContent='Steering Deadzone';deadzoneLabel.title='Wheel only. Small steering movements around the calibrated center are ignored.';deadzoneLabel.style.cssText='font-size:12px;color:#ddd;';
+  const deadzone=document.createElement('input');deadzone.type='range';deadzone.min='0';deadzone.max=String(maxSteeringDeadzonePercent);deadzone.step='1';deadzone.dataset.steeringDeadzone='1';deadzone.style.cssText='width:100%;';
+  const deadzoneValue=document.createElement('output');deadzoneValue.dataset.steeringDeadzoneValue='1';deadzoneValue.style.cssText='font:12px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;color:#eee;text-align:right;';
+  deadzone.addEventListener('input',()=>{saveSteeringDeadzone(Number(deadzone.value));renderSteeringDeadzone();});
+  deadzone.addEventListener('change',()=>void persistSteeringDeadzone(Number(deadzone.value)));
+  deadzoneRow.append(deadzoneLabel,deadzone,deadzoneValue);
+
+  section.append(heading,row,buttonRow,deadzoneRow);panel.insertBefore(section,controlsSection);renderFpsState();renderOptionsButtonState();renderSteeringDeadzone();applyStoredFps();
  };
  frame=requestAnimationFrame(mount);
 

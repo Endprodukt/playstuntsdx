@@ -98,6 +98,29 @@ const storageKey = 'playstunts-dx-wheel-bindings-v2';
 const oldStorageKey = 'playstunts-dx-wheel-bindings-v1';
 const axisCaptureThreshold = 0.42;
 const buttonCaptureThreshold = 0.55;
+const steeringDeadzoneStorageKey = 'playstunts-dx-steering-deadzone-percent';
+const optionsButtonStorageKey = 'playstunts-dx-show-options-button';
+const defaultSteeringDeadzonePercent = 4;
+
+function optionsButtonVisible() {
+  const stored = window.localStorage.getItem(optionsButtonStorageKey);
+  return stored === null || !['0', 'false', 'no', 'off'].includes(stored.trim().toLowerCase());
+}
+
+function steeringDeadzonePercent() {
+  const stored = window.localStorage.getItem(steeringDeadzoneStorageKey);
+  if (stored === null) return defaultSteeringDeadzonePercent;
+  const saved = Number(stored);
+  return Number.isFinite(saved) ? Math.max(0, Math.min(15, saved)) : defaultSteeringDeadzonePercent;
+}
+
+function applySteeringDeadzone(value: number) {
+  const deadzone = steeringDeadzonePercent() / 100;
+  const magnitude = Math.abs(value);
+  if (magnitude <= deadzone) return 0;
+  if (deadzone >= 1) return 0;
+  return Math.sign(value) * Math.min(1, (magnitude - deadzone) / (1 - deadzone));
+}
 
 let nativeDevices: InputDevice[] = [];
 
@@ -406,6 +429,7 @@ export function installDesktopDriveControls() {
       captureNotice='';
       if(stage!=='done')stage='idle';
     }
+    ui.toggle.style.display = optionsButtonVisible() ? 'block' : 'none';
     ui.panel.style.display = setupOpen ? 'block' : 'none';
     ui.status.textContent = stageText();
     ui.bindings.textContent = bindingsText();
@@ -575,7 +599,8 @@ export function installDesktopDriveControls() {
     const range = binding.right - binding.left;
     if (Math.abs(range) < 0.05) return 0;
     const value = device.axes[binding.index] ?? binding.center;
-    return Math.max(-1, Math.min(1, ((value - binding.left) / range) * 2 - 1));
+    const normalized = Math.max(-1, Math.min(1, ((value - binding.left) / range) * 2 - 1));
+    return applySteeringDeadzone(normalized);
   }
 
   function inputAmount(binding: InputBinding | undefined) {
