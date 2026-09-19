@@ -199,6 +199,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     target:[signed(0x8fc),signed(0x8fe),-signed(0x900)] as [number,number,number],
     fov:2*Math.atan(100/120)*180/Math.PI
    };
+   if(!enhancedMenuEnabled())return runNativeTrackMenu(menuHost);
    if(enhancedMenuEnabled()){
     const dialogs=createNativeDialogRuntime(menuHost);
     const enhanced=createEnhancedTrackMenuPresentation({canvas,assets:options.assets,decodeTrack:decodeBlissTrack,createPreview:createBlissEditor3DView,originalCamera,previewEnabled:interactiveTrackPreviewEnabled(),file:dialogs.file});
