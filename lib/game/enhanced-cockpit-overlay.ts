@@ -1,6 +1,6 @@
 import {cockpitMarker} from './cockpit-marker';
 import {cockpitWheel} from './cockpit-wheel';
-import {ENHANCED_TEXTURES_EVENT,enhancedTexturesEnabled,loadEnhancedTextureUrl} from './enhanced-textures';
+import {ENHANCED_TEXTURES_EVENT,enhancedCockpitEnabled,loadEnhancedTextureUrl} from './enhanced-textures';
 import {composeCockpitPanel,type CockpitPanelLayer} from './cockpit-panel';
 
 type SpriteFrame={file:string;x:number;y:number;width:number;height:number};
@@ -106,7 +106,7 @@ function loadCar(car:string){
 }
 
 function warmEnhancedCockpits(){
- if(!enhancedTexturesEnabled())return;
+ if(!enhancedCockpitEnabled())return;
  void indexPromise.then(index=>{for(const car of Object.keys(index))void loadCar(car);}).catch(()=>{});
 }
 
@@ -130,8 +130,8 @@ function composeMaskedSprite(art:LoadedImage,mask:LoadedImage):MaskedSprite{
 warmEnhancedCockpits();
 
 export function createEnhancedCockpitOverlay(){
- let enabled=enhancedTexturesEnabled(),closed=false;
- const sync=()=>{enabled=enhancedTexturesEnabled();if(enabled)warmEnhancedCockpits();};
+ let enabled=enhancedCockpitEnabled(),closed=false;
+ const sync=()=>{enabled=enhancedCockpitEnabled();if(enabled)warmEnhancedCockpits();};
  window.addEventListener(ENHANCED_TEXTURES_EVENT,sync);
 
  const ready=new Map<string,CarAssets|undefined>();
@@ -160,7 +160,10 @@ export function createEnhancedCockpitOverlay(){
     assets.replaySnapshot.context.setTransform(1,0,0,1,0,0);assets.replaySnapshot.context.clearRect(0,0,width,height);assets.replaySnapshot.context.drawImage(context.canvas,offsetX,0,width,height,0,0,width,height);
    }
    const draw=(source:CanvasImageSource,enhanced:boolean,x:number,y:number,w:number,h:number)=>{
-    context.imageSmoothingEnabled=enhanced;
+    const sourceWidth='naturalWidth' in source?(source as HTMLImageElement).naturalWidth:(source as HTMLCanvasElement).width;
+    const sourceHeight='naturalHeight' in source?(source as HTMLImageElement).naturalHeight:(source as HTMLCanvasElement).height;
+    context.imageSmoothingEnabled=enhanced&&(sourceWidth!==w||sourceHeight!==h);
+    if(context.imageSmoothingEnabled)context.imageSmoothingQuality='high';
     context.drawImage(source,offsetX+x*sx,y*sy,w*sx,h*sy);
    };
    const drawFile=(file:string,x:number,y:number,w:number,h:number)=>{const entry=images.get(file);if(entry)draw(entry.image,entry.enhanced,x,y,w,h);};
@@ -183,7 +186,7 @@ export function createEnhancedCockpitOverlay(){
     const sourceScaleX=dash.image.naturalWidth/320,sourceScaleY=dash.image.naturalHeight/logicalHeight;
     const sx0=gear.base.x*sourceScaleX,sy0=(gear.base.y-layout.dashboardTop)*sourceScaleY;
     const sw=gear.base.width*sourceScaleX,sh=gear.base.height*sourceScaleY;
-    context.imageSmoothingEnabled=dash.enhanced;
+    context.imageSmoothingEnabled=dash.enhanced&&(dash.image.naturalWidth!==320||dash.image.naturalHeight!==logicalHeight);if(context.imageSmoothingEnabled)context.imageSmoothingQuality='high';
     context.drawImage(dash.image,sx0,sy0,sw,sh,offsetX+gear.base.x*sx,gear.base.y*sy,gear.base.width*sx,gear.base.height*sy);
    }
 
