@@ -84,22 +84,47 @@ export function installDesktopRaceMap(assets:Assets){
  turnLeft.addEventListener('click',()=>{if(spawn){spawn.heading=normalizeRaceHeading(spawn.heading-32);draw();}});
  turnRight.addEventListener('click',()=>{if(spawn){spawn.heading=normalizeRaceHeading(spawn.heading+32);draw();}});
  go.addEventListener('click',()=>{if(spawn)requestRaceTeleport({...spawn});});
- let spawnDragging=false,spawnPointerId=-1;
+ const dragGhost=document.createElement('div');
+ dragGhost.style.cssText='position:fixed;display:none;z-index:2147483646;pointer-events:none;width:30px;height:38px;transform:translate(-50%,-85%);filter:drop-shadow(0 2px 2px #000);';
+ dragGhost.innerHTML='<svg viewBox="0 0 30 38" width="30" height="38"><path data-arrow d="M15 1v13m0-13-5 6m5-6 5 6" fill="none" stroke="#ffca3a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15" cy="18" r="4" fill="#ffca3a"/><path d="M11 23h8l3 8-3 1-2-5v10h-4v-7h-3v7H6V27l-2 5-3-1 3-8z" fill="#ffca3a"/></svg>';
+ document.body.appendChild(dragGhost);
+ let spawnDragging=false,spawnPointerId=-1,dragSnapped=false,dragCandidate:RaceSpawn|undefined;
+ const updateSpawnDrag=(event:PointerEvent)=>{
+  if(!spawnDragging||event.pointerId!==spawnPointerId)return;
+  dragGhost.style.display='block';
+  const bounds=canvas.getBoundingClientRect();
+  let gx=event.clientX,gy=event.clientY,candidate:RaceSpawn|undefined,snapped=false;
+  if(event.clientX>=bounds.left&&event.clientX<=bounds.right&&event.clientY>=bounds.top&&event.clientY<=bounds.bottom&&preview&&frame){
+   const hidden=map3d.getBoundingClientRect(),rx=(event.clientX-bounds.left)/Math.max(1,bounds.width),ry=(event.clientY-bounds.top)/Math.max(1,bounds.height);
+   const point=preview.worldAt(hidden.left+rx*hidden.width,hidden.top+ry*hidden.height);
+   if(point){
+    const result=roadSnap(point.x,point.z,frame.heading,dragSnapped);dragSnapped=result.snapped;
+    candidate={x:result.x,z:result.z,heading:result.heading};snapped=result.snapped;
+    if(snapped){
+     const projected=preview.projectWorld(result.x,result.z);
+     if(projected){gx=bounds.left+projected.x/Math.max(1,map3d.clientWidth)*bounds.width;gy=bounds.top+projected.y/Math.max(1,map3d.clientHeight)*bounds.height;}
+    }
+   }
+  }else dragSnapped=false;
+  dragCandidate=candidate;
+  dragGhost.style.left=gx+'px';dragGhost.style.top=gy+'px';
+  dragGhost.style.filter=snapped?'drop-shadow(0 0 5px #8fd85f)':'drop-shadow(0 2px 2px #000)';
+ };
  const finishSpawnDrag=(event:PointerEvent)=>{
   if(!spawnDragging||event.pointerId!==spawnPointerId)return;
-  spawnDragging=false;spawnTool.style.cursor='grab';spawnTool.releasePointerCapture?.(event.pointerId);
-  const bounds=canvas.getBoundingClientRect();
-  if(event.clientX<bounds.left||event.clientX>bounds.right||event.clientY<bounds.top||event.clientY>bounds.bottom||!preview||!frame)return;
-  const hidden=map3d.getBoundingClientRect(),rx=(event.clientX-bounds.left)/Math.max(1,bounds.width),ry=(event.clientY-bounds.top)/Math.max(1,bounds.height);
-  const point=preview.worldAt(hidden.left+rx*hidden.width,hidden.top+ry*hidden.height);if(!point)return;
-  spawn={x:point.x,z:point.z,heading:suggestedSpawnHeading(point.x,point.z,frame.heading)};refreshSpawnControls();draw();
+  updateSpawnDrag(event);spawnDragging=false;spawnTool.style.cursor='grab';spawnTool.releasePointerCapture?.(event.pointerId);dragGhost.style.display='none';
+  if(dragCandidate){spawn={...dragCandidate};refreshSpawnControls();draw();}
+  dragCandidate=undefined;dragSnapped=false;
  };
  spawnTool.addEventListener('pointerdown',event=>{
   if(event.button!==0)return;
   event.preventDefault();event.stopPropagation();spawnDragging=true;spawnPointerId=event.pointerId;spawnTool.style.cursor='grabbing';spawnTool.setPointerCapture?.(event.pointerId);
+  dragCandidate=undefined;dragSnapped=false;updateSpawnDrag(event);
  });
+ spawnTool.addEventListener('pointermove',updateSpawnDrag);
  spawnTool.addEventListener('pointerup',finishSpawnDrag);
- spawnTool.addEventListener('pointercancel',event=>{if(event.pointerId===spawnPointerId){spawnDragging=false;spawnTool.style.cursor='grab';}});
+ spawnTool.addEventListener('pointercancel',event=>{if(event.pointerId===spawnPointerId){spawnDragging=false;dragCandidate=undefined;dragSnapped=false;dragGhost.style.display='none';spawnTool.style.cursor='grab';}});
+ window.addEventListener('pointermove',updateSpawnDrag,true);
  window.addEventListener('pointerup',finishSpawnDrag,true);
  header.append(title,hint,spawnTool,turnLeft,turnRight,go);
 
@@ -170,21 +195,23 @@ export function installDesktopRaceMap(assets:Assets){
   });
  }
 
- function suggestedSpawnHeading(x:number,z:number,fallback:number){
-  let bestStep:{x:number;y:number}|undefined,nextStep:{x:number;y:number}|undefined,bestDistance=Infinity;
+ function roadSnap(x:number,z:number,fallback:number,alreadySnapped=false){
+  let best:{x:number;z:number;heading:number;distance:number}|undefined;
   for(const trace of cachedPaths){
-   for(let i=0;i<trace.steps.length;i++){
-    const step=trace.steps[i],sx=(step.x+.5)*1024,sz=(29-step.y+.5)*1024,distance=Math.hypot(x-sx,z-sz);
-    if(distance>=bestDistance)continue;
-    const next=trace.steps[Math.min(trace.steps.length-1,i+1)]===step?trace.steps[Math.max(0,i-1)]:trace.steps[Math.min(trace.steps.length-1,i+1)];
-    bestDistance=distance;bestStep=step;nextStep=next;
+   const points=trace.steps.map(step=>({x:(step.x+step.width*.5)*1024,z:(29-step.y-(step.height-1)*.5+.5)*1024}));
+   if(points.length===1){
+    const distance=Math.hypot(x-points[0].x,z-points[0].z);
+    if(!best||distance<best.distance)best={...points[0],heading:normalizeRaceHeading(fallback),distance};
+   }
+   for(let i=0;i+1<points.length;i++){
+    const a=points[i],b=points[i+1],dx=b.x-a.x,dz=b.z-a.z,length2=dx*dx+dz*dz;
+    if(!length2)continue;
+    const t=Math.max(0,Math.min(1,((x-a.x)*dx+(z-a.z)*dz)/length2)),px=a.x+dx*t,pz=a.z+dz*t,distance=Math.hypot(x-px,z-pz);
+    if(!best||distance<best.distance)best={x:px,z:pz,heading:normalizeRaceHeading(-Math.atan2(dx,dz)*512/Math.PI),distance};
    }
   }
-  if(bestStep&&nextStep){
-   const ax=(bestStep.x+.5)*1024,az=(29-bestStep.y+.5)*1024,bx=(nextStep.x+.5)*1024,bz=(29-nextStep.y+.5)*1024;
-   if(ax!==bx||az!==bz)return normalizeRaceHeading(-Math.atan2(bx-ax,bz-az)*512/Math.PI);
-  }
-  return normalizeRaceHeading(fallback);
+  const threshold=alreadySnapped?950:560;
+  return best&&best.distance<=threshold?{x:best.x,z:best.z,heading:best.heading,snapped:true}:{x,z,heading:normalizeRaceHeading(fallback),snapped:false};
  }
 
  function drawPaths(ctx:CanvasRenderingContext2D,width:number,height:number){
@@ -282,6 +309,6 @@ export function installDesktopRaceMap(assets:Assets){
  window.addEventListener('keydown',onKey,true);
 
  return ()=>{
-  disposed=true;resizeObserver.disconnect();preview?.close();window.removeEventListener(RACE_MAP_FRAME_EVENT,onFrame as EventListener);window.removeEventListener(RACE_MAP_CLEAR_EVENT,onClear);window.removeEventListener('keydown',onKey,true);window.removeEventListener('pointerup',finishSpawnDrag,true);map3d.remove();root.remove();
+  disposed=true;resizeObserver.disconnect();preview?.close();window.removeEventListener(RACE_MAP_FRAME_EVENT,onFrame as EventListener);window.removeEventListener(RACE_MAP_CLEAR_EVENT,onClear);window.removeEventListener('keydown',onKey,true);window.removeEventListener('pointermove',updateSpawnDrag,true);window.removeEventListener('pointerup',finishSpawnDrag,true);dragGhost.remove();map3d.remove();root.remove();
  };
 }
