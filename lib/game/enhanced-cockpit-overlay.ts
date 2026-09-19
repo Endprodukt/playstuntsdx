@@ -242,11 +242,13 @@ export function createEnhancedCockpitOverlay(){
    }
 
    if(activeReplay&&replaySnapshot){
+    // The replay transport is native 2D UI, not cockpit artwork. Restore the
+    // complete lower strip in one exact copy instead of piecing individual
+    // controls back together after the hires dashboard has been drawn. This
+    // keeps every replay-player pixel identical to the original presentation.
     context.imageSmoothingEnabled=false;
-    for(const rect of activeReplay.rects){
-     const x=rect.x*sx,y=rect.y*sy,w=rect.width*sx,h=rect.height*sy;
-     context.drawImage(replaySnapshot,x,y,w,h,offsetX+x,y,w,h);
-    }
+    const replayTop=144,replayY=replayTop*sy,replayHeight=(200-replayTop)*sy;
+    context.drawImage(replaySnapshot,0,replayY,width,replayHeight,offsetX,replayY,width,replayHeight);
    }
    return true;
   },
