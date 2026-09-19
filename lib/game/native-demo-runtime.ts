@@ -14,6 +14,7 @@ import {finishCompleteNativeRace,type CompleteRaceExitHost} from './complete-rac
 import type {createNativeResourceCatalog} from './native-resource-catalog.ts';
 export interface NativeDemoData extends Pick<NativeRaceData,'records'|'vectors'|'samples'|'objects'|'points'|'indices'|'planes'|'walls'> {
  soundDevice?:NativeRaceSoundDevice;
+ engineSoundOverrides?:Readonly<Record<string,Uint8Array>>;
  base:Uint8Array;catalog:ReturnType<typeof createNativeResourceCatalog>;
  cars:Array<NativeRaceData['tuning']&{id:string;rawSimulation:string}>;
 }
