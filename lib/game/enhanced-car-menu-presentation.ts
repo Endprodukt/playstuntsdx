@@ -1,5 +1,3 @@
-import {createOriginalCarMenuModel} from './car-menu-model.ts';
-import {createUpgradedCarMenu} from './upgraded-car-menu.ts';
 import type {NativeMenuCar} from './native-car-runtime.ts';
 import type {ModernCarMenuAction,ModernCarMenuPresentation} from './modern-car-menu-runtime.ts';
 
@@ -11,16 +9,10 @@ const dropdownRowHeight=15,dropdownRows=8;
 export function createEnhancedCarMenuPresentation(options:{
  canvas:HTMLCanvasElement;
  palette:number[];
- materialIndices:number[];
- baseline:Uint8Array;
- stopArt:ReadonlyArray<number>;
- bank:(id:string)=>Promise<Uint8Array>;
 }):ModernCarMenuPresentation{
  const {canvas}=options,ctx=canvas.getContext('2d')!;
- const dummy=new Uint8Array(65536);let showroom:ReturnType<typeof createUpgradedCarMenu>|undefined,previewError='';
  let cars:readonly NativeMenuCar[]=[],selected=0,dropdownOpen=false,dropdownStart=0,hover:ModernCarMenuAction={type:'none'};
- let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,renderer:ReturnType<typeof createOriginalCarMenuModel>|undefined;
- let modelMemory:Uint8Array|undefined,signature='',closed=false;
+ let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,closed=false;
 
  const sx=()=>canvas.width/320,sy=()=>canvas.height/200;
  const rect=(x:number,y:number,w:number,h:number,fill:string,stroke='#3b3b3b',radius=5,lineWidth=1)=>{
@@ -65,20 +57,8 @@ export function createEnhancedCarMenuPresentation(options:{
   rect(7,44,220,153,'#111','#3b3b3b',6);
   ctx.save();ctx.beginPath();ctx.roundRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy(),4*Math.min(sx(),sy()));ctx.clip();
   ctx.fillStyle='#0a0b0a';ctx.fillRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
-  if(previewError)label('PREVIEW UNAVAILABLE',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,6,'#a77',600,'center');
-  else if(renderer&&modelMemory){
-   try{
-    showroom??=createUpgradedCarMenu(options.palette,options.materialIndices);
-    const rendered=showroom.draw(modelMemory,Math.max(2,Math.round(previewRect.w*sx()*2)),Math.max(2,Math.round(previewRect.h*sy()*2)));
-    ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
-    const insetX=4*sx(),insetY=2*sy();
-    ctx.drawImage(rendered,previewRect.x*sx()-insetX,previewRect.y*sy()-insetY,previewRect.w*sx()+insetX*2,previewRect.h*sy()+insetY*2);
-   }catch(reason){
-    previewError=reason instanceof Error?reason.message:String(reason);
-    console.error('[Modern Car Select] Preview failed:',reason);
-    showroom?.close();showroom=undefined;
-   }
-  }else label('LOADING CAR…',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,7,'#777',600,'center');
+  label(current?.name??current?.id??'CAR',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2-5,9,'#d8d66d',700,'center');
+  label('HIGH-RES PREVIEW TEMPORARILY DISABLED',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2+8,4.2,'#777',500,'center');
   ctx.restore();
  };
  const render=()=>{
@@ -102,22 +82,7 @@ export function createEnhancedCarMenuPresentation(options:{
  return {
   setCars(next,nextSelected,open){cars=next;selected=Math.max(0,Math.min(Math.max(0,cars.length-1),nextSelected));dropdownOpen=open;updateDropdownStart();},
   async draw(car,transmission,paint){
-   current=car;currentTransmission=transmission;currentPaint=paint;
-   const nextSignature=car.id;
-   if(signature!==nextSignature){
-    signature=nextSignature;renderer=undefined;modelMemory=undefined;previewError='';showroom?.close();showroom=undefined;
-    try{
-     const bank=await options.bank(car.id);
-     renderer=createOriginalCarMenuModel(options.baseline,bank,options.stopArt,(memory)=>{modelMemory=memory;});
-     paintCount=Math.max(1,renderer.paintCount|0);
-     currentPaint=Math.max(0,Math.min(paint,paintCount-1));
-     renderer.render(dummy,0,currentPaint);
-    }catch(reason){
-     previewError=reason instanceof Error?reason.message:String(reason);
-     console.error('[Modern Car Select] Model setup failed for',car.id,reason);
-     paintCount=1;
-    }
-   }else currentPaint=Math.max(0,Math.min(paint,paintCount-1));
+   current=car;currentTransmission=transmission;currentPaint=paint;paintCount=8;
    render();return {paintCount};
   },
   actionAt(event){
@@ -144,6 +109,6 @@ export function createEnhancedCarMenuPresentation(options:{
    const maxStart=Math.max(0,cars.length-dropdownRows);dropdownStart=Math.max(0,Math.min(maxStart,dropdownStart+(delta>0?1:-1)));render();return true;
   },
   render,
-  close(){closed=true;showroom?.close();showroom=undefined;renderer=undefined;modelMemory=undefined;}
+  close(){closed=true;}
  };
 }
