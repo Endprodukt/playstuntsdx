@@ -20,7 +20,7 @@ function confirmBackToEditorDialog(){
   const shade=document.createElement('div');shade.tabIndex=-1;
   shade.style.cssText='position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.16);';
   const box=document.createElement('div');
-  box.style.cssText='position:absolute;left:50%;top:70%;transform:translate(-50%,-50%);min-width:330px;background:#171717;border:1px solid #666;border-radius:7px;box-shadow:0 18px 55px rgba(0,0,0,.75);padding:16px 18px 14px;color:#eee;font:13px/1.35 system-ui,Segoe UI,sans-serif;';
+  box.style.cssText='position:absolute;left:50%;top:58%;transform:translate(-50%,-50%);min-width:330px;background:#171717;border:1px solid #666;border-radius:7px;box-shadow:0 18px 55px rgba(0,0,0,.75);padding:16px 18px 14px;color:#eee;font:13px/1.35 system-ui,Segoe UI,sans-serif;';
   const title=document.createElement('div');title.textContent='Back to Editor?';title.style.cssText='font-size:16px;font-weight:650;margin-bottom:6px;color:#f2f2f2;';
   const text=document.createElement('div');text.textContent='Return to the Track Editor and leave this test run?';text.style.cssText='color:#bdbdbd;margin-bottom:14px;';
   const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:flex-end;gap:8px;';
