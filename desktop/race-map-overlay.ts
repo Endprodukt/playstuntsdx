@@ -76,7 +76,7 @@ export function installDesktopRaceMap(assets:Assets){
  const canvas=document.createElement('canvas');canvas.width=900;canvas.height=900;
  canvas.style.cssText='display:block;background:#080b08;border:1px solid #444;border-radius:5px;';
 
- const map3d=document.createElement('canvas');map3d.width=900;map3d.height=900;
+ const map3d=document.createElement('canvas');map3d.width=900;map3d.height=900;map3d.style.cssText='position:fixed;left:-10000px;top:0;width:900px;height:900px;opacity:0;pointer-events:none;';document.body.appendChild(map3d);
 
  const sizeRow=document.createElement('div');sizeRow.style.cssText='display:grid;grid-template-columns:42px 1fr 42px;gap:7px;align-items:center;margin-top:8px;';
  const sizeLabel=document.createElement('span');sizeLabel.textContent='Size';sizeLabel.style.color='#aaa';
@@ -203,6 +203,6 @@ export function installDesktopRaceMap(assets:Assets){
  window.addEventListener('keydown',onKey,true);
 
  return ()=>{
-  disposed=true;preview?.close();window.removeEventListener(RACE_MAP_FRAME_EVENT,onFrame as EventListener);window.removeEventListener(RACE_MAP_CLEAR_EVENT,onClear);window.removeEventListener('keydown',onKey,true);root.remove();
+  disposed=true;preview?.close();window.removeEventListener(RACE_MAP_FRAME_EVENT,onFrame as EventListener);window.removeEventListener(RACE_MAP_CLEAR_EVENT,onClear);window.removeEventListener('keydown',onKey,true);map3d.remove();root.remove();
  };
 }
