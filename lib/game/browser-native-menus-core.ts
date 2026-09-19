@@ -112,7 +112,19 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  // Fast-forward simulation is not gated to one browser frame per step.
  const fastForwardKey=async()=>{if((entryPolls++&15)===0)await input.nextFrame();return input.readImmediate(1).key;};
  let screen='main',outline:[number,number]|undefined,replay:ReturnType<typeof decodeOriginalReplayFile>|undefined;
- const show=(name:string)=>{screen=name;if(name!=='race'){canvas.style.cursor='';if(options.graphics?.enabled)options.graphics.notice?.('Upgraded graphics selected · experimental');}options.onScreen?.(name);};
+ const show=(name:string)=>{
+  screen=name;
+  if(name!=='race'){
+   // Widescreen FOV belongs exclusively to the enhanced race renderer.
+   // Every native 320x200 menu/result/evaluation screen must return to the
+   // normal 4:3 desktop presentation before it is painted.
+   canvas.removeAttribute('data-enhanced-widescreen');
+   canvas.style.removeProperty('--dx-race-aspect');
+   canvas.style.cursor='';
+   if(options.graphics?.enabled)options.graphics.notice?.('Upgraded graphics selected · experimental');
+  }
+  options.onScreen?.(name);
+ };
  let lastNativeDisplay:Awaited<ReturnType<typeof prepareBrowserNativeMenuDisplay>>|undefined;
  const paint=(displayPalette=palette,nativeDisplay?:Awaited<ReturnType<typeof prepareBrowserNativeMenuDisplay>>,scanoutOwner?:{memory():Uint8Array;d:number})=>{
   if(options.graphics)options.graphics.refresh=screen==='main'?()=>paint(displayPalette,nativeDisplay,scanoutOwner):undefined;
