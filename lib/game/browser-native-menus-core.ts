@@ -172,9 +172,9 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     const snapshot=document.createElement('canvas');snapshot.width=width;snapshot.height=height;
     const snapshotContext=snapshot.getContext('2d');if(!snapshotContext)return null;
     const memory=modelMemory;
-    const renderAngle=(angle:number)=>{
+    const renderAngle=(angle:number,pitch=0)=>{
      new DataView(memory.buffer,memory.byteOffset,memory.byteLength).setInt16(0x2d1a0+0xb00e,angle&1023,true);
-     const rendered=modernShowroom!.draw(memory,width,height);
+     const rendered=modernShowroom!.draw(memory,width,height,{pitch});
      snapshotContext.clearRect(0,0,width,height);snapshotContext.drawImage(rendered,0,0);
     };
     renderAngle(0);
@@ -216,17 +216,17 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
      return {id:added.id};
     }
    };
-   let rotating=false,lastRotateX=0;
+   let rotating=false,lastRotateX=0,lastRotateY=0;
    const pointerDown=(event:PointerEvent)=>{
     if(event.button!==0)return;
     if(modern.inPreview(event)){
-     event.preventDefault();event.stopImmediatePropagation();rotating=true;lastRotateX=event.clientX;modern.beginRotate();canvas.setPointerCapture(event.pointerId);return;
+     event.preventDefault();event.stopImmediatePropagation();rotating=true;lastRotateX=event.clientX;lastRotateY=event.clientY;modern.beginRotate();canvas.setPointerCapture(event.pointerId);return;
     }
     const action=modern.actionAt(event);if(action.type==='none')return;
     event.preventDefault();event.stopImmediatePropagation();actions.push(action);
    };
    const pointerMove=(event:PointerEvent)=>{
-    if(rotating){event.preventDefault();event.stopImmediatePropagation();const dx=event.clientX-lastRotateX;lastRotateX=event.clientX;modern.rotateBy(dx);return;}
+    if(rotating){event.preventDefault();event.stopImmediatePropagation();const dx=event.clientX-lastRotateX,dy=event.clientY-lastRotateY;lastRotateX=event.clientX;lastRotateY=event.clientY;modern.rotateBy(dx,dy);return;}
     modern.hoverAt(event);
    };
    const pointerUp=(event:PointerEvent)=>{
