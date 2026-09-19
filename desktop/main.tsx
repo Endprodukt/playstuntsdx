@@ -9,6 +9,7 @@ import Mt32Window from './Mt32Window';
 import { installDesktopControlBindings } from './control-bindings';
 import { installDesktopDriveControls } from './gamepad-drive';
 import { installDesktopOptionsOverlay } from './options-overlay';
+import { installDesktopRaceMap } from './race-map-overlay';
 import { ensureDesktopRuntimeStartup } from './runtime-startup';
 import { blissEditorActive } from '../lib/game/bliss-editor-presence';
 import {
@@ -71,7 +72,9 @@ function DesktopApp() {
     const removeDriveControls = installDesktopDriveControls();
     const removeControlBindings = installDesktopControlBindings();
     const removeOptionsOverlay = installDesktopOptionsOverlay();
+    const removeRaceMap = installDesktopRaceMap();
     return () => {
+      removeRaceMap();
       removeOptionsOverlay();
       removeControlBindings();
       removeDriveControls();
