@@ -6,7 +6,7 @@ import {blissEditorActive} from '../lib/game/bliss-editor-presence';
 import type {Assets} from '../lib/game/types';
 
 type Layer='ground'|'terrain'|'track'|'buildings'|'items'|'paths';
-type Settings={size:number;layers:Record<Layer,boolean>};
+type Settings={width:number;height:number;layers:Record<Layer,boolean>};
 
 const settingsKey='playstunts-dx-race-map-v1';
 const layers:readonly {id:Layer;label:string}[]=[
@@ -19,16 +19,18 @@ const layers:readonly {id:Layer;label:string}[]=[
 ];
 
 const defaults:Settings={
- size:300,
+ width:360,height:470,
  layers:{ground:true,terrain:true,track:true,buildings:true,items:true,paths:false},
 };
 
 function loadSettings():Settings{
  try{
-  const saved=JSON.parse(localStorage.getItem(settingsKey)??'null') as Partial<Settings>|null;
+  const saved=JSON.parse(localStorage.getItem(settingsKey)??'null') as (Partial<Settings>&{size?:number})|null;
   if(!saved)return structuredClone(defaults);
+  const migrated=Number(saved.size);
   return {
-   size:Math.max(180,Math.min(520,Number(saved.size)||defaults.size)),
+   width:Math.max(220,Number(saved.width)||(migrated?migrated+18:defaults.width)),
+   height:Math.max(280,Number(saved.height)||(migrated?migrated+115:defaults.height)),
    layers:{...defaults.layers,...saved.layers},
   };
  }catch{return structuredClone(defaults);}
@@ -66,7 +68,7 @@ export function installDesktopRaceMap(assets:Assets){
  toggle.style.cssText='display:none;border:1px solid #555;background:#181818;color:#eee;border-radius:5px;padding:7px 10px;cursor:pointer;box-shadow:0 3px 16px rgba(0,0,0,.45);font:600 12px/1.2 system-ui,Segoe UI,sans-serif;';
 
  const panel=document.createElement('div');
- panel.style.cssText='display:none;margin-top:6px;background:rgba(12,12,12,.94);border:1px solid #555;border-radius:7px;padding:8px;box-shadow:0 8px 26px rgba(0,0,0,.55);backdrop-filter:blur(2px);';
+ panel.style.cssText='display:none;margin-top:6px;background:rgba(12,12,12,.94);border:1px solid #555;border-radius:7px;padding:8px;box-shadow:0 8px 26px rgba(0,0,0,.55);backdrop-filter:blur(2px);resize:both;overflow:hidden;min-width:220px;min-height:280px;box-sizing:border-box;grid-template-rows:auto minmax(120px,1fr) auto;gap:7px;';
 
  const header=document.createElement('div');header.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px;';
  const title=document.createElement('strong');title.textContent='Race Map';title.style.cssText='font-size:12px;color:#e9e9e9;';
@@ -74,17 +76,11 @@ export function installDesktopRaceMap(assets:Assets){
  header.append(title,hint);
 
  const canvas=document.createElement('canvas');canvas.width=900;canvas.height=900;
- canvas.style.cssText='display:block;background:#080b08;border:1px solid #444;border-radius:5px;';
+ canvas.style.cssText='display:block;width:100%;height:100%;min-width:0;min-height:0;background:#080b08;border:1px solid #444;border-radius:5px;box-sizing:border-box;';
 
  const map3d=document.createElement('canvas');map3d.width=900;map3d.height=900;map3d.style.cssText='position:fixed;left:-10000px;top:0;width:900px;height:900px;opacity:0;pointer-events:none;';document.body.appendChild(map3d);
 
- const sizeRow=document.createElement('div');sizeRow.style.cssText='display:grid;grid-template-columns:42px 1fr 42px;gap:7px;align-items:center;margin-top:8px;';
- const sizeLabel=document.createElement('span');sizeLabel.textContent='Size';sizeLabel.style.color='#aaa';
- const sizeInput=document.createElement('input');sizeInput.type='range';sizeInput.min='180';sizeInput.max='520';sizeInput.step='10';sizeInput.value=String(settings.size);
- const sizeValue=document.createElement('output');sizeValue.textContent=String(settings.size);sizeValue.style.cssText='text-align:right;color:#aaa;font:11px ui-monospace,Consolas,monospace;';
- sizeRow.append(sizeLabel,sizeInput,sizeValue);
-
- const layerGrid=document.createElement('div');layerGrid.style.cssText='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-top:8px;';
+ const layerGrid=document.createElement('div');layerGrid.style.cssText='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;';
  const layerButtons=new Map<Layer,HTMLButtonElement>();
  const renderLayerButtons=()=>{
   for(const layer of layers){
@@ -108,13 +104,13 @@ export function installDesktopRaceMap(assets:Assets){
   layerButtons.set(layer.id,button);layerGrid.append(button);
  }
 
- panel.append(header,canvas,sizeRow,layerGrid);
+ panel.append(header,canvas,layerGrid);
  root.append(toggle,panel);document.body.append(root);
 
- const applySize=()=>{
-  const size=settings.size;canvas.style.width=size+'px';canvas.style.height=size+'px';panel.style.width=(size+2)+'px';sizeValue.textContent=String(size);
+ const applyPanelSize=()=>{
+  panel.style.width=settings.width+'px';panel.style.height=settings.height+'px';
  };
- applySize();renderLayerButtons();
+ applyPanelSize();renderLayerButtons();
 
  function rebuildTrack(){
   if(!frame)return;
@@ -138,21 +134,21 @@ export function installDesktopRaceMap(assets:Assets){
   });
  }
 
- function drawPaths(ctx:CanvasRenderingContext2D,width:number){
+ function drawPaths(ctx:CanvasRenderingContext2D,width:number,height:number){
   if(!settings.layers.paths||!cachedPaths.length||!preview)return;
-  const scale=width/900;ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
+  const scaleX=width/900,scaleY=height/900;ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
   cachedPaths.forEach((trace,index)=>{
    if(trace.steps.length<2)return;
    ctx.beginPath();let started=false;
    trace.steps.forEach(step=>{
     const projected=preview!.projectWorld((step.x+.5)*1024,(29-step.y+.5)*1024);
     if(!projected)return;
-    if(!started){ctx.moveTo(projected.x*scale,projected.y*scale);started=true;}
-    else ctx.lineTo(projected.x*scale,projected.y*scale);
+    if(!started){ctx.moveTo(projected.x*scaleX,projected.y*scaleY);started=true;}
+    else ctx.lineTo(projected.x*scaleX,projected.y*scaleY);
    });
    if(!started)return;
    ctx.strokeStyle=index===0?'rgba(78,232,247,.88)':'rgba(78,232,247,.22)';
-   ctx.lineWidth=index===0?Math.max(2.5,width/900*3.3):Math.max(1.2,width/900*1.5);ctx.stroke();
+   ctx.lineWidth=index===0?Math.max(2.5,Math.min(scaleX,scaleY)*3.3):Math.max(1.2,Math.min(scaleX,scaleY)*1.5);ctx.stroke();
   });
   ctx.restore();
  }
@@ -164,32 +160,42 @@ export function installDesktopRaceMap(assets:Assets){
    ground:settings.layers.ground,terrain:settings.layers.terrain,track:settings.layers.track,
    buildings:settings.layers.buildings,items:settings.layers.items,
   });
+  const bounds=canvas.getBoundingClientRect(),cssWidth=Math.max(1,Math.round(bounds.width)),cssHeight=Math.max(1,Math.round(bounds.height));
+  map3d.style.width=cssWidth+'px';map3d.style.height=cssHeight+'px';
+  const pixelScale=Math.min(2,window.devicePixelRatio||1);
+  const pixelWidth=Math.max(1,Math.round(cssWidth*pixelScale)),pixelHeight=Math.max(1,Math.round(cssHeight*pixelScale));
+  if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;
   preview.render();
   const ctx=canvas.getContext('2d');if(!ctx)return;
   const width=canvas.width,height=canvas.height;
   ctx.clearRect(0,0,width,height);
   ctx.fillStyle='#080b08';ctx.fillRect(0,0,width,height);
   ctx.drawImage(map3d,0,0,width,height);
-  drawPaths(ctx,width);
+  drawPaths(ctx,width,height);
   const projected=preview.projectWorld(frame.x,frame.z);
   if(projected){
-   const scale=width/900;
-   drawArrow(ctx,projected.x*scale,projected.y*scale,frame.heading,scale);
+   const scaleX=width/Math.max(1,map3d.clientWidth),scaleY=height/Math.max(1,map3d.clientHeight),scale=Math.min(scaleX,scaleY);
+   drawArrow(ctx,projected.x*scaleX,projected.y*scaleY,frame.heading,scale);
   }
  }
 
  const syncVisibility=()=>{
   root.style.display=frame?'block':'none';
   toggle.style.display=frame?'block':'none';
-  panel.style.display=frame&&visible?'block':'none';
+  panel.style.display=frame&&visible?'grid':'none';
   toggle.style.background=visible?'#4e582c':'#181818';
   toggle.style.borderColor=visible?'#9bac54':'#555';
  };
 
  const toggleMap=()=>{if(!frame)return;visible=!visible;syncVisibility();if(visible)draw();};
  toggle.addEventListener('click',toggleMap);
- sizeInput.addEventListener('input',()=>{settings.size=Number(sizeInput.value);applySize();draw();});
- sizeInput.addEventListener('change',()=>storeSettings(settings));
+ const resizeObserver=new ResizeObserver(()=>{
+  if(panel.style.display==='none')return;
+  settings.width=Math.max(220,Math.round(panel.getBoundingClientRect().width));
+  settings.height=Math.max(280,Math.round(panel.getBoundingClientRect().height));
+  storeSettings(settings);requestAnimationFrame(draw);
+ });
+ resizeObserver.observe(panel);
 
  const onFrame=(event:Event)=>{
   frame=(event as CustomEvent<RaceMapFrame>).detail;syncVisibility();if(visible)draw();
@@ -208,6 +214,6 @@ export function installDesktopRaceMap(assets:Assets){
  window.addEventListener('keydown',onKey,true);
 
  return ()=>{
-  disposed=true;preview?.close();window.removeEventListener(RACE_MAP_FRAME_EVENT,onFrame as EventListener);window.removeEventListener(RACE_MAP_CLEAR_EVENT,onClear);window.removeEventListener('keydown',onKey,true);map3d.remove();root.remove();
+  disposed=true;resizeObserver.disconnect();preview?.close();window.removeEventListener(RACE_MAP_FRAME_EVENT,onFrame as EventListener);window.removeEventListener(RACE_MAP_CLEAR_EVENT,onClear);window.removeEventListener('keydown',onKey,true);map3d.remove();root.remove();
  };
 }
