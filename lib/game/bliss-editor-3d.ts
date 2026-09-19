@@ -25,6 +25,7 @@ export interface BlissEditor3DView {
  dolly(delta:number,clientX:number,clientY:number):void;
  setLayers(layers:Partial<BlissEditor3DLayers>):void;
  projectWorld(x:number,z:number,y?:number):{x:number;y:number}|null;
+ worldAt(clientX:number,clientY:number):{x:number;z:number}|null;
  close():void;
 }
 
@@ -269,6 +270,13 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   const x=Math.floor(hit.point.x/1024),row=Math.floor((-hit.point.z)/1024),y=29-row;
   return x>=0&&x<30&&y>=0&&y<30?{x,y}:null;
  };
+ const worldAt=(clientX:number,clientY:number)=>{
+  const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return null;
+  pointer.set((clientX-rect.left)/rect.width*2-1,-((clientY-rect.top)/rect.height*2-1));
+  raycaster.setFromCamera(pointer,camera);
+  const hit=raycaster.intersectObject(pickPlane,false)[0];if(!hit)return null;
+  return {x:THREE.MathUtils.clamp(hit.point.x,0,30719),z:THREE.MathUtils.clamp(-hit.point.z,0,30719)};
+ };
  const setHover=(cell:BlissEditor3DCell|null)=>{
   if(!cell){hover.visible=false;render();return;}
   hover.visible=true;hover.position.x=cell.x*1024+512;hover.position.z=-((29-cell.y)*1024+512);render();
@@ -313,7 +321,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   pan,
   dolly,
   setLayers(next){Object.assign(layerState,next);applyLayers();render();},
-  projectWorld,
+  projectWorld,worldAt,
   close(){clearGhost();disposeObject(content);disposeObject(annotationRoot);disposeObject(base);hover.geometry.dispose();(hover.material as THREE.Material).dispose();pickPlane.geometry.dispose();(pickPlane.material as THREE.Material).dispose();renderer.dispose();renderer.forceContextLoss();}
  };
 }
