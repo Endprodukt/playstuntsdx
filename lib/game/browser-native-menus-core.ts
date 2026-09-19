@@ -40,6 +40,7 @@ import {runNativeMainMenuSelection} from './native-main-menu.ts';
 import {restoreOriginalMainMenuPixels} from './main-menu-raster.ts';
 import {originalMainMenuBounds} from './main-menu-hit.ts';
 import {ENHANCED_TEXTURES_EVENT,enhancedTexturesEnabled} from './enhanced-textures.ts';
+import {ENHANCED_FOV_EVENT} from './enhanced-view-settings.ts';
 import {runNativeCarMenu,type NativeCarMenuHost,type NativeMenuCar} from './native-car-runtime.ts';
 import {createEnhancedCarMenuPresentation} from './enhanced-car-menu-presentation.ts';
 import {runModernCarMenu,type ModernCarMenuAction,type ModernCarMenuHost} from './modern-car-menu-runtime.ts';
@@ -87,6 +88,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  const highResMainMenu=new Image();let highResMainMenuReady=false,enhancedTextures=enhancedTexturesEnabled();
  const syncEnhancedTextures=()=>{enhancedTextures=enhancedTexturesEnabled();options.graphics?.refresh?.();};
  window.addEventListener(ENHANCED_TEXTURES_EVENT,syncEnhancedTextures);
+ const syncEnhancedFov=()=>options.graphics?.refresh?.();window.addEventListener(ENHANCED_FOV_EVENT,syncEnhancedFov);
  highResMainMenu.decoding='async';
  highResMainMenu.onload=()=>{highResMainMenuReady=true;options.graphics?.refresh?.();};
  highResMainMenu.onerror=()=>{highResMainMenuReady=false;};
@@ -450,7 +452,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   return runNativeOptions(nativeHost,createNativeDisplayOptionsPresentation(owner,nativeHost,dialogs));
  };
  if(options.displayMode)lastNativeDisplay=await prepareBrowserNativeMenuDisplay({catalog:await loadBrowserOriginalResourceCatalog()},options.displayMode,options.hercules);
- return {configuration,track,elapsedSinceInputPoll:input.elapsedSinceInputPoll,selectOptions,selectCar:car,selectOpponent:opponent,selectTrack,setInputActive:input.setActive,settings:drivingSettings,get replay(){return replay;},get selectedReplay(){return selectedReplay;},raceEntryKey:fastForwardKey,fadeMusic:()=>music.fadeOut(input.waitTicks),close:()=>{window.removeEventListener(ENHANCED_TEXTURES_EVENT,syncEnhancedTextures);input.close();files.close();},
+ return {configuration,track,elapsedSinceInputPoll:input.elapsedSinceInputPoll,selectOptions,selectCar:car,selectOpponent:opponent,selectTrack,setInputActive:input.setActive,settings:drivingSettings,get replay(){return replay;},get selectedReplay(){return selectedReplay;},raceEntryKey:fastForwardKey,fadeMusic:()=>music.fadeOut(input.waitTicks),close:()=>{window.removeEventListener(ENHANCED_TEXTURES_EVENT,syncEnhancedTextures);window.removeEventListener(ENHANCED_FOV_EVENT,syncEnhancedFov);input.close();files.close();},
   /** Use the live allocated game banks and retained framebuffer. */
   async allocatedRacePresentation(runtime:Awaited<ReturnType<typeof createNativeManualRaceRuntime>>,onPoll:()=>void|Promise<void>,alternate?:Awaited<ReturnType<typeof prepareBrowserNativeManualDisplay>>){
    let upgraded:ReturnType<typeof createUpgradedRaceScene>|undefined,loading=false,closed=false,failed=false;
@@ -458,7 +460,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    const presentWorld=()=>{
     publishRaceMapFrame(runtime.raw,runtime.session.state.memory);
     display();if(!graphics)return;graphics.refresh=presentWorld;
-    if(!graphics.enabled)return;
+    if(!graphics.enabled){canvas.removeAttribute('data-enhanced-widescreen');canvas.style.removeProperty('--dx-race-aspect');return;}
     if(failed)return;
     if(!upgraded){if(!loading){loading=true;graphics.notice?.('Loading upgraded driving graphics…');void import('./upgraded-race-scene').then(({createUpgradedRaceScene})=>{if(closed)return;upgraded=createUpgradedRaceScene(options.assets,baseline,runtime,()=>graphics.chaseCamera??0,()=>graphics.selectOriginalCamera?.());graphics.refresh?.();}).catch(()=>{failed=true;graphics.notice?.('Upgraded graphics are unavailable. Original graphics remain active.');});}return;}
     try{const shown=upgraded.draw(canvas);if(shown)graphics.performanceFrame?.(performance.now());graphics.notice?.(shown?'Upgraded driving graphics · experimental':'Original graphics for this scene');}catch{failed=true;upgraded.close();upgraded=undefined;display();graphics.notice?.('Upgraded graphics are unavailable. Original graphics remain active.');}
