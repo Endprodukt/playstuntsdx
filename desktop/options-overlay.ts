@@ -9,7 +9,8 @@ type NativeConfigFile={content:string};
 function tauriCore(){return (window as typeof window&{__TAURI__?:TauriGlobal}).__TAURI__?.core;}
 function clampSteeringDeadzone(value:number){return Math.max(0,Math.min(maxSteeringDeadzonePercent,Math.round(value)));}
 function storedSteeringDeadzone(){
- const saved=Number(window.localStorage.getItem(steeringDeadzoneStorageKey));
+ const stored=window.localStorage.getItem(steeringDeadzoneStorageKey);if(stored===null)return defaultSteeringDeadzonePercent;
+ const saved=Number(stored);
  return Number.isFinite(saved)?clampSteeringDeadzone(saved):defaultSteeringDeadzonePercent;
 }
 function saveSteeringDeadzone(value:number){window.localStorage.setItem(steeringDeadzoneStorageKey,String(clampSteeringDeadzone(value)));}
