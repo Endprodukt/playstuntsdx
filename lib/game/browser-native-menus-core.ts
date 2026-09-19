@@ -222,15 +222,17 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     event.preventDefault();event.stopImmediatePropagation();modernActions.push(action);
    };
    const pointerMove=(event:PointerEvent)=>{
-    if(!drag)return;event.preventDefault();event.stopImmediatePropagation();const dx=event.clientX-lastX,dy=event.clientY-lastY;lastX=event.clientX;lastY=event.clientY;
+    if(!drag){enhanced.hoverAt(event);return;}
+    event.preventDefault();event.stopImmediatePropagation();const dx=event.clientX-lastX,dy=event.clientY-lastY;lastX=event.clientX;lastY=event.clientY;
     if(drag==='orbit')enhanced.orbit(dx,dy);else enhanced.pan(dx,dy);
    };
-   const pointerUp=(event:PointerEvent)=>{if(drag){event.preventDefault();event.stopImmediatePropagation();}drag=null;if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);};
+   const pointerUp=(event:PointerEvent)=>{if(drag){event.preventDefault();event.stopImmediatePropagation();}drag=null;if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);enhanced.hoverAt(event);};
+   const pointerLeave=()=>{if(!drag)enhanced.clearHover();};
    const wheel=(event:WheelEvent)=>{
     if(enhanced.inPreview(event)){event.preventDefault();enhanced.dolly(event.deltaY,event.clientX,event.clientY);return;}
     if(enhanced.scrollDropdown(event.deltaY)){event.preventDefault();event.stopImmediatePropagation();}
    };
-   canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
+   canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('pointerleave',pointerLeave,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
 
    const pickTrackFile=()=>new Promise<File|null>(resolve=>{
     const picker=document.createElement('input');picker.type='file';picker.accept='.trk,application/octet-stream';picker.style.display='none';
@@ -263,7 +265,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    }};
    pixels.fill(0);
    try{return await runModernTrackMenu(modernHost,enhanced);}finally{
-    canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerup',pointerUp,true);canvas.removeEventListener('pointercancel',pointerUp,true);canvas.removeEventListener('wheel',wheel,true);
+    canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerup',pointerUp,true);canvas.removeEventListener('pointercancel',pointerUp,true);canvas.removeEventListener('pointerleave',pointerLeave,true);canvas.removeEventListener('wheel',wheel,true);
     if(options.graphics?.refresh===presentEnhanced)options.graphics.refresh=undefined;
    }
   }
