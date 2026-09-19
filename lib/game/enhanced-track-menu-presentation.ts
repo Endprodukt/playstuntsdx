@@ -1,9 +1,10 @@
 import {originalHighScoreRow} from './high-score-format.ts';
 import type {Assets} from './types.ts';
+import type {BlissTrack} from './bliss-track.ts';
 import type {NativeTrackMenuPresentation,NativeMenuTrack} from './native-track-runtime.ts';
 import type {BlissEditor3DView} from './bliss-editor-3d.ts';
 
-type PreviewFactory=(canvas:HTMLCanvasElement,assets:Assets,track:ReturnType<typeof import('./bliss-track.ts')['decodeBlissTrack']>,options:{initialCamera:{position:[number,number,number];target:[number,number,number];fov:number};transparentBackground:boolean;showGround:boolean})=>BlissEditor3DView;
+type PreviewFactory=(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,options:{initialCamera:{position:[number,number,number];target:[number,number,number];fov:number};transparentBackground:boolean;showGround:boolean})=>BlissEditor3DView;
 
 export type EnhancedTrackMenuPresentation=NativeTrackMenuPresentation&{
  render():void;
@@ -20,7 +21,7 @@ const text=(bytes:ReadonlyArray<number>)=>String.fromCharCode(...bytes).replace(
 export function createEnhancedTrackMenuPresentation(options:{
  canvas:HTMLCanvasElement;
  assets:Assets;
- decodeTrack:(bytes:Uint8Array)=>ReturnType<typeof import('./bliss-track.ts')['decodeBlissTrack']>;
+ decodeTrack:(bytes:Uint8Array)=>BlissTrack;
  createPreview:PreviewFactory;
  originalCamera:{position:[number,number,number];target:[number,number,number];fov:number};
  file:NativeTrackMenuPresentation['file'];
