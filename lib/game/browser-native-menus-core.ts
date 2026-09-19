@@ -109,7 +109,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  const drawing=surface.getContext('2d')!,image=drawing.createImageData(320,200),pixels=new Uint8Array(65536),input=createBrowserMenuInput(canvas,{joystickEnabled:()=>activeRace?!!activeRace.session.state.memory[0x2d1a0+0x4602]:drivingSettings.joystick,drivingBindings:()=>activeRace?activeRace.session.state.memory.subarray(0x2d1a0+0x430a,0x2d1a0+0x4314):[57,28,71,72,73,77,81,80,79,75],onPoll:()=>{if(options.signal?.aborted)throw new DOMException('Native menu closed','AbortError');return racePoll?.();}}),palette=materials.palette;
  const configuration=options.configuration??[67,79,85,78,0,1,0,255,0,0,0,0,0,68,69,70,65,85,76,84,0,0,1,0];
  const track=options.track??{name:'DEFAULT',path:'',raw:[...options.assets.tracks.find(t=>t.name==='DEFAULT')!.raw]};
- let entryPolls=0,selectedReplay:{bytes:Uint8Array;name:string;path:string}|undefined,pendingRaceSpawn:RaceSpawn|undefined;
+ let entryPolls=0,selectedReplay:{bytes:Uint8Array;name:string;path:string}|undefined,pendingRaceSpawn:RaceSpawn|undefined,editorViewMode:'2d'|'3d'='2d';
  // Original1AD1C forwards its literal1 to the complete device poll.
  // Fast-forward simulation is not gated to one browser frame per step.
  const fastForwardKey=async()=>{if((entryPolls++&15)===0)await input.nextFrame();return input.readImmediate(1).key;};
@@ -337,6 +337,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
      writeTrack:editor.writeTrack,clearScores:editor.clearScores,exists:editor.exists,presets,
      analysisCars:options.assets.cars.map(car=>({id:car.id,name:car.name})),
      testCarId:String.fromCharCode(...configuration.slice(0,4)),
+     initialViewMode:editorViewMode,onViewModeChange:mode=>{editorViewMode=mode;},
      setEditorMusicMuted,
      enumerateTracks:()=>host.enumerate('','.trk'),readTrack:editor.readTrack,...customTracks,
     });
