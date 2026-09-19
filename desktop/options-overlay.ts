@@ -1,5 +1,7 @@
 import type {Assets} from '../lib/game/types';
 import {ENGINE_SOUND_PRESETS,loadSoundModSettings,saveSoundModSettings,type EngineSoundPreset} from '../lib/game/sound-mod-settings';
+import {enhancedTexturesEnabled,setEnhancedTexturesEnabled} from '../lib/game/enhanced-textures';
+import {enhancedFovWidth,setEnhancedFovWidth} from '../lib/game/enhanced-view-settings';
 const fpsStorageKey='playstunts-dx-fps-visible';
 const graphicsStorageKey='playstunts-dx-enhanced-graphics';
 const steeringDeadzoneStorageKey='playstunts-dx-steering-deadzone-percent';
@@ -113,6 +115,20 @@ export function installDesktopOptionsOverlay(assets?:Assets){
   button.textContent=enabled?'On':'Off';
   button.setAttribute('aria-pressed',String(enabled));
  };
+ const renderTextureState=()=>{
+  const button=section?.querySelector<HTMLButtonElement>('button[data-textures-toggle]');
+  if(!button)return;
+  const enabled=enhancedTexturesEnabled();
+  button.textContent=enabled?'On':'Off';
+  button.setAttribute('aria-pressed',String(enabled));
+ };
+ const renderFovState=()=>{
+  const slider=section?.querySelector<HTMLInputElement>('input[data-fov-width]');
+  const value=section?.querySelector<HTMLOutputElement>('output[data-fov-width-value]');
+  const amount=enhancedFovWidth();
+  if(slider)slider.value=String(amount);
+  if(value)value.value=amount===0?'Original':amount===100?'Full':amount+'%';
+ };
  const renderFpsState=()=>{
   const button=section?.querySelector<HTMLButtonElement>('button[data-fps-toggle]');
   if(!button)return;
@@ -191,6 +207,19 @@ export function installDesktopOptionsOverlay(assets?:Assets){
   });
   graphicsRow.append(graphicsLabel,graphicsButton);
 
+  const texturesRow=document.createElement('div');texturesRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) 84px;gap:8px;align-items:center;margin-top:9px;';
+  const texturesLabel=document.createElement('div');texturesLabel.textContent='Enhanced Textures';texturesLabel.title='Uses editable high-resolution artwork where available while keeping the enhanced renderer itself active.';texturesLabel.style.cssText='font-size:12px;color:#ddd;';
+  const texturesButton=document.createElement('button');texturesButton.type='button';texturesButton.dataset.texturesToggle='1';texturesButton.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;text-align:center;';
+  texturesButton.addEventListener('click',()=>{setEnhancedTexturesEnabled(!enhancedTexturesEnabled());renderTextureState();});
+  texturesRow.append(texturesLabel,texturesButton);
+
+  const fovRow=document.createElement('div');fovRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) minmax(150px,1.5fr) 62px;gap:8px;align-items:center;margin-top:9px;';
+  const fovLabel=document.createElement('div');fovLabel.textContent='Field of View';fovLabel.title='0% keeps the original 4:3 view. 100% expands the enhanced 3D renderer to the full current window width without changing vertical FOV.';fovLabel.style.cssText='font-size:12px;color:#ddd;';
+  const fov=document.createElement('input');fov.type='range';fov.min='0';fov.max='100';fov.step='1';fov.dataset.fovWidth='1';fov.style.cssText='width:100%;';
+  const fovValue=document.createElement('output');fovValue.dataset.fovWidthValue='1';fovValue.style.cssText='font:11px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;color:#eee;text-align:right;';
+  fov.addEventListener('input',()=>{setEnhancedFovWidth(Number(fov.value));renderFovState();});
+  fovRow.append(fovLabel,fov,fovValue);
+
   const fpsRow=document.createElement('div');fpsRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) 84px;gap:8px;align-items:center;margin-top:9px;';
   const fpsLabel=document.createElement('div');fpsLabel.textContent='FPS Counter';fpsLabel.style.cssText='font-size:12px;color:#ddd;';
   const fps=document.createElement('button');fps.type='button';fps.dataset.fpsToggle='1';fps.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;text-align:center;';
@@ -200,7 +229,7 @@ export function installDesktopOptionsOverlay(assets?:Assets){
    renderFpsState();
   });
   fpsRow.append(fpsLabel,fps);
-  videoSection.append(videoHeading,graphicsRow,fpsRow);
+  videoSection.append(videoHeading,graphicsRow,texturesRow,fovRow,fpsRow);
 
   const soundSection=document.createElement('div');soundSection.style.cssText='margin-top:12px;padding-top:10px;border-top:1px solid #333;';
   const soundHeading=document.createElement('div');soundHeading.textContent='Sound Mods';soundHeading.style.cssText='font-size:13px;font-weight:700;margin-bottom:8px;';
@@ -247,7 +276,7 @@ export function installDesktopOptionsOverlay(assets?:Assets){
   deadzone.addEventListener('change',()=>void persistSteeringDeadzone(Number(deadzone.value)));
   deadzoneRow.append(deadzoneLabel,deadzone,deadzoneValue);
 
-  section.append(heading,mapRow,buttonRow,deadzoneRow,videoSection,soundSection);panel.insertBefore(section,controlsSection);renderGraphicsState();renderFpsState();renderOpenMapState();renderOptionsButtonState();renderSteeringDeadzone();renderSoundModState();applyStoredFps();
+  section.append(heading,mapRow,buttonRow,deadzoneRow,videoSection,soundSection);panel.insertBefore(section,controlsSection);renderGraphicsState();renderTextureState();renderFovState();renderFpsState();renderOpenMapState();renderOptionsButtonState();renderSteeringDeadzone();renderSoundModState();applyStoredFps();
  };
  frame=requestAnimationFrame(mount);
 
