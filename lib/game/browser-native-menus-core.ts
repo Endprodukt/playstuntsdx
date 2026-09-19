@@ -103,7 +103,8 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  const drivingSettings={...(options.settings??{mouse:false,joystick:false,graphics:2})};
  let activeRace:Awaited<ReturnType<typeof createNativeManualRaceRuntime>>|undefined,racePoll:(()=>void|Promise<void>)|undefined;
  const presentHercules=options.hercules?createBrowserHerculesPresenter(options.canvas):undefined;
- const {canvas,music}=options,context=canvas.getContext('2d')!,surface=document.createElement('canvas');surface.width=320;surface.height=200;
+ const {canvas,music}=options,nativeCanvasWidth=canvas.width,nativeCanvasHeight=canvas.height,context=canvas.getContext('2d')!,surface=document.createElement('canvas');surface.width=320;surface.height=200;
+ const resetRaceCanvas=()=>{canvas.removeAttribute('data-enhanced-widescreen');canvas.style.removeProperty('--dx-race-aspect');if(canvas.width!==nativeCanvasWidth)canvas.width=nativeCanvasWidth;if(canvas.height!==nativeCanvasHeight)canvas.height=nativeCanvasHeight;};
  const drawing=surface.getContext('2d')!,image=drawing.createImageData(320,200),pixels=new Uint8Array(65536),input=createBrowserMenuInput(canvas,{joystickEnabled:()=>activeRace?!!activeRace.session.state.memory[0x2d1a0+0x4602]:drivingSettings.joystick,drivingBindings:()=>activeRace?activeRace.session.state.memory.subarray(0x2d1a0+0x430a,0x2d1a0+0x4314):[57,28,71,72,73,77,81,80,79,75],onPoll:()=>{if(options.signal?.aborted)throw new DOMException('Native menu closed','AbortError');return racePoll?.();}}),palette=materials.palette;
  const configuration=options.configuration??[67,79,85,78,0,1,0,255,0,0,0,0,0,68,69,70,65,85,76,84,0,0,1,0];
  const track=options.track??{name:'DEFAULT',path:'',raw:[...options.assets.tracks.find(t=>t.name==='DEFAULT')!.raw]};
@@ -118,8 +119,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    // Widescreen FOV belongs exclusively to the enhanced race renderer.
    // Every native 320x200 menu/result/evaluation screen must return to the
    // normal 4:3 desktop presentation before it is painted.
-   canvas.removeAttribute('data-enhanced-widescreen');
-   canvas.style.removeProperty('--dx-race-aspect');
+   resetRaceCanvas();
    canvas.style.cursor='';
    if(options.graphics?.enabled)options.graphics.notice?.('Upgraded graphics selected · experimental');
   }
@@ -471,8 +471,9 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    const graphics=options.graphics;if(graphics){runtime.enableGraphicsCapture();graphics.resetPerformance?.();}
    const presentWorld=()=>{
     publishRaceMapFrame(runtime.raw,runtime.session.state.memory);
+    if(graphics&&!graphics.enabled)resetRaceCanvas();
     display();if(!graphics)return;graphics.refresh=presentWorld;
-    if(!graphics.enabled){canvas.removeAttribute('data-enhanced-widescreen');canvas.style.removeProperty('--dx-race-aspect');return;}
+    if(!graphics.enabled)return;
     if(failed)return;
     if(!upgraded){if(!loading){loading=true;graphics.notice?.('Loading upgraded driving graphics…');void import('./upgraded-race-scene').then(({createUpgradedRaceScene})=>{if(closed)return;upgraded=createUpgradedRaceScene(options.assets,baseline,runtime,()=>graphics.chaseCamera??0,()=>graphics.selectOriginalCamera?.());graphics.refresh?.();}).catch(()=>{failed=true;graphics.notice?.('Upgraded graphics are unavailable. Original graphics remain active.');});}return;}
     try{const shown=upgraded.draw(canvas);if(shown)graphics.performanceFrame?.(performance.now());graphics.notice?.(shown?'Upgraded driving graphics · experimental':'Original graphics for this scene');}catch{failed=true;upgraded.close();upgraded=undefined;display();graphics.notice?.('Upgraded graphics are unavailable. Original graphics remain active.');}
@@ -493,10 +494,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
      // restore the desktop canvas to its normal 4:3 presentation before the
      // native 320x200 frame is painted. Otherwise the previous widescreen FOV
      // CSS remains active for this refresh and stretches the replay/menu frame.
-     if(graphics&&!graphics.enabled){
-      canvas.removeAttribute('data-enhanced-widescreen');
-      canvas.style.removeProperty('--dx-race-aspect');
-     }
+     if(graphics&&!graphics.enabled)resetRaceCanvas();
      // Keep the source menu opaque, including black pixels which may also
      // match the source background. Only its rectangle covers the 3D scene.
      presentSource();
