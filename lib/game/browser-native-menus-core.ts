@@ -185,15 +185,41 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     persistTrackShot:(filename:string,bytes:Uint8Array)=>tauriCore.invoke<string>('write_track_shot',{filename,data:Array.from(bytes)}),
     fetchUrl:(url:string)=>tauriCore.invoke<number[]>('bliss_http_get',{url}).then(bytes=>Uint8Array.from(bytes)),
    }:{};
-   await runBrowserBlissEditor({
-    canvas,track,palette,assets:options.assets,
-    resources:{art,terrainNames:terrainNames.names,images:editor.screenResources.images},
-    sceneryPreviews,
-    writeTrack:editor.writeTrack,clearScores:editor.clearScores,exists:editor.exists,presets,
-    analysisCars:options.assets.cars.map(car=>({id:car.id,name:car.name})),
-    setEditorMusicMuted:muted=>music.setOutputMuted(muted),
-    enumerateTracks:()=>host.enumerate('','.trk'),readTrack:editor.readTrack,...customTracks,
-   });
+   const activeCustomAudio=Array.from(document.querySelectorAll<HTMLAudioElement>('audio')).filter(audio=>!audio.paused&&!audio.ended&&audio.currentSrc);
+   const customAudioState=activeCustomAudio.map(audio=>({audio,wasPaused:audio.paused}));
+   const hasCustomMusic=activeCustomAudio.length>0;
+   let editorMusicMuted=false;
+   const setEditorMusicMuted=(muted:boolean)=>{
+    editorMusicMuted=muted;
+    if(hasCustomMusic){
+     // Custom MP3 owns editor music. Keep the original Stunts menu music muted
+     // so entering the editor can never layer SLCT underneath the MP3.
+     music.setOutputMuted(true);
+     for(const {audio} of customAudioState){
+      if(muted){if(!audio.paused)audio.pause();}
+      else if(audio.paused)void audio.play().catch(()=>{});
+     }
+    }else music.setOutputMuted(muted);
+   };
+   try{
+    await runBrowserBlissEditor({
+     canvas,track,palette,assets:options.assets,
+     resources:{art,terrainNames:terrainNames.names,images:editor.screenResources.images},
+     sceneryPreviews,
+     writeTrack:editor.writeTrack,clearScores:editor.clearScores,exists:editor.exists,presets,
+     analysisCars:options.assets.cars.map(car=>({id:car.id,name:car.name})),
+     setEditorMusicMuted,
+     enumerateTracks:()=>host.enumerate('','.trk'),readTrack:editor.readTrack,...customTracks,
+    });
+   }finally{
+    // Restore the normal menu music path after the editor. BrowserBlissEditor
+    // has already unmuted its selected source; make sure custom mode does not
+    // leave the original WebAudio path muted outside the editor.
+    if(hasCustomMusic){
+     music.setOutputMuted(false);
+     if(editorMusicMuted)for(const {audio} of customAudioState)if(audio.paused)void audio.play().catch(()=>{});
+    }
+   }
   }finally{input.setActive(true);await input.release();}
  };
  const selectTrack=async()=>{
