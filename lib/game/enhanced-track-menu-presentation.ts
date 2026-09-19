@@ -115,9 +115,9 @@ export function createEnhancedTrackMenuPresentation(options:{
   }else{
    label('HIGH SCORE',239,96,7,'#aaa',700);label('No record yet',239,108,6,'#777');
   }
-  label('MOUSE',239,150,4.5,'#777',700);
-  label('LMB Orbit  ·  RMB Pan',239,159,4.2,'#aaa',500);
-  label('Wheel Zoom',239,166,4.2,'#aaa',500);
+  // Preview controls belong to the 3D viewport, not Track Info.
+  rect(previewRect.x+4,previewRect.y+previewRect.h-17,previewRect.w-8,13,'rgba(8,8,8,.72)','rgba(90,90,90,.55)',3,.6);
+  label('LMB Orbit  ·  RMB Pan  ·  Wheel Zoom',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h-10.5,4.2,'#b7b7b7',500,'center');
   button(doneButton,'DONE','done');
 
   if(dropdownOpen)drawDropdown();
