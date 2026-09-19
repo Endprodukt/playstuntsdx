@@ -28,20 +28,39 @@ export interface SoundModSettings{
  perCar:Record<string,EngineSoundPreset>;
 }
 
-export const SOUND_MOD_SETTINGS_KEY='playstunts-dx-sound-mod-settings-v1';
+export const SOUND_MOD_SETTINGS_KEY='playstunts-dx-sound-mod-settings-v2';
+const LEGACY_SOUND_MOD_SETTINGS_KEY='playstunts-dx-sound-mod-settings-v1';
+
+export const RECOMMENDED_ENGINE_SOUNDS:Readonly<Record<string,EngineSoundPreset>>={
+ ANSX:'v6',
+ AUDI:'type-i',
+ VETT:'type-ii',
+ FGTO:'type-iv',
+ JAGU:'prototype',
+ COUN:'v10',
+ LM02:'v10',
+ LANC:'i4',
+ P962:'prototype',
+ PC04:'v6',
+ PMIN:'indy',
+};
 
 export function loadSoundModSettings():SoundModSettings{
- const fallback:SoundModSettings={defaultPreset:'original',perCar:{}};
+ const fallback:SoundModSettings={defaultPreset:'original',perCar:{...RECOMMENDED_ENGINE_SOUNDS}};
  try{
-  const parsed=JSON.parse(localStorage.getItem(SOUND_MOD_SETTINGS_KEY)??'null') as Partial<SoundModSettings>|null;
+  const current=localStorage.getItem(SOUND_MOD_SETTINGS_KEY);
+  const legacy=current===null?localStorage.getItem(LEGACY_SOUND_MOD_SETTINGS_KEY):null;
+  const parsed=JSON.parse(current??legacy??'null') as Partial<SoundModSettings>|null;
   if(!parsed)return fallback;
   const valid=new Set(ENGINE_SOUND_PRESETS.map(item=>item.id));
-  const perCar:Record<string,EngineSoundPreset>={};
+  const perCar:Record<string,EngineSoundPreset>=legacy!==null?{...RECOMMENDED_ENGINE_SOUNDS}:{};
   if(parsed.perCar&&typeof parsed.perCar==='object')for(const [car,preset] of Object.entries(parsed.perCar))if(valid.has(preset as EngineSoundPreset))perCar[car.toUpperCase()]=preset as EngineSoundPreset;
-  return {
+  const settings={
    defaultPreset:valid.has(parsed.defaultPreset as EngineSoundPreset)?parsed.defaultPreset as EngineSoundPreset:'original',
    perCar,
   };
+  if(current===null&&legacy!==null)localStorage.setItem(SOUND_MOD_SETTINGS_KEY,JSON.stringify(settings));
+  return settings;
  }catch{return fallback;}
 }
 
