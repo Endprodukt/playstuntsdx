@@ -76,7 +76,7 @@ export function installDesktopRaceMap(assets:Assets){
  const title=document.createElement('strong');title.textContent='Race Map';title.style.cssText='font-size:12px;color:#e9e9e9;';
  const hint=document.createElement('span');hint.textContent='F9 / M';hint.style.cssText='font-size:10px;color:#888;';
  const buttonLike=(text:string,titleText:string)=>{const b=document.createElement('button');b.type='button';b.textContent=text;b.title=titleText;b.style.cssText='border:1px solid #555;background:#202020;color:#eee;border-radius:4px;padding:3px 6px;cursor:pointer;font:10px/1.1 system-ui,Segoe UI,sans-serif;';return b;};
- const spawnTool=document.createElement('button');spawnTool.type='button';spawnTool.draggable=true;spawnTool.title='Drag onto the map to set a practice/teleport point';spawnTool.innerHTML='<svg viewBox="0 0 20 24" width="14" height="17" aria-hidden="true"><circle cx="10" cy="4" r="3" fill="#e6b94a"/><path d="M7 8h6l2 6-2 1-1-4v11H9v-7H7v7H4V11l-1 4-2-1 2-6z" fill="#e6b94a"/></svg>';
+ const spawnTool=document.createElement('button');spawnTool.type='button';spawnTool.draggable=false;spawnTool.title='Drag onto the map to set a practice/teleport point';spawnTool.innerHTML='<svg viewBox="0 0 20 24" width="14" height="17" aria-hidden="true"><circle cx="10" cy="4" r="3" fill="#e6b94a"/><path d="M7 8h6l2 6-2 1-1-4v11H9v-7H7v7H4V11l-1 4-2-1 2-6z" fill="#e6b94a"/></svg>';
  spawnTool.style.cssText='margin-left:auto;border:1px solid #665a32;background:#262116;color:#eee;border-radius:4px;padding:3px 6px;cursor:grab;';
  const turnLeft=buttonLike('↶','Turn marker left'),turnRight=buttonLike('↷','Turn marker right'),go=buttonLike('Go Here','Teleport to marker');
  turnLeft.style.display=turnRight.style.display=go.style.display='none';
@@ -84,18 +84,27 @@ export function installDesktopRaceMap(assets:Assets){
  turnLeft.addEventListener('click',()=>{if(spawn){spawn.heading=normalizeRaceHeading(spawn.heading-32);draw();}});
  turnRight.addEventListener('click',()=>{if(spawn){spawn.heading=normalizeRaceHeading(spawn.heading+32);draw();}});
  go.addEventListener('click',()=>{if(spawn)requestRaceTeleport({...spawn});});
- spawnTool.addEventListener('dragstart',event=>{event.dataTransfer?.setData('text/plain','playstunts-race-spawn');if(event.dataTransfer)event.dataTransfer.effectAllowed='copy';});
+ let spawnDragging=false,spawnPointerId=-1;
+ const finishSpawnDrag=(event:PointerEvent)=>{
+  if(!spawnDragging||event.pointerId!==spawnPointerId)return;
+  spawnDragging=false;spawnTool.style.cursor='grab';spawnTool.releasePointerCapture?.(event.pointerId);
+  const bounds=canvas.getBoundingClientRect();
+  if(event.clientX<bounds.left||event.clientX>bounds.right||event.clientY<bounds.top||event.clientY>bounds.bottom||!preview||!frame)return;
+  const hidden=map3d.getBoundingClientRect(),rx=(event.clientX-bounds.left)/Math.max(1,bounds.width),ry=(event.clientY-bounds.top)/Math.max(1,bounds.height);
+  const point=preview.worldAt(hidden.left+rx*hidden.width,hidden.top+ry*hidden.height);if(!point)return;
+  spawn={x:point.x,z:point.z,heading:suggestedSpawnHeading(point.x,point.z,frame.heading)};refreshSpawnControls();draw();
+ };
+ spawnTool.addEventListener('pointerdown',event=>{
+  if(event.button!==0)return;
+  event.preventDefault();event.stopPropagation();spawnDragging=true;spawnPointerId=event.pointerId;spawnTool.style.cursor='grabbing';spawnTool.setPointerCapture?.(event.pointerId);
+ });
+ spawnTool.addEventListener('pointerup',finishSpawnDrag);
+ spawnTool.addEventListener('pointercancel',event=>{if(event.pointerId===spawnPointerId){spawnDragging=false;spawnTool.style.cursor='grab';}});
+ window.addEventListener('pointerup',finishSpawnDrag,true);
  header.append(title,hint,spawnTool,turnLeft,turnRight,go);
 
  const canvas=document.createElement('canvas');canvas.width=900;canvas.height=900;
  canvas.style.cssText='display:block;width:100%;height:100%;min-width:0;min-height:0;background:#080b08;border:1px solid #444;border-radius:5px;box-sizing:border-box;';
- canvas.addEventListener('dragover',event=>{event.preventDefault();if(event.dataTransfer)event.dataTransfer.dropEffect='copy';});
- canvas.addEventListener('drop',event=>{
-  event.preventDefault();if(!preview||!frame)return;
-  const visibleBounds=canvas.getBoundingClientRect(),hiddenBounds=map3d.getBoundingClientRect();
-  const point=preview.worldAt(hiddenBounds.left+(event.clientX-visibleBounds.left),hiddenBounds.top+(event.clientY-visibleBounds.top));if(!point)return;
-  spawn={x:point.x,z:point.z,heading:suggestedSpawnHeading(point.x,point.z,frame.heading)};refreshSpawnControls();draw();
- });
  canvas.addEventListener('wheel',event=>{
   if(!spawn||!preview)return;
   const visibleBounds=canvas.getBoundingClientRect(),p=preview.projectWorld(spawn.x,spawn.z);if(!p)return;
@@ -273,6 +282,6 @@ export function installDesktopRaceMap(assets:Assets){
  window.addEventListener('keydown',onKey,true);
 
  return ()=>{
-  disposed=true;resizeObserver.disconnect();preview?.close();window.removeEventListener(RACE_MAP_FRAME_EVENT,onFrame as EventListener);window.removeEventListener(RACE_MAP_CLEAR_EVENT,onClear);window.removeEventListener('keydown',onKey,true);map3d.remove();root.remove();
+  disposed=true;resizeObserver.disconnect();preview?.close();window.removeEventListener(RACE_MAP_FRAME_EVENT,onFrame as EventListener);window.removeEventListener(RACE_MAP_CLEAR_EVENT,onClear);window.removeEventListener('keydown',onKey,true);window.removeEventListener('pointerup',finishSpawnDrag,true);map3d.remove();root.remove();
  };
 }
