@@ -1,4 +1,6 @@
 export const ENHANCED_TEXTURES_KEY='playstunts-dx-enhanced-textures';
+export const ENHANCED_BACKGROUND_KEY='playstunts-dx-enhanced-background';
+export const ENHANCED_COCKPIT_KEY='playstunts-dx-enhanced-cockpit';
 export const ENHANCED_TEXTURES_EVENT='playstunts-dx-enhanced-textures-changed';
 
 let upgradedRaceModule:Promise<unknown>|undefined;
@@ -22,20 +24,47 @@ function preloadUpgradedRaceModule(){
  * fall back to the original extracted asset, so an empty hires folder is safe.
  * The public browser build keeps its existing original-asset behavior.
  */
-export function enhancedTexturesEnabled(){
+function storedTextureFlag(key:string){
+ const explicit=window.localStorage.getItem(key);
+ const saved=explicit??window.localStorage.getItem(ENHANCED_TEXTURES_KEY);
+ return saved!=='off'&&saved!=='0'&&saved!=='false';
+}
+
+export function enhancedBackgroundEnabled(){
  if(!isDesktopDx())return false;
- const saved=window.localStorage.getItem(ENHANCED_TEXTURES_KEY);
- const enabled=saved!=='off'&&saved!=='0'&&saved!=='false';
- // Warm the dynamically loaded driving presentation while the user is still
- // in the menu. When a race starts the current menu frame can remain on screen
- // until the upgraded renderer is ready instead of exposing a native frame.
+ const enabled=storedTextureFlag(ENHANCED_BACKGROUND_KEY);
  if(enabled)preloadUpgradedRaceModule();
  return enabled;
 }
 
+export function enhancedCockpitEnabled(){
+ if(!isDesktopDx())return false;
+ const enabled=storedTextureFlag(ENHANCED_COCKPIT_KEY);
+ if(enabled)preloadUpgradedRaceModule();
+ return enabled;
+}
+
+/** Legacy aggregate retained for callers outside the split settings UI. */
+export function enhancedTexturesEnabled(){
+ return enhancedBackgroundEnabled()||enhancedCockpitEnabled();
+}
+
+function setTextureFlag(key:string,enabled:boolean){
+ if(!isDesktopDx())return;
+ window.localStorage.setItem(key,enabled?'on':'off');
+ if(enabled)preloadUpgradedRaceModule();
+ window.dispatchEvent(new Event(ENHANCED_TEXTURES_EVENT));
+}
+
+export function setEnhancedBackgroundEnabled(enabled:boolean){setTextureFlag(ENHANCED_BACKGROUND_KEY,enabled);}
+export function setEnhancedCockpitEnabled(enabled:boolean){setTextureFlag(ENHANCED_COCKPIT_KEY,enabled);}
+
+/** Legacy setter keeps both split controls in sync for older callers. */
 export function setEnhancedTexturesEnabled(enabled:boolean){
  if(!isDesktopDx())return;
  window.localStorage.setItem(ENHANCED_TEXTURES_KEY,enabled?'on':'off');
+ window.localStorage.setItem(ENHANCED_BACKGROUND_KEY,enabled?'on':'off');
+ window.localStorage.setItem(ENHANCED_COCKPIT_KEY,enabled?'on':'off');
  if(enabled)preloadUpgradedRaceModule();
  window.dispatchEvent(new Event(ENHANCED_TEXTURES_EVENT));
 }
