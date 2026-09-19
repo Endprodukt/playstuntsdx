@@ -161,17 +161,18 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
 
  const clearRoot=(root:THREE.Group)=>{while(root.children.length){const child=root.children[root.children.length-1];root.remove(child);disposeObject(child);}};
  const flatTerrain=(source:BlissTrack)=>{
-  const grass:number[]=[],water:number[]=[];
+  const grass:number[]=[],hillGrass:number[]=[],water:number[]=[];
   const cell=(target:number[],x:number,y:number,h:number)=>{
    const row=29-y,x0=x*1024,x1=x0+1024,z0=row*1024,z1=z0+1024;
    target.push(x0,h,z0,x1,h,z0,x1,h,z1,x0,h,z0,x1,h,z1,x0,h,z1);
   };
   for(let y=0;y<30;y++)for(let x=0;x<30;x++){
    const terrain=source.terrain[y*30+x];
-   // Any non-water terrain can contain transparent/gapped geometry and the
-   // regular preview relies on the global grass plane showing through it.
-   // Recreate that support per cell so hiding Ground never creates black holes.
-   if(terrain===0||terrain>=6)cell(grass,x,y,-1);
+   if(terrain===0)cell(grass,x,y,-1);
+   // Hill/slope meshes intentionally leave triangular gaps. In the normal
+   // preview those gaps visually belong to the raised light-grass terrain,
+   // not the dark ground plane. Keep a separate bright support underneath.
+   if(terrain>=6)cell(hillGrass,x,y,-1);
    if(terrain>=1&&terrain<=5)cell(water,x,y,-2);
   }
   const add=(vertices:number[],colour:number,order:number)=>{
@@ -182,6 +183,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   };
   add(water,0x0080d0,-.6);
   add(grass,0x466f35,-.5);
+  add(hillGrass,0x7fdf7b,-.45);
  };
  const applyLayers=()=>{
   base.visible=layerState.ground;terrainRoot.visible=layerState.terrain;trackRoot.visible=layerState.track;buildingsRoot.visible=layerState.buildings;itemsRoot.visible=layerState.items;
