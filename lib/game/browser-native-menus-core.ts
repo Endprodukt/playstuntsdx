@@ -69,7 +69,7 @@ type ScreenResources=NativeEditorHost['screenResources'];
 type RouteResources=NativeEditorHost['routeResources'];
 export interface BrowserNativeMenuOptions {
  graphics?:BrowserGraphicsSwitch;canvas:HTMLCanvasElement;assets:Assets;music:Awaited<ReturnType<typeof createNativeMusic>>;
- settings?:NativeOptionsHost['settings'];signal?:AbortSignal;displayMode?:NativeBrowserDisplayMode;hercules?:boolean;configuration?:number[];track?:NativeTrackMenuHost['track'];onScreen?:(screen:string)=>void;
+ settings?:NativeOptionsHost['settings'];signal?:AbortSignal;audioContext?:AudioContext;displayMode?:NativeBrowserDisplayMode;hercules?:boolean;configuration?:number[];track?:NativeTrackMenuHost['track'];onScreen?:(screen:string)=>void;
 }
 /** Browser services for the native menus. The caller handles intro/race/exit
  * transitions; all submenus use the same live configuration and file overlay. */
@@ -185,21 +185,30 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     persistTrackShot:(filename:string,bytes:Uint8Array)=>tauriCore.invoke<string>('write_track_shot',{filename,data:Array.from(bytes)}),
     fetchUrl:(url:string)=>tauriCore.invoke<number[]>('bliss_http_get',{url}).then(bytes=>Uint8Array.from(bytes)),
    }:{};
-   const activeCustomAudio=Array.from(document.querySelectorAll<HTMLAudioElement>('audio')).filter(audio=>!audio.paused&&!audio.ended&&audio.currentSrc);
-   const customAudioState=activeCustomAudio.map(audio=>({audio,wasPaused:audio.paused}));
-   const hasCustomMusic=activeCustomAudio.length>0;
-   let editorMusicMuted=false;
+   const mediaState=Array.from(document.querySelectorAll<HTMLMediaElement>('audio,video')).map(media=>({media,wasPaused:media.paused,currentTime:media.currentTime}));
+   const activeCustomMedia=mediaState.filter(state=>!state.wasPaused&&!state.media.ended&&state.media.currentSrc);
+   const hasCustomMusic=activeCustomMedia.length>0;
+   const audioContext=options.audioContext;
+   const contextWasRunning=audioContext?.state==='running';
+   // Never let the original SLCT score continue underneath an external MP3.
+   // The editor will explicitly restart it only when no custom media owns music.
+   music.stop();
+   let editorMusicMuted=false,nativeEditorMusicPlaying=false;
    const setEditorMusicMuted=(muted:boolean)=>{
     editorMusicMuted=muted;
+    if(muted){
+     nativeEditorMusicPlaying=false;music.stop();
+     for(const {media} of activeCustomMedia)if(!media.paused)media.pause();
+     if(audioContext?.state==='running')void audioContext.suspend().catch(()=>{});
+     return;
+    }
+    if(audioContext&&audioContext.state!=='running')void audioContext.resume().catch(()=>{});
     if(hasCustomMusic){
-     // Custom MP3 owns editor music. Keep the original Stunts menu music muted
-     // so entering the editor can never layer SLCT underneath the MP3.
-     music.setOutputMuted(true);
-     for(const {audio} of customAudioState){
-      if(muted){if(!audio.paused)audio.pause();}
-      else if(audio.paused)void audio.play().catch(()=>{});
-     }
-    }else music.setOutputMuted(muted);
+     music.stop();
+     for(const {media} of activeCustomMedia)if(media.paused)void media.play().catch(()=>{});
+    }else if(!nativeEditorMusicPlaying){
+     nativeEditorMusicPlaying=true;music.play('slct');
+    }
    };
    try{
     await runBrowserBlissEditor({
@@ -212,13 +221,13 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
      enumerateTracks:()=>host.enumerate('','.trk'),readTrack:editor.readTrack,...customTracks,
     });
    }finally{
-    // Restore the normal menu music path after the editor. BrowserBlissEditor
-    // has already unmuted its selected source; make sure custom mode does not
-    // leave the original WebAudio path muted outside the editor.
-    if(hasCustomMusic){
-     music.setOutputMuted(false);
-     if(editorMusicMuted)for(const {audio} of customAudioState)if(audio.paused)void audio.play().catch(()=>{});
+    if(audioContext&&contextWasRunning&&audioContext.state!=='running')void audioContext.resume().catch(()=>{});
+    for(const state of mediaState){
+     if(!state.wasPaused&&state.media.paused)void state.media.play().catch(()=>{});
+     else if(state.wasPaused&&!state.media.paused)state.media.pause();
     }
+    // Return to the same menu-music family that owned audio before the editor.
+    if(hasCustomMusic)music.stop();else music.play('slct');
    }
   }finally{input.setActive(true);await input.release();}
  };
