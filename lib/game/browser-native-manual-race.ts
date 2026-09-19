@@ -14,6 +14,32 @@ import type {createBrowserNativeMenus} from './browser-native-menus.ts';
 import type {NativeDemoData,NativeDemoMenuState} from './native-demo-runtime.ts';
 import type {RaceSpawn} from './race-spawn.ts';
 type Menus=Awaited<ReturnType<typeof createBrowserNativeMenus>>;
+
+function confirmBackToEditorDialog(){
+ return new Promise<boolean>(resolve=>{
+  const shade=document.createElement('div');shade.tabIndex=-1;
+  shade.style.cssText='position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.16);';
+  const box=document.createElement('div');
+  box.style.cssText='position:absolute;left:50%;top:70%;transform:translate(-50%,-50%);min-width:330px;background:#171717;border:1px solid #666;border-radius:7px;box-shadow:0 18px 55px rgba(0,0,0,.75);padding:16px 18px 14px;color:#eee;font:13px/1.35 system-ui,Segoe UI,sans-serif;';
+  const title=document.createElement('div');title.textContent='Back to Editor?';title.style.cssText='font-size:16px;font-weight:650;margin-bottom:6px;color:#f2f2f2;';
+  const text=document.createElement('div');text.textContent='Return to the Track Editor and leave this test run?';text.style.cssText='color:#bdbdbd;margin-bottom:14px;';
+  const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:flex-end;gap:8px;';
+  const make=(label:string,value:boolean)=>{
+   const b=document.createElement('button');b.type='button';b.textContent=label;
+   b.style.cssText='min-width:76px;border:1px solid #555;background:#232323;color:#eee;border-radius:4px;padding:7px 12px;cursor:pointer;font:12px/1.1 system-ui,Segoe UI,sans-serif;';
+   b.addEventListener('click',()=>finish(value));return b;
+  };
+  const yes=make('Yes',true),no=make('No',false);yes.style.background='#4e5b2b';yes.style.borderColor='#9fb454';
+  const finish=(value:boolean)=>{window.removeEventListener('keydown',onKey,true);shade.remove();resolve(value);};
+  const onKey=(event:KeyboardEvent)=>{
+   if(event.code==='Escape'){event.preventDefault();event.stopPropagation();finish(false);return;}
+   if(event.code==='Enter'){event.preventDefault();event.stopPropagation();finish(document.activeElement!==no);return;}
+   if(event.code==='ArrowLeft'||event.code==='ArrowRight'){event.preventDefault();event.stopPropagation();(document.activeElement===yes?no:yes).focus();}
+  };
+  actions.append(yes,no);box.append(title,text,actions);shade.append(box);document.body.append(shade);
+  window.addEventListener('keydown',onKey,true);requestAnimationFrame(()=>yes.focus());
+ });
+}
 /** Original manual race/results repetition, retaining one recording bank,
  * saved menu state and browser OPL stream until the player returns to menus. */
 export async function runBrowserNativeManualRace(options:{context:AudioContext;data:NativeDemoData;menus:Menus;menu:NativeDemoMenuState&{mouse?:boolean;joystick?:boolean};spawn?:RaceSpawn;editorTest?:boolean;signal:AbortSignal;displayMode?:NativeBrowserDisplayMode;hercules?:boolean;mt32Output?:Mt32StereoOutput;replay?:NativeSelectedReplay;stopMusic():void;onStage?:(stage:'loading'|'race'|'results'|'seeking')=>void;onFrame?:(frame:number,mode:number,clock:number,blocked:number)=>void}){
@@ -56,7 +82,7 @@ export async function runBrowserNativeManualRace(options:{context:AudioContext;d
   presentation=await preparePresentation();
   for(;;){
    options.onStage?.('race');
-   runtime=await runBrowserAllocatedRaceLoop(runtime,menus,presentation,audio,{signal,showWaiting,onFrame:options.onFrame,editorTest:options.editorTest,confirmBackToEditor:async()=>window.confirm('Back to Editor?'),
+   runtime=await runBrowserAllocatedRaceLoop(runtime,menus,presentation,audio,{signal,showWaiting,onFrame:options.onFrame,editorTest:options.editorTest,confirmBackToEditor:confirmBackToEditorDialog,
     async loadReplay(before){
      const loaded=await menus.loadAllocatedRaceReplay(data,before,{showWaiting,progress,writeAudio:audio!.write},presentation);aborted();
      if(!loaded)return;runtime=loaded;presentation=await preparePresentation();return {runtime,presentation};
