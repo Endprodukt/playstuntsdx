@@ -62,7 +62,7 @@ export function createEnhancedTrackMenuPresentation(options:{
   rect(bounds.x,bounds.y,bounds.w,bounds.h,over?'#5b6330':'#232323',over?'#b4c35a':'#555',4,over?1.5:1);
   label(caption,bounds.x+bounds.w/2,bounds.y+bounds.h/2+.2,7,over?'#fff':'#e8e8e8',600,'center');
  };
- const mouseIcon=(x:number,y:number,kind:'left'|'right'|'wheel',scale=.72)=>{
+ const mouseIcon=(x:number,y:number,kind:'left'|'right'|'wheel',scale=.52)=>{
   const X=x*sx(),Y=y*sy(),S=Math.min(sx(),sy())*scale;
   ctx.save();ctx.translate(X,Y);ctx.scale(S,S);
   ctx.lineWidth=1.5;ctx.strokeStyle='#b8b8b8';ctx.fillStyle='#b8b8b8';ctx.lineJoin='round';ctx.lineCap='round';
@@ -128,14 +128,14 @@ export function createEnhancedTrackMenuPresentation(options:{
    label('HIGH SCORE',239,96,7,'#aaa',700);label('No record yet',239,108,6,'#777');
   }
   // Preview controls belong to the 3D viewport, not Track Info.
-  rect(previewRect.x+4,previewRect.y+previewRect.h-18,previewRect.w-8,14,'rgba(8,8,8,.72)','rgba(90,90,90,.55)',3,.6);
-  const controlsY=previewRect.y+previewRect.h-11;
-  mouseIcon(previewRect.x+18,controlsY,'left');
-  label('Orbit',previewRect.x+27,controlsY,4.2,'#b7b7b7',500);
-  mouseIcon(previewRect.x+72,controlsY,'right');
-  label('Pan',previewRect.x+81,controlsY,4.2,'#b7b7b7',500);
-  mouseIcon(previewRect.x+118,controlsY,'wheel');
-  label('Zoom',previewRect.x+127,controlsY,4.2,'#b7b7b7',500);
+  rect(previewRect.x+4,previewRect.y+previewRect.h-14,previewRect.w-8,10,'rgba(8,8,8,.68)','rgba(90,90,90,.5)',3,.5);
+  const controlsY=previewRect.y+previewRect.h-9;
+  mouseIcon(previewRect.x+22,controlsY,'left');
+  label('Orbit',previewRect.x+29,controlsY,3.8,'#b7b7b7',500);
+  mouseIcon(previewRect.x+78,controlsY,'right');
+  label('Pan',previewRect.x+85,controlsY,3.8,'#b7b7b7',500);
+  mouseIcon(previewRect.x+128,controlsY,'wheel');
+  label('Zoom',previewRect.x+135,controlsY,3.8,'#b7b7b7',500);
   button(doneButton,'DONE','done');
 
   if(dropdownOpen)drawDropdown();
