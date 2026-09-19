@@ -20,7 +20,7 @@ export function createEnhancedCarMenuPresentation(options:{
  const dummy=new Uint8Array(65536);let showroom:ReturnType<typeof createUpgradedCarMenu>|undefined,previewError='';
  let cars:readonly NativeMenuCar[]=[],selected=0,dropdownOpen=false,dropdownStart=0,hover:ModernCarMenuAction={type:'none'};
  let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,renderer:ReturnType<typeof createOriginalCarMenuModel>|undefined;
- let modelMemory:Uint8Array|undefined,signature='',closed=false,frame=0,started=performance.now();
+ let modelMemory:Uint8Array|undefined,signature='',closed=false;
 
  const sx=()=>canvas.width/320,sy=()=>canvas.height/200;
  const rect=(x:number,y:number,w:number,h:number,fill:string,stroke='#3b3b3b',radius=5,lineWidth=1)=>{
@@ -68,8 +68,6 @@ export function createEnhancedCarMenuPresentation(options:{
   if(previewError)label('PREVIEW UNAVAILABLE',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,6,'#a77',600,'center');
   else if(renderer&&modelMemory){
    try{
-    const angle=Math.floor(((performance.now()-started)*0.018))&65535;
-    renderer.render(dummy,angle,currentPaint);
     showroom??=createUpgradedCarMenu(options.palette,options.materialIndices);
     const rendered=showroom.draw(modelMemory,Math.max(2,Math.round(previewRect.w*sx()*2)),Math.max(2,Math.round(previewRect.h*sy()*2)));
     ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
@@ -99,7 +97,7 @@ export function createEnhancedCarMenuPresentation(options:{
   ctx.restore();
  };
 
- const animate=()=>{if(closed)return;render();frame=requestAnimationFrame(animate);};frame=requestAnimationFrame(animate);
+ render();
 
  return {
   setCars(next,nextSelected,open){cars=next;selected=Math.max(0,Math.min(Math.max(0,cars.length-1),nextSelected));dropdownOpen=open;updateDropdownStart();},
@@ -139,13 +137,13 @@ export function createEnhancedCarMenuPresentation(options:{
    if(inside(doneButton))return {type:'done'};
    return {type:'none'};
   },
-  hoverAt(event){hover=this.actionAt(event);render();},
+  hoverAt(event){const next=this.actionAt(event);if(JSON.stringify(next)!==JSON.stringify(hover)){hover=next;render();}},
   clearHover(){hover={type:'none'};render();},
   scrollDropdown(delta){
    if(!dropdownOpen||cars.length<=dropdownRows)return false;
    const maxStart=Math.max(0,cars.length-dropdownRows);dropdownStart=Math.max(0,Math.min(maxStart,dropdownStart+(delta>0?1:-1)));render();return true;
   },
   render,
-  close(){closed=true;cancelAnimationFrame(frame);showroom?.close();showroom=undefined;renderer=undefined;modelMemory=undefined;}
+  close(){closed=true;showroom?.close();showroom=undefined;renderer=undefined;modelMemory=undefined;}
  };
 }
