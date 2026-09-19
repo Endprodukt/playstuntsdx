@@ -39,8 +39,8 @@ import {runNativeMenuCoordinator} from './native-menu-coordinator.ts';
 import {runNativeMainMenuSelection} from './native-main-menu.ts';
 import {restoreOriginalMainMenuPixels} from './main-menu-raster.ts';
 import {originalMainMenuBounds} from './main-menu-hit.ts';
-import {ENHANCED_TEXTURES_EVENT,enhancedTexturesEnabled} from './enhanced-textures.ts';
-import {ENHANCED_FOV_EVENT} from './enhanced-view-settings.ts';
+import {ENHANCED_TEXTURES_EVENT,enhancedBackgroundEnabled} from './enhanced-textures.ts';
+import {ENHANCED_FOV_EVENT,enhancedRaceAspect} from './enhanced-view-settings.ts';
 import {runNativeCarMenu,type NativeCarMenuHost,type NativeMenuCar} from './native-car-runtime.ts';
 import {createEnhancedCarMenuPresentation} from './enhanced-car-menu-presentation.ts';
 import {runModernCarMenu,type ModernCarMenuAction,type ModernCarMenuHost} from './modern-car-menu-runtime.ts';
@@ -85,8 +85,8 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  ]);
 
  const mainMenuArt=await binary('main-menu-art.bin');
- const highResMainMenu=new Image();let highResMainMenuReady=false,enhancedTextures=enhancedTexturesEnabled();
- const syncEnhancedTextures=()=>{enhancedTextures=enhancedTexturesEnabled();options.graphics?.refresh?.();};
+ const highResMainMenu=new Image();let highResMainMenuReady=false,enhancedTextures=enhancedBackgroundEnabled();
+ const syncEnhancedTextures=()=>{enhancedTextures=enhancedBackgroundEnabled();options.graphics?.refresh?.();};
  window.addEventListener(ENHANCED_TEXTURES_EVENT,syncEnhancedTextures);
  const syncEnhancedFov=()=>options.graphics?.refresh?.();window.addEventListener(ENHANCED_FOV_EVENT,syncEnhancedFov);
  highResMainMenu.decoding='async';
@@ -482,9 +482,11 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
      presentSource();
      if(graphics?.enabled&&upgraded&&!failed){
       try{if(upgraded.draw(canvas)){
-       const [left,right,top,bottom]=bounds,sx=canvas.width/320,sy=canvas.height/200;
+       const [left,right,top,bottom]=bounds,sy=canvas.height/200;
+       const displayAspect=enhancedRaceAspect(),wideFactor=Math.max(1,displayAspect/(4/3));
+       const nativeWidth=canvas.width/wideFactor,nativeX=(canvas.width-nativeWidth)/2,sx=nativeWidth/320;
        context.imageSmoothingEnabled=false;
-       context.drawImage(surface,left,top,right-left,bottom-top,left*sx,top*sy,(right-left)*sx,(bottom-top)*sy);
+       context.drawImage(surface,left,top,right-left,bottom-top,nativeX+left*sx,top*sy,(right-left)*sx,(bottom-top)*sy);
       }}catch{failed=true;paint();}
      }
      dialogRefresh=redraw;if(graphics)graphics.refresh=redraw;
