@@ -45,9 +45,13 @@ export function createRaceAudio(before:RaceAudioState,resources:LoadedEffectReso
   start(handle:number){const car=carAt(handle);return apply(handle,startEngineRuntime({...state,car},instrumentAt(car,handle)));},
   patchEngineInstrument(handle:number){
    const car=carAt(handle),instrument=instrumentAt(car,handle),writes:number[][]=[];
-   // Reprogram only voices already owned by this car. Do not restart the
-   // engine/timer state: the native race startup already did that correctly.
-   for(let i=1;i<state.voices.length;i++)if(state.voices[i][0]===handle)writes.push(...adlibInstrument(Array.from(instrument),i-1));
+   // The engine start stores the allocated hardware voice index directly in
+   // the car record at +0x12. Use that instead of guessing from voice.owner.
+   const carView=new DataView(car.buffer,car.byteOffset,car.byteLength),voiceIndex=carView.getUint16(0x12,true);
+   const voice=state.voices[voiceIndex];
+   if(!voice)return writes;
+   const logicalChannel=voice[0x2c],channel=logicalChannel-1;
+   if(channel>=0&&channel<=8)writes.push(...adlibInstrument(Array.from(instrument),channel,state.timers[handle]));
    return writes;
   },
   impacts(handle:number,flags:number,active:boolean){return apply(handle,impactAudioRuntime({...state,car:carAt(handle)},flags,active,runtimeResources,enabled,master));},
