@@ -11,11 +11,11 @@ const dropdownRowHeight=15,dropdownRows=8;
 export function createEnhancedCarMenuPresentation(options:{
  canvas:HTMLCanvasElement;
  palette:number[];
- preview:(car:NativeMenuCar,paint:number)=>Promise<{canvas:HTMLCanvasElement;paintCount:number}|null>;
+ preview:(car:NativeMenuCar,paint:number)=>Promise<{canvas:HTMLCanvasElement;paintCount:number;render(angle:number):void}|null>;
 }):ModernCarMenuPresentation{
  const {canvas}=options,ctx=canvas.getContext('2d')!;
  let cars:readonly NativeMenuCar[]=[],selected=0,dropdownOpen=false,dropdownStart=0,hover:ModernCarMenuAction={type:'none'};
- let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,closed=false,previewCanvas:HTMLCanvasElement|undefined,previewError=false;
+ let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,closed=false,previewCanvas:HTMLCanvasElement|undefined,previewError=false,previewRender:((angle:number)=>void)|undefined,animation=0,lastAnimation=0,rotationStarted=performance.now();
 
  const sx=()=>canvas.width/320,sy=()=>canvas.height/200;
  const rect=(x:number,y:number,w:number,h:number,fill:string,stroke='#3b3b3b',radius=5,lineWidth=1)=>{
@@ -160,15 +160,25 @@ export function createEnhancedCarMenuPresentation(options:{
   ctx.restore();
  };
 
+ const animate=(now:number)=>{
+  if(closed)return;
+  if(previewRender&&now-lastAnimation>=33){
+   lastAnimation=now;
+   const angle=Math.floor(((now-rotationStarted)*1024/12000))&1023;
+   try{previewRender(angle);render();}catch(reason){previewRender=undefined;previewError=true;console.error('[Modern Car Select] Rotation failed:',reason);render();}
+  }
+  animation=requestAnimationFrame(animate);
+ };
+ animation=requestAnimationFrame(animate);
  render();
 
  return {
   setCars(next,nextSelected,open){cars=next;selected=Math.max(0,Math.min(Math.max(0,cars.length-1),nextSelected));dropdownOpen=open;updateDropdownStart();},
   async draw(car,transmission,paint){
-   current=car;currentTransmission=transmission;currentPaint=paint;previewCanvas=undefined;previewError=false;render();
+   current=car;currentTransmission=transmission;currentPaint=paint;previewCanvas=undefined;previewRender=undefined;previewError=false;rotationStarted=performance.now();render();
    try{
     const preview=await options.preview(car,paint);
-    if(preview){previewCanvas=preview.canvas;paintCount=Math.max(1,preview.paintCount|0);}
+    if(preview){previewCanvas=preview.canvas;previewRender=preview.render;paintCount=Math.max(1,preview.paintCount|0);preview.render(0);}
     else{previewError=true;paintCount=1;}
    }catch(reason){
     previewError=true;paintCount=1;console.error('[Modern Car Select] High-res preview failed:',reason);
@@ -199,6 +209,6 @@ export function createEnhancedCarMenuPresentation(options:{
    const maxStart=Math.max(0,cars.length-dropdownRows);dropdownStart=Math.max(0,Math.min(maxStart,dropdownStart+(delta>0?1:-1)));render();return true;
   },
   render,
-  close(){closed=true;}
+  close(){closed=true;cancelAnimationFrame(animation);previewRender=undefined;}
  };
 }
