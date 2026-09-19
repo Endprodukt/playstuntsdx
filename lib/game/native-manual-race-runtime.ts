@@ -14,6 +14,7 @@ import {advanceAllocatedRace,type AllocatedRaceDevices} from './advance-allocate
 import {createNativeOriginalRenderer} from './native-original-renderer.ts';
 import {prepareOriginalRaceViewport} from './race-viewport.ts';
 import {analyzeRoute} from '../physics/route-analysis.ts';
+import {adlibInstrument} from './adlib.ts';
 /** Native manual simulation/audio clock. The browser owns complete cockpit,
  * replay/results presentation and the asynchronous iteration-end services. */
 export async function createNativeManualRaceRuntime(...args:Parameters<typeof createNativeManualRaceSession>){
@@ -36,18 +37,23 @@ function attachManualRaceRuntime(data:Parameters<typeof createNativeManualRaceSe
   attach(0x8fc2,0x8016);
   if(memory[d+0x8fc8])attach(0x8fc9,0x86de);
  }
- let audio=createNativeAllocatedSound(()=>session.state.memory,d,0x39e1,data.soundDevice,engineOverrides);
- let engineOverrideWrites:number[][]=[];
- if(engineOverrides.size){
-  try{
-   engineOverrideWrites=[...engineOverrides.keys()].flatMap(handle=>audio.patchEngineInstrument(handle));
-  }catch(reason){
-   console.error('[Sound Mod] Engine patch failed; using original engine instruments.',reason);
-   engineOverrides.clear();
-   audio=createNativeAllocatedSound(()=>session.state.memory,d,0x39e1,data.soundDevice);
-   engineOverrideWrites=[];
+ const audio=createNativeAllocatedSound(()=>session.state.memory,d,0x39e1,data.soundDevice);
+ const patchedVoiceInstrument=new Map<number,string>();
+ const liveEnginePatchWrites=()=>{
+  if(!engineOverrides.size)return [] as number[][];
+  const memory=session.state.memory,writes:number[][]=[];
+  for(let voice=1;voice<10;voice++){
+   const owner=memory[d+0xa036+voice*46],instrument=engineOverrides.get(owner);
+   if(!instrument)continue;
+   const signature=owner+':'+Array.from(instrument.slice(0,8)).join(',');
+   if(patchedVoiceInstrument.get(voice)===signature)continue;
+   patchedVoiceInstrument.set(voice,signature);
+   writes.push(...adlibInstrument(Array.from(instrument),voice-1));
+   console.info('[Sound Mod] Patched live engine voice',{handle:owner,voice:voice-1});
   }
- }
+  return writes;
+ };
+ const engineOverrideWrites=liveEnginePatchWrites();
  const renderer=createNativeOriginalRenderer(session.state.memory,prepared.raw,analyzeRoute(prepared.raw,data.records,data.vectors,data.samples,data.objects,undefined,{sample:false}),{allocatedResources:true,originalViewport:true,originalCameras:{objects:data.objects,planes:data.planes}});
  let captureGraphics=false;
  let graphicsSource:Uint8Array|undefined,graphicsLive:Uint8Array|undefined,graphicsMask:Uint8Array|undefined,graphicsRevision=0,graphicsKey='',hasPendingGraphics=false;
@@ -64,7 +70,11 @@ function attachManualRaceRuntime(data:Parameters<typeof createNativeManualRaceSe
   drawReplayWait(){if(display){if(!displayRendered)throw Error('Replay seeking requires the retained race framebuffer');display.drawReplayWait();return;}if(!rendering)throw Error('Replay seeking requires the retained race framebuffer');drawOriginalReplayWait(rendering,d);},
   dialogAudio(operation:'pause-audio'|'resume-audio'){return controlNativeAllocatedDialogSound(session.state.memory,d,0x39e1,operation,data.soundDevice);},
   get pixels(){if(display){if(!displayRendered)throw Error('No manual race frame has been rendered');return display.pixels();}if(!rendering)throw Error('No manual race frame has been rendered');return rendering.subarray(0xa0000,0xa0000+64000);},
-  tick(devices:AllocatedRaceDevices){if(finished){advanceOriginalHardwareClock(session.state.memory,d);return [] as number[][];}return advanceAllocatedRace(session,audio,devices,{entryStackPointer:bp-0x1c,incomingSI:0});},
+  tick(devices:AllocatedRaceDevices){
+   if(finished){advanceOriginalHardwareClock(session.state.memory,d);return [] as number[][];}
+   const writes=advanceAllocatedRace(session,audio,devices,{entryStackPointer:bp-0x1c,incomingSI:0});
+   return [...writes,...liveEnginePatchWrites()];
+  },
   renderWorld(){prepareOriginalRaceViewport(session.state.memory,d,bp);return renderer.render(session.state.memory);},
   renderCockpitWorld(){prepareOriginalRaceViewport(session.state.memory,d,bp);if(display){if(captureGraphics){pendingGraphics.set(session.state.memory);hasPendingGraphics=true;}const pixels=display.render(session.state.memory);displayRendered=true;return pixels;}return renderer.render(session.state.memory,undefined,undefined,undefined,captureGraphics,(memory,world)=>{rendering=memory;if(captureGraphics){graphicsSource??=new Uint8Array(memory.length);graphicsLive??=new Uint8Array(session.state.memory.length);graphicsSource.set(memory);graphicsLive.set(session.state.memory);const key=nextGraphicsKey(session.state.memory);if(key!==graphicsKey){graphicsKey=key;graphicsMask=undefined;graphicsRevision++;}}drawNativeFullRedrawRaceLayers(memory,session.state.memory,d,bp,world);});},
   finishRenderedFrame(){return session.finishRenderedFrame({key:()=>0,controls:()=>0});},
