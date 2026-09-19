@@ -359,7 +359,16 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
     if(!best||distance<best.distance)best={x:px,z:pz,heading:normalizeRaceHeading(-Math.atan2(dx,dz)*512/Math.PI),distance};
    }
   }
-  const threshold=alreadySnapped?950:560;
+  // While editing, the route can be temporarily incomplete. Fall back to any
+  // actual drivable track tile so snapping still works before the circuit is
+  // fully valid.
+  for(let y=0;y<30;y++)for(let xCell=0;xCell<30;xCell++){
+   const code=core.track.track[y*30+xCell]??0,data=blissElementData[code];
+   if(!data||!data.ctype.some(Boolean))continue;
+   const px=(xCell+.5)*1024,pz=(29-y+.5)*1024,distance=Math.hypot(x-px,z-pz);
+   if(!best||distance<best.distance)best={x:px,z:pz,heading:normalizeRaceHeading(fallback),distance};
+  }
+  const threshold=alreadySnapped?950:620;
   return best&&best.distance<=threshold?{x:best.x,z:best.z,heading:best.heading,snapped:true}:{x,z,heading:normalizeRaceHeading(fallback),snapped:false};
  };
  const suggestedSpawnHeading=(x:number,z:number)=>roadSnap(x,z,0,false).heading;
@@ -382,8 +391,8 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  for(const control of [zoomOut,zoomReset,zoomIn,zoomFit])control.style.padding='4px 8px';
  const spawnTool=document.createElement('button');spawnTool.type='button';spawnTool.draggable=false;spawnTool.title='Drag onto the map to choose a test start';spawnTool.innerHTML='<svg viewBox="0 0 20 24" width="14" height="17" aria-hidden="true"><circle cx="10" cy="4" r="3" fill="#e6b94a"/><path d="M7 8h6l2 6-2 1-1-4v11H9v-7H7v7H4V11l-1 4-2-1 2-6z" fill="#e6b94a"/></svg>';
  spawnTool.style.cssText='border:1px solid #665a32;background:#262116;color:#eee;border-radius:4px;padding:3px 7px;cursor:grab;';
- const spawnLeft=button('↶',()=>{if(testSpawn){testSpawn.heading=normalizeRaceHeading(testSpawn.heading-32);renderMap();}});
- const spawnRight=button('↷',()=>{if(testSpawn){testSpawn.heading=normalizeRaceHeading(testSpawn.heading+32);renderMap();}});
+ const spawnLeft=button('↶',()=>{if(testSpawn){testSpawn.heading=normalizeRaceHeading(testSpawn.heading-32);renderMap();editor3D?.render();}});
+ const spawnRight=button('↷',()=>{if(testSpawn){testSpawn.heading=normalizeRaceHeading(testSpawn.heading+32);renderMap();editor3D?.render();}});
  const cars=[...(host.analysisCars??[])].sort((a,b)=>a.name.localeCompare(b.name));
  const testCar=document.createElement('select');testCar.title='Car used by Test from here';testCar.setAttribute('aria-label','Test car');
  testCar.style.cssText='border:1px solid #555;background:#202020;color:#eee;border-radius:4px;padding:4px 7px;font:11px/1.1 system-ui,Segoe UI,sans-serif;max-width:150px;';
@@ -439,11 +448,14 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  window.addEventListener('pointerup',finishSpawnDrag,true);
  zoomBar.append(viewSwitch,zoomOut,zoomReset,zoomIn,zoomFit,testCarLabel,spawnTool,spawnLeft,spawnRight,testHere);
  const mapWrap=document.createElement('div');mapWrap.style.cssText='min-height:0;min-width:0;display:grid;place-items:center;overflow:auto;background:#050505;border-radius:4px;position:relative;';
+ const spawn3DMarker=document.createElement('div');
+ spawn3DMarker.style.cssText='position:absolute;display:none;z-index:8;pointer-events:none;width:34px;height:46px;transform:translate(-50%,-82%);filter:drop-shadow(0 2px 3px #000);';
+ spawn3DMarker.innerHTML='<svg viewBox="0 0 34 46" width="34" height="46"><path d="M17 1v17m0-17-6 7m6-7 6 7" fill="none" stroke="#ffca3a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="17" cy="23" r="4.5" fill="#ffca3a"/><path d="M13 28h8l3 8-3 1-2-5v13h-4v-9h-3v9H8V32l-2 5-3-1 3-8z" fill="#ffca3a"/></svg>';
  const map=document.createElement('canvas');map.width=BLISS_ORIGINAL_MAP_SIZE;map.height=BLISS_ORIGINAL_MAP_SIZE;map.style.cssText='grid-area:1/1;display:block;image-rendering:pixelated;width:480px;height:480px;max-width:none;max-height:none;cursor:crosshair;box-shadow:0 0 0 1px #333;flex:none;';
  const map3D=document.createElement('canvas');map3D.style.cssText='grid-area:1/1;display:none;width:100%;height:100%;min-width:0;min-height:320px;align-self:stretch;justify-self:stretch;cursor:crosshair;background:#111;';
  const setSpawn=(x:number,z:number,heading=suggestedSpawnHeading(x,z))=>{testSpawn={x:Math.max(0,Math.min(30719,x)),z:Math.max(0,Math.min(30719,z)),heading:normalizeRaceHeading(heading)};refreshSpawnControls();renderMap();if(viewMode==='3d')editor3D?.setHover({x:Math.max(0,Math.min(29,Math.floor(testSpawn.x/1024))),y:Math.max(0,Math.min(29,29-Math.floor(testSpawn.z/1024)))});};
 
- mapWrap.append(map,map3D);mapPanel.append(zoomBar,mapWrap);
+ mapWrap.append(map,map3D,spawn3DMarker);mapPanel.append(zoomBar,mapWrap);
 
  const toolsPanel=panel('');
  toolsPanel.querySelector('strong')?.remove();
@@ -706,6 +718,13 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    context.beginPath();context.moveTo(0,-13);context.lineTo(-4,-7);context.lineTo(4,-7);context.closePath();context.fill();
    context.beginPath();context.arc(0,2,4,0,Math.PI*2);context.fill();context.restore();
   }
+  if(viewMode==='3d'&&testSpawn&&editor3D){
+   const projected=editor3D.projectWorld(testSpawn.x,testSpawn.z,120);
+   if(projected){
+    spawn3DMarker.style.display='block';spawn3DMarker.style.left=projected.x+'px';spawn3DMarker.style.top=projected.y+'px';
+    spawn3DMarker.style.rotate=(-testSpawn.heading*360/1024)+'deg';
+   }else spawn3DMarker.style.display='none';
+  }else spawn3DMarker.style.display='none';
  };
  const updateArea=()=>{
   palettePanel.style.boxShadow=activeArea==='palette'?'0 0 0 2px #879341 inset':'none';
