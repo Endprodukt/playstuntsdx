@@ -186,10 +186,17 @@ export function createEnhancedCockpitOverlay(){
    if(gear?.base&&dash){
     const logicalHeight=200-layout.dashboardTop;
     const sourceScaleX=dash.image.naturalWidth/320,sourceScaleY=dash.image.naturalHeight/logicalHeight;
-    const sx0=gear.base.x*sourceScaleX,sy0=(gear.base.y-layout.dashboardTop)*sourceScaleY;
-    const sw=gear.base.width*sourceScaleX,sh=gear.base.height*sourceScaleY;
+    // Restore slightly beyond the animated gearbox rectangle. A hard crop at
+    // x=gear.base.x can expose a one-pixel seam when a 4x nearest-neighbour
+    // cockpit is scaled to the current viewport. The original renderer restores
+    // a backing rectangle, so a small overlap is both safe and more faithful.
+    const bleed=2;
+    const left=Math.max(0,gear.base.x-bleed),top=Math.max(layout.dashboardTop,gear.base.y-bleed);
+    const right=Math.min(320,gear.base.x+gear.base.width+bleed),bottom=Math.min(200,gear.base.y+gear.base.height+bleed);
+    const sx0=left*sourceScaleX,sy0=(top-layout.dashboardTop)*sourceScaleY;
+    const sw=(right-left)*sourceScaleX,sh=(bottom-top)*sourceScaleY;
     const dashScaleX=dash.image.naturalWidth/320,dashScaleY=dash.image.naturalHeight/logicalHeight,exactDashScale=Math.abs(dashScaleX-dashScaleY)<1e-6&&dashScaleX>=1&&Math.abs(dashScaleX-Math.round(dashScaleX))<1e-6;context.imageSmoothingEnabled=dash.enhanced&&!exactDashScale;if(context.imageSmoothingEnabled)context.imageSmoothingQuality='high';
-    context.drawImage(dash.image,sx0,sy0,sw,sh,offsetX+gear.base.x*sx,gear.base.y*sy,gear.base.width*sx,gear.base.height*sy);
+    context.drawImage(dash.image,sx0,sy0,sw,sh,offsetX+left*sx,top*sy,(right-left)*sx,(bottom-top)*sy);
    }
 
    const wheel=cockpitWheel(state.steering),wheelFrame=layout.frames[`whl${wheel.frame+1}`];
