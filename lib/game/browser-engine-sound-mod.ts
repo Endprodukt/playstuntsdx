@@ -22,7 +22,7 @@ function asBytes(value:unknown){
 
 export async function loadConfiguredEngineSoundOverrides(data:NativeDemoData){
  const settings=loadSoundModSettings();
- if(!settings.enabled||data.soundDevice)return undefined;
+ if(data.soundDevice)return undefined;
  const core=tauriCore();if(!core)return undefined;
 
  try{
