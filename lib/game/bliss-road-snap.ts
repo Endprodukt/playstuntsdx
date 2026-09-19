@@ -27,7 +27,7 @@ function addCandidate(
  return !best||candidate.distance<best.distance?candidate:best;
 }
 
-function curvedStepCandidate(x:number,z:number,step:BlissPathTraceStep,travelHint:{x:number;z:number}|undefined){
+function curvedStepCandidate(x:number,z:number,step:BlissPathTraceStep){
  const data=blissElementData[step.code],connections=data?data.ctype.map((value,index)=>value?index:-1).filter(index=>index>=0):[];
  if(connections.length!==2||step.width!==step.height)return undefined;
  const a=connections[0],b=connections[1];
@@ -58,11 +58,7 @@ function curvedStepCandidate(x:number,z:number,step:BlissPathTraceStep,travelHin
   const t0=i/samples,t1=(i+1)/samples;
   const q0={x:cx+Math.cos(start+delta*t0)*radius,z:cz+Math.sin(start+delta*t0)*radius};
   const q1={x:cx+Math.cos(start+delta*t1)*radius,z:cz+Math.sin(start+delta*t1)*radius};
-  let reverse=false;
-  if(travelHint){
-   const sx=q1.x-q0.x,sz=q1.z-q0.z;
-   reverse=sx*travelHint.x+sz*travelHint.z<0;
-  }
+  const reverse=a===step.bearing;
   best=addCandidate(best,x,z,q0.x,q0.z,q1.x,q1.z,reverse);
  }
  return best;
@@ -77,9 +73,8 @@ export function snapToBlissRoad(
  for(const trace of traces){
   const points=trace.steps.map(center);
   for(let i=0;i<trace.steps.length;i++){
-   const current=points[i],next=points[i+1],previous=points[i-1];
-   const hint=next?{x:next.x-current.x,z:next.z-current.z}:previous?{x:current.x-previous.x,z:current.z-previous.z}:undefined;
-   const curve=curvedStepCandidate(x,z,trace.steps[i],hint);
+   const current=points[i],next=points[i+1];
+   const curve=curvedStepCandidate(x,z,trace.steps[i]);
    if(curve&&(!best||curve.distance<best.distance))best=curve;
    if(next)best=addCandidate(best,x,z,current.x,current.z,next.x,next.z,false);
   }
