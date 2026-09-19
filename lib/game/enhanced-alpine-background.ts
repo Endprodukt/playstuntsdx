@@ -12,7 +12,7 @@ export function enhancedPanoramaHorizon(pixels:Uint8Array,ground:number,width=NA
 /** Original DF2A positions the first of four panorama sections at this offset. */
 export function enhancedPanoramaLeft(heading:number){return ((heading+512)&1023)-1024;}
 
-type EnhancedPanoramaOptions={width:number;height:number;heading:number;horizon:number;rotation:number;sky:string;ground:string};
+type EnhancedPanoramaOptions={width:number;height:number;aspect:number;heading:number;horizon:number;rotation:number;sky:string;ground:string};
 
 /** A complete high-resolution 1024-unit wraparound panorama. */
 export function createEnhancedPanoramaBackground(source:string,sourceHorizon:number){
@@ -22,7 +22,7 @@ export function createEnhancedPanoramaBackground(source:string,sourceHorizon:num
  return {
   draw(target:CanvasRenderingContext2D,options:EnhancedPanoramaOptions){
    if(!image.complete||!image.naturalWidth)return false;
-   const {width,height,heading,horizon,rotation,sky,ground}=options,sx=width/NATIVE_WIDTH,sy=height/NATIVE_HEIGHT;
+   const {width,height,aspect,heading,horizon,rotation,sky,ground}=options,nativeWidth=Math.max(NATIVE_WIDTH,240*aspect),sx=width/nativeWidth,sy=height/NATIVE_HEIGHT;
    const side=Math.ceil(Math.hypot(width,height)/16)*16,padX=(side-width)/2,padY=(side-height)/2;
    const key=[side,width,height,heading,horizon,sky,ground].join('/');
    if(key!==prepared){
@@ -49,7 +49,7 @@ export function createEnhancedAlpineBackground(sources:readonly string[]){
  return {
   draw(target:CanvasRenderingContext2D,options:EnhancedPanoramaOptions){
    if(sections.some(({image})=>!image.complete||!image.naturalWidth))return false;
-   const {width,height,heading,horizon,rotation,sky,ground}=options,sx=width/NATIVE_WIDTH,sy=height/NATIVE_HEIGHT;
+   const {width,height,aspect,heading,horizon,rotation,sky,ground}=options,nativeWidth=Math.max(NATIVE_WIDTH,240*aspect),sx=width/nativeWidth,sy=height/NATIVE_HEIGHT;
    const side=Math.ceil(Math.hypot(width,height)/16)*16,padX=(side-width)/2,padY=(side-height)/2;
    const key=[side,width,height,heading,horizon,sky,ground].join('/');
    if(key!==prepared){
