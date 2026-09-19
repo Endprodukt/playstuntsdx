@@ -95,11 +95,11 @@ export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joysti
   return {axis:Math.max(-1,Math.min(1,horizontal)),mask:(up?1:0)|(down?2:0)|(right?4:0)|(left?8:0)|(pressed(0)?32:0)|(pressed(1)?16:0),direction:up?(left?8:right?2:1):down?(left?6:right?4:5):left?7:right?3:0};
  };
  const readImmediate=(deltaOverride?:number|(()=>number))=>{
-  const now=counter(),delta=deltaOverride===undefined?(now-last)&65535:(typeof deltaOverride==='function'?deltaOverride():deltaOverride)&65535;last=now;lastPoll=now;const pad=gamepad(),pointer=pointerEdges.shift()??{x,y,buttons:active?buttons:0},keyboardKey=takeMappedKey();takeTextKey();
+  const now=counter(),delta=deltaOverride===undefined?(now-last)&65535:(typeof deltaOverride==='function'?deltaOverride():deltaOverride)&65535;last=now;lastPoll=now;const pad=gamepad(),pointer=pointerEdges.shift()??{x,y,buttons:active?buttons:0},keyboardKey=takeMappedKey(),textKey=takeTextKey();
   const result=pollOriginalMenuDevices(state,{delta,key:keyboardKey,joystick:pad.mask,rawButtons:pad.mask,...pointer});state=result.state;
   if(result.cursor.length)element.style.cursor=state.cursorVisible?'url("/site/original-pointer.png") 0 0, auto':'none';
   const wheelDelta=pendingWheel;pendingWheel=0;
-  return {key:result.key,keyboardKey,delta,...pointer,wheelDelta,mouseActive:state.mouseActive,rawButtons:result.rawButtons,joystickDirection:pad.direction,joystickButtons:pad.mask&48};
+  return {key:result.key,keyboardKey,textKey,delta,...pointer,wheelDelta,mouseActive:state.mouseActive,rawButtons:result.rawButtons,joystickDirection:pad.direction,joystickButtons:pad.mask&48};
  };
  const read=async(deltaOverride?:number|(()=>number))=>{await wait();return readImmediate(deltaOverride);};
  return {
