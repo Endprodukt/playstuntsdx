@@ -103,9 +103,9 @@ export function installDesktopRaceMap(assets:Assets){
    const point=preview.worldAt(hidden.left+rx*hidden.width,hidden.top+ry*hidden.height);
    if(point){
     const result=snapToBlissRoad(point.x,point.z,cachedPaths,frame.heading,dragSnapped);dragSnapped=result.snapped;
-    candidate={x:result.x,z:result.z,heading:normalizeRaceHeading(result.heading+dragHeadingOffset)};snapped=result.snapped;
+    candidate={x:result.x,y:preview.roadHeightAt(result.x,result.z)??0,z:result.z,heading:normalizeRaceHeading(result.heading+dragHeadingOffset)};snapped=result.snapped;
     if(snapped){
-     const projected=preview.projectWorld(result.x,result.z);
+     const projected=preview.projectWorld(result.x,result.z,candidate.y??0);
      if(projected){gx=bounds.left+projected.x/Math.max(1,map3d.clientWidth)*bounds.width;gy=bounds.top+projected.y/Math.max(1,map3d.clientHeight)*bounds.height;}
     }
    }
@@ -145,7 +145,7 @@ export function installDesktopRaceMap(assets:Assets){
  canvas.style.cssText='display:block;width:100%;height:100%;min-width:0;min-height:0;background:#080b08;border:1px solid #444;border-radius:5px;box-sizing:border-box;';
  canvas.addEventListener('wheel',event=>{
   if(!spawn||!preview)return;
-  const visibleBounds=canvas.getBoundingClientRect(),p=preview.projectWorld(spawn.x,spawn.z);if(!p)return;
+  const visibleBounds=canvas.getBoundingClientRect(),p=preview.projectWorld(spawn.x,spawn.z,spawn.y??0);if(!p)return;
   const px=(event.clientX-visibleBounds.left)*(canvas.width/Math.max(1,visibleBounds.width)),py=(event.clientY-visibleBounds.top)*(canvas.height/Math.max(1,visibleBounds.height));
   const mx=p.x*(canvas.width/Math.max(1,map3d.clientWidth)),my=p.y*(canvas.height/Math.max(1,map3d.clientHeight));
   if(Math.hypot(px-mx,py-my)>28*(window.devicePixelRatio||1))return;
@@ -251,7 +251,7 @@ export function installDesktopRaceMap(assets:Assets){
   const scaleX=width/Math.max(1,map3d.clientWidth),scaleY=height/Math.max(1,map3d.clientHeight),scale=Math.min(scaleX,scaleY);
   if(projected)drawArrow(ctx,projected.x*scaleX,projected.y*scaleY,frame.heading,scale);
   if(spawn){
-   const p=preview.projectWorld(spawn.x,spawn.z);
+   const p=preview.projectWorld(spawn.x,spawn.z,spawn.y??0);
    if(p){
     const x=p.x*scaleX,y=p.y*scaleY;
     ctx.save();ctx.translate(x,y);ctx.rotate(-spawn.heading*Math.PI/512);
