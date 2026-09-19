@@ -785,7 +785,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    const angle=testSpawn.heading*Math.PI/512,fx=-Math.sin(angle),fz=Math.cos(angle);
    const forward=editor3D.projectWorld(testSpawn.x+fx*512,testSpawn.z+fz*512,markerY);
    if(projected){
-    spawn3DMarker.style.display='block';spawn3DMarker.style.left=projected.x+'px';spawn3DMarker.style.top=projected.y+'px';
+    const canvasRect=map3D.getBoundingClientRect(),wrapRect=mapWrap.getBoundingClientRect();
+    spawn3DMarker.style.display='block';
+    spawn3DMarker.style.left=(canvasRect.left-wrapRect.left+projected.x)+'px';
+    spawn3DMarker.style.top=(canvasRect.top-wrapRect.top+projected.y)+'px';
     spawn3DMarker.style.rotate=forward?(Math.atan2(forward.x-projected.x,-(forward.y-projected.y))*180/Math.PI)+'deg':'0deg';
    }else spawn3DMarker.style.display='none';
   }else spawn3DMarker.style.display='none';
