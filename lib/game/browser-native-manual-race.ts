@@ -8,7 +8,7 @@ import {createBrowserRaceAudio} from './browser-race-audio.ts';
 import {createBrowserPcSpeakerRaceAudio} from './browser-pc-speaker-race-audio.ts';
 import {createBrowserTandyRaceAudio} from './browser-tandy-race-audio.ts';
 import {runBrowserAllocatedRaceLoop} from './browser-allocated-race-loop.ts';
-import {loadConfiguredEngineSoundOverrides} from './browser-engine-sound-mod.ts';
+import {engineSoundPatchWrites,loadConfiguredEngineSoundOverrides} from './browser-engine-sound-mod.ts';
 import type {createBrowserNativeMenus} from './browser-native-menus.ts';
 import type {NativeDemoData,NativeDemoMenuState} from './native-demo-runtime.ts';
 type Menus=Awaited<ReturnType<typeof createBrowserNativeMenus>>;
@@ -20,7 +20,6 @@ export async function runBrowserNativeManualRace(options:{context:AudioContext;d
  const {context,menus,signal}=options;let pcAudio:ReturnType<typeof createBrowserPcSpeakerRaceAudio>|undefined;
  const deviceData=options.data.soundDevice?.kind==='pc-speaker'?{...options.data,soundDevice:{kind:'pc-speaker' as const,port61:()=>pcAudio?.port61??0}}:options.data.soundDevice?.kind==='tandy'?{...options.data,soundDevice:{...options.data.soundDevice,port61:()=>pcAudio?.port61??0}}:options.data;
  const engineSoundOverrides=await loadConfiguredEngineSoundOverrides(deviceData);
- if(engineSoundOverrides)console.info('[Sound Mod] Presets loaded successfully; live injection is temporarily disabled until the remaining OPL controller path is reconstructed.',Object.keys(engineSoundOverrides));
  const data=deviceData;
  const aborted=()=>{if(signal.aborted)throw new DOMException('Native race closed','AbortError');};
  const progress=(stage:number)=>{const name=({2:'SDTITL.PVS',3:'TEDIT.PRE',4:'OPP1.PRE'} as Record<number,string>)[stage];if(!name||!data.catalog.exists(name))throw Error('Original disk-presence resource missing for stage '+stage);};
@@ -28,7 +27,10 @@ export async function runBrowserNativeManualRace(options:{context:AudioContext;d
  aborted();options.onStage?.(options.replay?'seeking':'loading');menus.setInputActive(true);const waiting=options.replay?data.base.slice():data.base;if(options.replay)new DataView(waiting.buffer).setUint16(0x2d1a0+0x8a10,150,true);menus.showRaceWaiting(waiting);
  try{
   let runtime=options.replay?await createNativeReplayRaceRuntime(data,options.menu,options.replay,{resetMouse:menus.resetRaceMouse,async key(){aborted();return menus.raceEntryKey();}},progress):await createNativeManualRaceRuntime(data,options.menu,{resetMouse:menus.resetRaceMouse},progress);aborted();
-  audio=data.soundDevice?.kind==='mt32'?(rolandAudio=createBrowserMt32RaceAudio(context,options.mt32Output!,[],()=>runtime.tick(presentation!.devices))):data.soundDevice?.kind==='tandy'?(pcAudio=createBrowserTandyRaceAudio(context,runtime.initialWrites,()=>runtime.tick(presentation!.devices))):data.soundDevice?.kind==='pc-speaker'?(pcAudio=createBrowserPcSpeakerRaceAudio(context,runtime.initialWrites,()=>runtime.tick(presentation!.devices))):await createBrowserRaceAudio(context,runtime.initialWrites,()=>runtime.tick(presentation!.devices));aborted();
+  const soundPatchWrites=engineSoundOverrides&&!data.soundDevice?engineSoundPatchWrites(runtime.session.state.memory,engineSoundOverrides):[];
+  if(engineSoundOverrides)console.info('[Sound Mod] Direct OPL patch writes',soundPatchWrites.length);
+  const initialWrites=soundPatchWrites.length?[...runtime.initialWrites,...soundPatchWrites]:runtime.initialWrites;
+  audio=data.soundDevice?.kind==='mt32'?(rolandAudio=createBrowserMt32RaceAudio(context,options.mt32Output!,[],()=>runtime.tick(presentation!.devices))):data.soundDevice?.kind==='tandy'?(pcAudio=createBrowserTandyRaceAudio(context,initialWrites,()=>runtime.tick(presentation!.devices))):data.soundDevice?.kind==='pc-speaker'?(pcAudio=createBrowserPcSpeakerRaceAudio(context,initialWrites,()=>runtime.tick(presentation!.devices))):await createBrowserRaceAudio(context,initialWrites,()=>runtime.tick(presentation!.devices));aborted();
   rolandAudio?.prepare(runtime.initialWrites);
   const pump=()=>{aborted();audio!.pump();},showWaiting=()=>presentation?presentation.waiting():menus.showRaceWaiting(runtime.session.state.memory);
   const preparePresentation=async()=>{const alternate=options.displayMode?await prepareBrowserNativeManualDisplay(data,options.displayMode,()=>runtime.session.state.memory,options.hercules):undefined;aborted();if(alternate)runtime.useDisplay(alternate.display);return menus.allocatedRacePresentation(runtime,pump,alternate);};
@@ -45,7 +47,10 @@ export async function runBrowserNativeManualRace(options:{context:AudioContext;d
    rolandAudio?.suspend(()=>{advanceOriginalHardwareClock(runtime.session.state.memory,0x2d1a0);});options.onStage?.('results');const action=await menus.allocatedRaceResults(data,runtime,progress,options.displayMode);options.stopMusic();aborted();
    if(action!==0&&action!==1)break;
    options.onStage?.(action===0?'seeking':'loading');showWaiting();
-   runtime=await reopenNativeManualRaceRuntime(data,runtime.session.state.memory,action===0?'replay':'fresh',{resetMouse:menus.resetRaceMouse,async key(){aborted();return menus.raceEntryKey();}},progress);aborted();if(rolandAudio)rolandAudio.prepare(runtime.initialWrites);else audio.write(runtime.initialWrites);
+   runtime=await reopenNativeManualRaceRuntime(data,runtime.session.state.memory,action===0?'replay':'fresh',{resetMouse:menus.resetRaceMouse,async key(){aborted();return menus.raceEntryKey();}},progress);aborted();
+   const restartPatch=engineSoundOverrides&&!data.soundDevice?engineSoundPatchWrites(runtime.session.state.memory,engineSoundOverrides):[];
+   const restartWrites=restartPatch.length?[...runtime.initialWrites,...restartPatch]:runtime.initialWrites;
+   if(rolandAudio)rolandAudio.prepare(restartWrites);else audio.write(restartWrites);
    const previous=presentation;presentation=await preparePresentation();previous.close();rolandAudio?.resume();
   }
   return runtime.releaseMenuState();
