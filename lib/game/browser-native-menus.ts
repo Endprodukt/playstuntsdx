@@ -6,7 +6,7 @@ export type {BrowserGraphicsSwitch,BrowserNativeMenuOptions} from './browser-nat
 /** Keep the original menu/race implementation intact, but layer editable hires
  * cockpit artwork over the normal 2D race as well. Previously the cockpit
  * overlay only lived inside the optional upgraded 3D renderer, which made the
- * High-Res Textures switch ineffective unless Graphics Update was also on. */
+ * High-Res Cockpit switch ineffective unless Graphics Update was also on. */
 export async function createBrowserNativeMenus(...args:Parameters<typeof createCoreBrowserNativeMenus>):Promise<Awaited<ReturnType<typeof createCoreBrowserNativeMenus>>>{
  const options=args[0];
  const menus=await createCoreBrowserNativeMenus(...args);
