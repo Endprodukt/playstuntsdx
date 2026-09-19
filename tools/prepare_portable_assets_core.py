@@ -23,7 +23,6 @@ from PIL import Image
 import prepare_desktop_assets as desktop
 from extract import resources, shape_pixels, unpack
 
-MAX_CARS = 32
 STUNTS_TRACK_BYTES = 1802
 MUTABLE_GAME_EXTENSIONS = {".TRK", ".RPL", ".HIG"}
 PACKED_GRAPHICS_EXTENSIONS = {".P3S", ".PVS"}
@@ -232,10 +231,6 @@ def merge_custom_cars(original: Path, custom_root: Path, merged: Path) -> dict[s
         if car_id in used_ids:
             skipped.append({"id": car_id, "file": relative, "reason": "duplicate car ID"})
             continue
-        if len(used_ids) >= MAX_CARS:
-            skipped.append({"id": car_id, "file": relative, "reason": "32-car limit reached"})
-            continue
-
         try:
             files = resolve_custom_car_files(car_file, custom_root, index)
             validate_custom_car(car_id, files)
@@ -254,7 +249,6 @@ def merge_custom_cars(original: Path, custom_root: Path, merged: Path) -> dict[s
         })
 
     return {
-        "limit": MAX_CARS,
         "original": len(original_ids),
         "discovered": len(candidates),
         "loaded": loaded,
