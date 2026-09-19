@@ -20,7 +20,7 @@ export type NativeRaceSoundDevice = {kind:'mt32';
  bios(requests:OriginalTandyBiosSound[],memory:Uint8Array):void;
 };
 /** Device selection is retained by the outer session across replay/race reloads. */
-export function createNativeAllocatedSound(memory:()=>Uint8Array,d:number,driverSegment:number,device?:NativeRaceSoundDevice){
+export function createNativeAllocatedSound(memory:()=>Uint8Array,d:number,driverSegment:number,device?:NativeRaceSoundDevice,engineOverrides:ReadonlyMap<number,Uint8Array>=new Map()){
  if(device?.kind==='mt32')return createAllocatedMt32RaceAudio(memory,d,driverSegment);
  if(device?.kind==='tandy'){
   const audio=createAllocatedTandyRaceAudio(memory,d,driverSegment,device.port61,device.interruptCx);
@@ -35,7 +35,7 @@ export function createNativeAllocatedSound(memory:()=>Uint8Array,d:number,driver
    tick:(...args:Parameters<typeof audio.tick>)=>collect(()=>audio.tick(...args)),
   };
  }
- return device?.kind==='pc-speaker'?createAllocatedPcSpeakerRaceAudio(memory,d,driverSegment,device.port61):createAllocatedRaceAudio(memory,d,driverSegment);
+ return device?.kind==='pc-speaker'?createAllocatedPcSpeakerRaceAudio(memory,d,driverSegment,device.port61):createAllocatedRaceAudio(memory,d,driverSegment,engineOverrides);
 }
 export function controlNativeAllocatedDialogSound(memory:Uint8Array,d:number,driverSegment:number,operation:'pause-audio'|'resume-audio',device?:NativeRaceSoundDevice){
  if(device?.kind==='mt32')return device.execute(controlAllocatedMt32DialogAudio(memory,d,driverSegment,operation)).writes;
