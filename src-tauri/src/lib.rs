@@ -541,6 +541,35 @@ fn bliss_http_get(url: String) -> Result<Vec<u8>, String> {
 }
 
 #[tauri::command]
+fn import_custom_car_package(filename: String, data: Vec<u8>) -> Result<(), String> {
+    let name = filename.trim();
+    if name.is_empty() || name.len() > 128 || !name.to_ascii_lowercase().ends_with(".zip") {
+        return Err("Custom car import requires a ZIP package.".to_string());
+    }
+    if name.chars().any(|value| matches!(value, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')) {
+        return Err("Custom car ZIP filename contains unsupported characters.".to_string());
+    }
+    if data.is_empty() || data.len() > 64 * 1024 * 1024 {
+        return Err("Custom car ZIP is empty or too large.".to_string());
+    }
+    let root = application_root()?.join("Custom Cars");
+    fs::create_dir_all(&root)
+        .map_err(|error| format!("Could not create {}: {error}", root.display()))?;
+    let path = root.join(name);
+    fs::write(&path, data)
+        .map_err(|error| format!("Could not write custom car package {}: {error}", path.display()))?;
+    let gamedata = gamedata_roots().into_iter().find(|path| complete_gamedata(path))
+        .ok_or_else(|| "Original Gamedata could not be found.".to_string())?;
+    #[cfg(not(debug_assertions))]
+    build_runtime(&gamedata)?;
+    #[cfg(debug_assertions)]
+    {
+        let _ = gamedata;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn runtime_file_exists(path: String) -> Result<bool, String> {
     let path = runtime_game_root()?.join(checked_runtime_path(&path)?);
     Ok(path.is_file())
@@ -881,6 +910,7 @@ pub fn run() {
             read_custom_track,
             write_custom_track,
             write_track_shot,
+            import_custom_car_package,
             bliss_http_get,
             toggle_mt32_panel,
             check_mt32_roms,
