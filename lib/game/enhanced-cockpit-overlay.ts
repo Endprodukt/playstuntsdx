@@ -92,7 +92,7 @@ function loadCar(car:string){
    const index=await indexPromise,layout=index[car];if(!layout)return undefined;
    const response=await fetch(`/game/cockpit/${car}/panel.json`);if(!response.ok)return undefined;
    const panel=await response.json() as PanelData;
-   const files=new Set<string>(['dashboard.png','ins2.png','gbox.png','gnob.png','gnab.png','dot.png','dota.png','ins1.png','inm1.png','ins3.png','inm3.png']);
+   const files=new Set<string>(['dashboard.png','dash.png','ins2.png','gbox.png','gnob.png','gnab.png','dot.png','dota.png','ins1.png','inm1.png','ins3.png','inm3.png']);
    for(const frame of Object.values(layout.frames))files.add(frame.file);
    const entries=await Promise.all([...files].map(async file=>{
     try{return [file,await preferredImage(`/game/cockpit/${car}/${file}`)] as const;}
@@ -173,6 +173,20 @@ export function createEnhancedCockpitOverlay(){
    const roof=layout.frames.roof;if(roof)drawFile(roof.file,roof.x,roof.y,roof.width,roof.height);
    drawFile('dashboard.png',0,layout.dashboardTop,320,200-layout.dashboardTop);
 
+   // dashboard.png is the fully composed reference dashboard and already
+   // contains the gearbox base. The original renderer restores the clean
+   // background when no shift animation is active, then redraws gbox/gnob only
+   // while shifting. dash.png is that clean backing artwork.
+   const gear=panel.gear,dash=images.get('dash.png');
+   if(gear?.base&&dash){
+    const logicalHeight=200-layout.dashboardTop;
+    const sourceScaleX=dash.image.naturalWidth/320,sourceScaleY=dash.image.naturalHeight/logicalHeight;
+    const sx0=gear.base.x*sourceScaleX,sy0=(gear.base.y-layout.dashboardTop)*sourceScaleY;
+    const sw=gear.base.width*sourceScaleX,sh=gear.base.height*sourceScaleY;
+    context.imageSmoothingEnabled=dash.enhanced;
+    context.drawImage(dash.image,sx0,sy0,sw,sh,offsetX+gear.base.x*sx,gear.base.y*sy,gear.base.width*sx,gear.base.height*sy);
+   }
+
    const wheel=cockpitWheel(state.steering),wheelFrame=layout.frames[`whl${wheel.frame+1}`];
    if(wheelFrame)drawFile(wheelFrame.file,wheelFrame.x,wheelFrame.y,wheelFrame.width,wheelFrame.height);
 
@@ -203,7 +217,6 @@ export function createEnhancedCockpitOverlay(){
     }
    }
 
-   const gear=panel.gear;
    if(state.showGear&&gear?.base){
     drawFile('gbox.png',gear.base.x,gear.base.y,gear.base.width,gear.base.height);
     const sprite=masked('gnob.png','gnab.png');
