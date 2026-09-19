@@ -24,9 +24,19 @@ export async function reopenNativeManualRaceRuntime(...args:Parameters<typeof re
  return attachManualRaceRuntime(args[0],await reopenNativeManualRaceSession(...args));
 }
 export function createLoadedNativeManualRaceRuntime(...args:Parameters<typeof createLoadedNativeManualRaceSession>){return attachManualRaceRuntime(args[0],createLoadedNativeManualRaceSession(...args));}
-function attachManualRaceRuntime(data:Parameters<typeof createNativeManualRaceSession>[0],prepared:Awaited<ReturnType<typeof createNativeManualRaceSession>>){
+function attachManualRaceRuntime(data:Parameters<typeof createNativeManualRaceSession>[0]&{engineSoundOverrides?:Readonly<Record<string,Uint8Array>>},prepared:Awaited<ReturnType<typeof createNativeManualRaceSession>>){
  const {session}=prepared,d=0x2d1a0,bp=0xeefe;
- const audio=createNativeAllocatedSound(()=>session.state.memory,d,0x39e1,data.soundDevice);
+ const engineOverrides=new Map<number,Uint8Array>();
+ if(!data.soundDevice&&data.engineSoundOverrides){
+  const memory=session.state.memory,view=new DataView(memory.buffer,memory.byteOffset,memory.byteLength);
+  const attach=(idAt:number,handleAt:number)=>{
+   const id=String.fromCharCode(...memory.slice(d+idAt,d+idAt+4)).toUpperCase(),instrument=data.engineSoundOverrides?.[id];
+   if(!instrument)return;const handle=view.getUint16(d+handleAt,true);if(handle<25)engineOverrides.set(handle,instrument);
+  };
+  attach(0x8fc2,0x8016);
+  if(memory[d+0x8fc8])attach(0x8fc9,0x86de);
+ }
+ const audio=createNativeAllocatedSound(()=>session.state.memory,d,0x39e1,data.soundDevice,engineOverrides);
  const renderer=createNativeOriginalRenderer(session.state.memory,prepared.raw,analyzeRoute(prepared.raw,data.records,data.vectors,data.samples,data.objects,undefined,{sample:false}),{allocatedResources:true,originalViewport:true,originalCameras:{objects:data.objects,planes:data.planes}});
  let captureGraphics=false;
  let graphicsSource:Uint8Array|undefined,graphicsLive:Uint8Array|undefined,graphicsMask:Uint8Array|undefined,graphicsRevision=0,graphicsKey='',hasPendingGraphics=false;
