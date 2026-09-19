@@ -477,6 +477,14 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     if(!bounds){dialogRefresh=undefined;graphics?.setPerformancePaused?.(false);presentWorld();return;}
     graphics?.setPerformancePaused?.(true);
     const redraw=()=>{
+     // If enhanced graphics are switched off while a race dialog is open,
+     // restore the desktop canvas to its normal 4:3 presentation before the
+     // native 320x200 frame is painted. Otherwise the previous widescreen FOV
+     // CSS remains active for this refresh and stretches the replay/menu frame.
+     if(graphics&&!graphics.enabled){
+      canvas.removeAttribute('data-enhanced-widescreen');
+      canvas.style.removeProperty('--dx-race-aspect');
+     }
      // Keep the source menu opaque, including black pixels which may also
      // match the source background. Only its rectangle covers the 3D scene.
      presentSource();
