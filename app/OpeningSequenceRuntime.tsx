@@ -183,6 +183,7 @@ export default function OpeningSequence({assets,onBack,backLabel="← Back",soun
    menus=await createBrowserNativeMenus({settings:{mouse:false,joystick:false,graphics:0},graphics:graphics.current,canvas:element,assets,music,audioContext:runAudio,displayMode,hercules,signal:demoAbort.signal,track:{name:'DEFAULT',path:directory,raw:initialTrack??[...assets.tracks.find(t=>t.name==='DEFAULT')!.raw]},onScreen:screen=>{if(!disposed)setStatus(screen==='main'?'Original main menu':screen==='editor'?'Original track editor':screen==='race'?'Stunts':screen==='results'?'Race results':screen==='replay'?'Replay':'Original '+screen+' menu');}});
    if(disposed){menus.close();return;}
    element.dataset.openingComplete='true';
+   let queuedTransition:Awaited<ReturnType<typeof menus.run>>|undefined;
    for(;;){
     if(disposed)return;openingInput.setActive(false);
     if(originalOpeningExitDecision(openingKey??0)==='confirm'){
@@ -191,7 +192,7 @@ export default function OpeningSequence({assets,onBack,backLabel="← Back",soun
      openingInput.setActive(true);openingKey=await playOpening();continue;
     }
     menus.setInputActive(true);music.play('slct');
-    const transition=await menus.run();menus.setInputActive(false);if(disposed)return;
+    const transition=queuedTransition??await menus.run();queuedTransition=undefined;menus.setInputActive(false);if(disposed)return;
     if(transition.type==='intro'){openingInput.setActive(true);openingKey=await playOpening();continue;}
     if(transition.type==='exit'){onBack();return;}
     if(transition.type==='demo'){
@@ -206,8 +207,9 @@ export default function OpeningSequence({assets,onBack,backLabel="← Back",soun
      const recording=transition.type==='replay'?menus.selectedReplay:undefined;if(transition.type==='replay'&&!recording)throw Error('Original replay selection is missing');
      setTrackExplanation('');setStatus(recording?'Preparing replay':'Preparing race');await menus.fadeMusic();if(disposed)return;
      demoData??=await loadBrowserNativeDemoData(assets);if(soundDevice==='pc-speaker')demoData.soundDevice={kind:'pc-speaker',port61:()=>0};else if(soundDevice==='tandy')demoData.soundDevice={kind:'tandy',port61:()=>0,interruptCx:()=>0,bios:serviceSuppliedTandySilentRequests};else if(soundDevice==='mt32')demoData.soundDevice={kind:'mt32',execute:executeReadyMt32Program,async executeInitialization(program){const writes:number[][]=[];const result=await executeCooperativeReadyMt32Program(program,{write(batch){writes.push(...batch);},cancelled:()=>disposed});return {result,writes};}};if(disposed)return;
+     const editorSpawn=transition.type==='drive'?menus.consumeRaceSpawn():undefined,editorTest=!!editorSpawn;
      let restored:Awaited<ReturnType<typeof runBrowserNativeManualRace>>;
-     try{restored=await runBrowserNativeManualRace({context:runAudio,mt32Output:roland?.output,displayMode,hercules,data:demoData,menus,replay:recording,spawn:transition.type==='drive'?menus.consumeRaceSpawn():undefined,menu:{configuration:transition.configuration,track:menus.track.raw,name:menus.track.name,path:menus.track.path,camera:demoCamera,randomState:demoRandomState,retainedSession:takeRetainedSession(),graphics:menus.settings.graphics,mouse:menus.settings.mouse,joystick:menus.settings.joystick,soundEnabled:music.settings.soundEnabled},signal:demoAbort.signal,stopMusic:music.stop,onStage(stage){if(disposed)return;performanceRunning.current=stage==='race';if(performanceRunning.current)graphics.current.setPerformancePaused?.(false);else{graphics.current.chaseCamera=0;graphics.current.resetPerformance?.();}setStatus(({loading:'Preparing race',race:'Stunts',results:'Race results',seeking:'Preparing replay'})[stage]);},onFrame(frame,mode,clock,blocked){element.dataset.raceFrame=String(frame);element.dataset.raceMode=String(mode);element.dataset.raceClock=String(clock);element.dataset.raceClockBlocked=String(blocked);element.dataset.raceAudioState=runAudio.state; element.dataset.raceAudioTime=String(runAudio.currentTime);}});}
+     try{restored=await runBrowserNativeManualRace({context:runAudio,mt32Output:roland?.output,displayMode,hercules,data:demoData,menus,replay:recording,spawn:editorSpawn,editorTest,menu:{configuration:transition.configuration,track:menus.track.raw,name:menus.track.name,path:menus.track.path,camera:demoCamera,randomState:demoRandomState,retainedSession:takeRetainedSession(),graphics:menus.settings.graphics,mouse:menus.settings.mouse,joystick:menus.settings.joystick,soundEnabled:music.settings.soundEnabled},signal:demoAbort.signal,stopMusic:music.stop,onStage(stage){if(disposed)return;performanceRunning.current=stage==='race';if(performanceRunning.current)graphics.current.setPerformancePaused?.(false);else{graphics.current.chaseCamera=0;graphics.current.resetPerformance?.();}setStatus(({loading:'Preparing race',race:'Stunts',results:'Race results',seeking:'Preparing replay'})[stage]);},onFrame(frame,mode,clock,blocked){element.dataset.raceFrame=String(frame);element.dataset.raceMode=String(mode);element.dataset.raceClock=String(clock);element.dataset.raceClockBlocked=String(blocked);element.dataset.raceAudioState=runAudio.state; element.dataset.raceAudioTime=String(runAudio.currentTime);}});}
      catch(reason){
       const code=originalTrackValidationCode(reason);if(code===null)throw reason;
       performanceRunning.current=false;graphics.current.resetPerformance?.();setTrackExplanation(trackValidationExplanation(code));
@@ -215,7 +217,15 @@ export default function OpeningSequence({assets,onBack,backLabel="← Back",soun
       setStatus('Main menu');continue;
      }
      performanceRunning.current=false;graphics.current.chaseCamera=0;graphics.current.resetPerformance?.();
-     demoCamera=restored.camera;demoRandomState=restored.randomState;retainedSession=restored.retainedSession;menuClockAt=openingInput.counter();menus.configuration.splice(0,24,...restored.configuration);menus.track.raw=restored.track;setStatus('Main menu');continue;
+     demoCamera=restored.camera;demoRandomState=restored.randomState;retainedSession=restored.retainedSession;menuClockAt=openingInput.counter();menus.configuration.splice(0,24,...restored.configuration);menus.track.raw=restored.track;
+     if(editorTest){
+      menus.setInputActive(false);
+      const result=await menus.reopenTrackEditor();
+      if(result==='drive')queuedTransition={type:'drive',configuration:menus.configuration.slice(0,24)};
+      setStatus(result==='drive'?'Preparing race':'Main menu');
+      continue;
+     }
+     setStatus('Main menu');continue;
     }
    }
   }
