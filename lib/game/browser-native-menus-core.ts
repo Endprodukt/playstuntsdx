@@ -203,7 +203,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    const [{decodeBlissTrack},{createBlissEditor3DView}]=await Promise.all([import('./bliss-track.ts'),import('./bliss-editor-3d.ts')]);
    // Match the Bliss editor's default 3D camera exactly so tracks have the
    // same orientation when moving between Track Select and Edit Track.
-   const overviewTarget=[15360,0,-15360] as [number,number,number],overviewDistance=26000,overviewAzimuth=-.72,overviewElevation=.62;
+   const overviewTarget=[15360,0,-15360] as [number,number,number],overviewDistance=48000,overviewAzimuth=0,overviewElevation=.78;
    const overviewCamera={
     position:[
      overviewTarget[0]+Math.sin(overviewAzimuth)*Math.cos(overviewElevation)*overviewDistance,
@@ -211,7 +211,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
      overviewTarget[2]+Math.cos(overviewAzimuth)*Math.cos(overviewElevation)*overviewDistance,
     ] as [number,number,number],
     target:overviewTarget,
-    fov:55
+    fov:50
    };
    const enhanced=createEnhancedTrackMenuPresentation({canvas,assets:options.assets,decodeTrack:decodeBlissTrack,createPreview:createBlissEditor3DView,originalCamera:overviewCamera,previewEnabled:interactiveTrackPreviewEnabled()});
    let active=true,drag:'orbit'|'pan'|null=null,lastX=0,lastY=0;
@@ -225,9 +225,9 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
      event.preventDefault();event.stopImmediatePropagation();drag=event.button===0?'orbit':'pan';lastX=event.clientX;lastY=event.clientY;canvas.setPointerCapture(event.pointerId);return;
     }
     if(event.button!==0)return;
+    event.preventDefault();event.stopImmediatePropagation();
     const action=enhanced.actionAt(event);
-    if(action.type==='none')return;
-    event.preventDefault();event.stopImmediatePropagation();modernActions.push(action);
+    if(action.type!=='none')modernActions.push(action);
    };
    const pointerMove=(event:PointerEvent)=>{
     if(!drag){enhanced.hoverAt(event);return;}
