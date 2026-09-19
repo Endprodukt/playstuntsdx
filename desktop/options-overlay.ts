@@ -1,6 +1,7 @@
 const fpsStorageKey='playstunts-dx-fps-visible';
 const steeringDeadzoneStorageKey='playstunts-dx-steering-deadzone-percent';
 const optionsButtonStorageKey='playstunts-dx-show-options-button';
+const openMapOnRaceStartStorageKey='playstunts-dx-open-map-on-race-start';
 const defaultSteeringDeadzonePercent=4;
 const maxSteeringDeadzonePercent=15;
 
@@ -20,6 +21,11 @@ function storedOptionsButtonVisible(){
  return saved===null||!['0','false','no','off'].includes(saved.trim().toLowerCase());
 }
 function saveOptionsButtonVisible(visible:boolean){window.localStorage.setItem(optionsButtonStorageKey,String(visible));}
+function storedOpenMapOnRaceStart(){
+ const saved=window.localStorage.getItem(openMapOnRaceStartStorageKey);
+ return saved!==null&&['1','true','yes','on'].includes(saved.trim().toLowerCase());
+}
+function saveOpenMapOnRaceStart(visible:boolean){window.localStorage.setItem(openMapOnRaceStartStorageKey,String(visible));}
 function configValue(content:string,section:string,key:string){
  let current='';
  for(const raw of content.replace(/^\uFEFF/,'').split(/\r?\n/)){
@@ -39,6 +45,8 @@ async function loadNativeGeneralSettings(){
   if(Number.isFinite(value))saveSteeringDeadzone(value);
   const showButton=configValue(file.content,'Display','ShowOptionsButton')?.trim().toLowerCase();
   if(showButton)saveOptionsButtonVisible(!['0','false','no','off'].includes(showButton));
+  const openMap=configValue(file.content,'Display','OpenMapOnRaceStart')?.trim().toLowerCase();
+  if(openMap)saveOpenMapOnRaceStart(['1','true','yes','on'].includes(openMap));
  }catch(reason){console.warn('[Options] General config load failed:',reason);}
 }
 async function persistSteeringDeadzone(value:number){
@@ -52,6 +60,12 @@ async function persistOptionsButtonVisible(visible:boolean){
  const core=tauriCore();if(!core)return;
  try{await core.invoke<void>('native_config_set',{section:'Display',key:'ShowOptionsButton',value:String(visible)});}
  catch(reason){console.warn('[Options] F8 button visibility save failed:',reason);}
+}
+async function persistOpenMapOnRaceStart(open:boolean){
+ saveOpenMapOnRaceStart(open);
+ const core=tauriCore();if(!core)return;
+ try{await core.invoke<void>('native_config_set',{section:'Display',key:'OpenMapOnRaceStart',value:String(open)});}
+ catch(reason){console.warn('[Options] map auto-open save failed:',reason);}
 }
 
 function storedFpsVisible(){
@@ -109,6 +123,13 @@ export function installDesktopOptionsOverlay(){
   button.textContent=visible?'On':'Off';
   button.setAttribute('aria-pressed',String(visible));
  };
+ const renderOpenMapState=()=>{
+  const button=section?.querySelector<HTMLButtonElement>('button[data-open-map-toggle]');
+  if(!button)return;
+  const open=storedOpenMapOnRaceStart();
+  button.textContent=open?'On':'Off';
+  button.setAttribute('aria-pressed',String(open));
+ };
 
  const mount=()=>{
   if(disposed)return;
@@ -136,6 +157,12 @@ export function installDesktopOptionsOverlay(){
   });
   row.append(label,fps);
 
+  const mapRow=document.createElement('div');mapRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) 84px;gap:8px;align-items:center;margin-top:9px;';
+  const mapLabel=document.createElement('div');mapLabel.textContent='Open Map on Race Start';mapLabel.title='Automatically opens the Race Map at the start of each race/restart. You can still close it with F9 or M.';mapLabel.style.cssText='font-size:12px;color:#ddd;';
+  const mapToggle=document.createElement('button');mapToggle.type='button';mapToggle.dataset.openMapToggle='1';mapToggle.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;text-align:center;';
+  mapToggle.addEventListener('click',()=>{const next=!storedOpenMapOnRaceStart();void persistOpenMapOnRaceStart(next);renderOpenMapState();});
+  mapRow.append(mapLabel,mapToggle);
+
   const buttonRow=document.createElement('div');buttonRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) 84px;gap:8px;align-items:center;margin-top:9px;';
   const buttonLabel=document.createElement('div');buttonLabel.textContent='Show F8 Button';buttonLabel.title='Shows or hides the Options [F8] button in the top-right corner. The F8 keyboard shortcut always remains active.';buttonLabel.style.cssText='font-size:12px;color:#ddd;';
   const buttonToggle=document.createElement('button');buttonToggle.type='button';buttonToggle.dataset.optionsButtonToggle='1';buttonToggle.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;text-align:center;';
@@ -150,7 +177,7 @@ export function installDesktopOptionsOverlay(){
   deadzone.addEventListener('change',()=>void persistSteeringDeadzone(Number(deadzone.value)));
   deadzoneRow.append(deadzoneLabel,deadzone,deadzoneValue);
 
-  section.append(heading,row,buttonRow,deadzoneRow);panel.insertBefore(section,controlsSection);renderFpsState();renderOptionsButtonState();renderSteeringDeadzone();applyStoredFps();
+  section.append(heading,row,mapRow,buttonRow,deadzoneRow);panel.insertBefore(section,controlsSection);renderFpsState();renderOpenMapState();renderOptionsButtonState();renderSteeringDeadzone();applyStoredFps();
  };
  frame=requestAnimationFrame(mount);
 
