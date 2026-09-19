@@ -140,11 +140,14 @@ export function createEnhancedCarMenuPresentation(options:{
   if(previewCanvas){
    ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
    const targetX=previewRect.x*sx(),targetY=previewRect.y*sy(),targetW=previewRect.w*sx(),targetH=previewRect.h*sy();
-   const sourceRatio=previewCanvas.width/previewCanvas.height,targetRatio=targetW/targetH;
-   let drawW=targetW,drawH=targetH,drawX=targetX,drawY=targetY;
-   if(sourceRatio>targetRatio){drawH=targetW/sourceRatio;drawY=targetY+(targetH-drawH)/2;}
-   else{drawW=targetH*sourceRatio;drawX=targetX+(targetW-drawW)/2;}
-   ctx.drawImage(previewCanvas,drawX,drawY,drawW,drawH);
+   // The car itself occupies the upper showroom portion of the original
+   // 320x200 frame. Crop that logical showroom window first, then scale it
+   // uniformly into the modern preview so the car stays undistorted and centered.
+   const sourceX=0,sourceY=0,sourceW=previewCanvas.width,sourceH=Math.round(previewCanvas.height*0.58);
+   const scale=Math.min(targetW/sourceW,targetH/sourceH);
+   const drawW=sourceW*scale,drawH=sourceH*scale;
+   const drawX=targetX+(targetW-drawW)/2,drawY=targetY+(targetH-drawH)/2;
+   ctx.drawImage(previewCanvas,sourceX,sourceY,sourceW,sourceH,drawX,drawY,drawW,drawH);
   }else if(previewError)label('PREVIEW UNAVAILABLE',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,5,'#a77',600,'center');
   else label('LOADING CAR…',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,5,'#777',600,'center');
   ctx.restore();
