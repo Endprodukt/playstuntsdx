@@ -11,6 +11,7 @@ const soundKey='playstunts-dx-sound-device';
 const graphicsKey='playstunts-dx-enhanced-graphics';
 const audioUpdateKey='playstunts-dx-audio-update';
 const trackPreviewKey='playstunts-dx-3d-track-preview';
+const enhancedMenuKey='playstunts-dx-enhanced-menu';
 const soundDevices:ReadonlyArray<{id:DesktopSoundDevice;label:string}>=[
  {id:'off',label:'SOUND OFF'},
  {id:'pc-speaker',label:'PC SPEAKER'},
@@ -25,6 +26,7 @@ const soundDialog=bytes('PLAYSTUNTS DX SOUND]'+soundDevices.map(device=>`[${devi
 const missingMt32Dialog=bytes('ROLAND MT-32 ROMS NOT FOUND]PUT THE CONTROL AND PCM ROMS]IN THE MT32 FOLDER][OK]');
 const exitGameDialog=bytes('EXIT GAME?][NO][YES]');
 
+export function enhancedMenuEnabled(){return enabledSetting(enhancedMenuKey,true);}
 export function interactiveTrackPreviewEnabled(){return enabledSetting(trackPreviewKey,true);}
 function enabledSetting(key:string,defaultValue=true){
  const saved=window.localStorage.getItem(key)?.trim().toLowerCase();
@@ -56,7 +58,7 @@ function selectDesktopSound(device:DesktopSoundDevice){
  window.setTimeout(()=>window.location.reload(),0);
 }
 function choice(text:string){return [91,...Array.from(text,character=>character.charCodeAt(0)),93];}
-function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,textures:boolean,trackPreview:boolean,sound:DesktopSoundDevice,audioUpdate:boolean){
+function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,textures:boolean,enhancedMenu:boolean,trackPreview:boolean,sound:DesktopSoundDevice,audioUpdate:boolean){
  const result:number[]=[];let originalChoice=0;
  for(let i=0;i<original.length;i++){
   const value=original[i]&255;
@@ -65,6 +67,7 @@ function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,te
    if(originalChoice===5){
     result.push(...choice(`ENHANCED GRAPHICS: ${enhanced?'ON':'OFF'}`));
     result.push(...choice(`ENHANCED TEXTURES: ${textures?'ON':'OFF'}`));
+    result.push(...choice(`ENHANCED MENU: ${enhancedMenu?'ON':'OFF'}`));
     result.push(...choice(`3D TRACK PREVIEW: ${trackPreview?'ON':'OFF'}`));
     result.push(...choice(`AUDIO UPDATE: ${audioUpdate?'ON':'OFF'}`));
     result.push(...choice('EXIT GAME'));
@@ -108,8 +111,8 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
    const toggle=desktopEnhancedGraphicsButton(),sound=desktopSoundDevice();
    if(!toggle||!sound)result=await dialogs.dialog('emop',2,0,4);
    else{
-    const enhanced=desktopEnhancedGraphicsEnabled(toggle),textures=enhancedTexturesEnabled(),trackPreview=interactiveTrackPreviewEnabled(),audioUpdate=enabledSetting(audioUpdateKey,true);
-    host.resources.edxo=optionsWithDxChoices(host.resources.emop,enhanced,textures,trackPreview,sound,audioUpdate);
+    const enhanced=desktopEnhancedGraphicsEnabled(toggle),textures=enhancedTexturesEnabled(),enhancedMenu=enhancedMenuEnabled(),trackPreview=interactiveTrackPreviewEnabled(),audioUpdate=enabledSetting(audioUpdateKey,true);
+    host.resources.edxo=optionsWithDxChoices(host.resources.emop,enhanced,textures,enhancedMenu,trackPreview,sound,audioUpdate);
     const selected=await dialogs.dialog('edxo',2,0,4);
     if(selected===3){
      host.resources.edxs=soundDialog;
@@ -135,14 +138,17 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
      setEnhancedTexturesEnabled(!textures);
      result=-2;
     }else if(selected===8){
-     window.localStorage.setItem(trackPreviewKey,String(!trackPreview));
+     window.localStorage.setItem(enhancedMenuKey,String(!enhancedMenu));
      result=-2;
     }else if(selected===9){
+     window.localStorage.setItem(trackPreviewKey,String(!trackPreview));
+     result=-2;
+    }else if(selected===10){
      window.localStorage.setItem(audioUpdateKey,String(!audioUpdate));
      window.setTimeout(()=>window.location.reload(),120);
      result=-2;
-    }else if(selected===10)result=5;
-    else if(selected===11)result=6;
+    }else if(selected===11)result=5;
+    else if(selected===12)result=6;
     else result=selected;
    }
   }
