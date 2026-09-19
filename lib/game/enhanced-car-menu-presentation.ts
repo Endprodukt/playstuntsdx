@@ -12,10 +12,10 @@ export function createEnhancedCarMenuPresentation(options:{
  canvas:HTMLCanvasElement;
  palette:number[];
  preview:(car:NativeMenuCar,paint:number)=>Promise<{canvas:HTMLCanvasElement;paintCount:number;render(angle:number):void}|null>;
-}):ModernCarMenuPresentation{
+}):ModernCarMenuPresentation&{inPreview(event:{clientX:number;clientY:number}):boolean;beginRotate():void;rotateBy(dx:number):void;endRotate():void}{
  const {canvas}=options,ctx=canvas.getContext('2d')!;
  let cars:readonly NativeMenuCar[]=[],selected=0,dropdownOpen=false,dropdownStart=0,hover:ModernCarMenuAction={type:'none'};
- let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,closed=false,previewCanvas:HTMLCanvasElement|undefined,previewError=false,previewRender:((angle:number)=>void)|undefined,animation=0,lastAnimation=0,currentAngle=0,lastTick=performance.now();
+ let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,closed=false,previewCanvas:HTMLCanvasElement|undefined,previewError=false,previewRender:((angle:number)=>void)|undefined,animation=0,lastAnimation=0,currentAngle=0,lastTick=performance.now(),manualRotate=false;
 
  const sx=()=>canvas.width/320,sy=()=>canvas.height/200;
  const rect=(x:number,y:number,w:number,h:number,fill:string,stroke='#3b3b3b',radius=5,lineWidth=1)=>{
@@ -171,7 +171,7 @@ export function createEnhancedCarMenuPresentation(options:{
  const animate=(now:number)=>{
   if(closed)return;
   const elapsed=now-lastTick;lastTick=now;
-  currentAngle=(currentAngle+elapsed*1024/12000)%1024;
+  if(!manualRotate)currentAngle=(currentAngle+elapsed*1024/12000)%1024;
   if(previewRender&&now-lastAnimation>=33){
    lastAnimation=now;
    try{previewRender(Math.floor(currentAngle)&1023);render();}catch(reason){previewRender=undefined;previewError=true;console.error('[Modern Car Select] Rotation failed:',reason);render();}
@@ -221,6 +221,22 @@ export function createEnhancedCarMenuPresentation(options:{
    if(dropdownOpen||hover.type!=='selector'||!cars.length)return undefined;
    const direction=delta>0?1:-1;
    return {type:'car',index:(selected+direction+cars.length)%cars.length};
+  },
+  inPreview(event:{clientX:number;clientY:number}){
+   if(dropdownOpen)return false;
+   const r=canvas.getBoundingClientRect(),x=(event.clientX-r.left)*320/r.width,y=(event.clientY-r.top)*200/r.height;
+   return x>=previewRect.x&&x<=previewRect.x+previewRect.w&&y>=previewRect.y&&y<=previewRect.y+previewRect.h;
+  },
+  beginRotate(){manualRotate=true;lastTick=performance.now();},
+  rotateBy(dx:number){
+   if(!manualRotate||!previewRender)return;
+   currentAngle=(currentAngle+dx*3.2+1024)%1024;
+   previewRender(Math.floor(currentAngle)&1023);render();
+  },
+  endRotate(){
+   if(!manualRotate)return;
+   manualRotate=false;currentAngle=0;lastTick=performance.now();
+   if(previewRender){previewRender(0);render();}
   },
   render,
   close(){closed=true;cancelAnimationFrame(animation);previewRender=undefined;}
