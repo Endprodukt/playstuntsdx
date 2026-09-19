@@ -350,7 +350,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   }catch{}
   return spawnTraces;
  };
- const localRoadSnap=(x:number,z:number,fallback=0,alreadySnapped=false)=>{
+ const localRoadSnap=(x:number,z:number,fallback=0,alreadySnapped=false,onlyParent?:{x:number;y:number})=>{
   let best:{x:number;z:number;heading:number;distance:number}|undefined;
   const headingDistance=(a:number,b:number)=>Math.abs((((a-b)+512)&1023)-512);
   const chooseHeading=(forward:number)=>{
@@ -364,6 +364,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    if(!best||distance<best.distance)best=candidate;
   };
   for(let yCell=0;yCell<30;yCell++)for(let xCell=0;xCell<30;xCell++){
+   if(onlyParent&&(xCell!==onlyParent.x||yCell!==onlyParent.y))continue;
    const code=core.track.track[yCell*30+xCell]??0;if(code===253||code===254||code===255)continue;
    const data=blissElementData[code],shape=blissTransformations.track[code];if(!data||!shape)continue;
    let connections=data.ctype.map((value,index)=>value?index:-1).filter(index=>index>=0);
@@ -453,7 +454,11 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   // used by the 2D editor, so camera perspective never defines the spawn.
   const visible=editor3D.worldAt(clientX,clientY);
   if(visible){
-   const direct=roadSnap(visible.x,visible.z,fallback,alreadySnapped);
+   const cellX=Math.max(0,Math.min(29,Math.floor(visible.x/1024)));
+   const worldRow=Math.max(0,Math.min(29,Math.floor(visible.z/1024)));
+   const cellY=29-worldRow;
+   const parent=blissParentElement(core.track,cellX,cellY,core.definitions);
+   const direct=localRoadSnap(visible.x,visible.z,fallback,true,{x:parent.x,y:parent.y});
    if(direct.snapped)return direct;
   }
   const rect=map3D.getBoundingClientRect();
