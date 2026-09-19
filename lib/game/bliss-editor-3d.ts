@@ -9,8 +9,10 @@ import {elevatedRoadUnderlays} from './elevated-road-underlays.ts';
 import type {Assets} from './types.ts';
 import type {BlissTrack} from './bliss-track.ts';
 import {BLISS_TRANSPARENT_COLOUR,blissTrackMetadata} from './bliss-metadata.ts';
+import {blissElementData} from './bliss-element-data.ts';
 
 export interface BlissEditor3DCell {x:number;y:number}
+export interface BlissEditor3DLayers {ground:boolean;terrain:boolean;track:boolean;buildings:boolean;items:boolean}
 export interface BlissEditor3DView {
  render():void;
  update(track:BlissTrack):void;
@@ -21,10 +23,11 @@ export interface BlissEditor3DView {
  orbit(dx:number,dy:number):void;
  pan(dx:number,dy:number):void;
  dolly(delta:number,clientX:number,clientY:number):void;
+ setLayers(layers:Partial<BlissEditor3DLayers>):void;
  close():void;
 }
 
-export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,options:{initialCamera?:{position:[number,number,number];target:[number,number,number];fov?:number};transparentBackground?:boolean;showGround?:boolean}={}):BlissEditor3DView{
+export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,options:{initialCamera?:{position:[number,number,number];target:[number,number,number];fov?:number};transparentBackground?:boolean;showGround?:boolean;showAnnotations?:boolean;layers?:Partial<BlissEditor3DLayers>}={}):BlissEditor3DView{
  const transparentBackground=!!options.transparentBackground;
  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:transparentBackground,logarithmicDepthBuffer:true,powerPreference:'high-performance'});
  renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
@@ -49,13 +52,16 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
  const light=new THREE.HemisphereLight(0xffffff,0x586030,1.15);scene.add(light);
  const materials=trackMaterials as TrackMaterials;
  let modelFactory=createTrackModelFactory(materials,2);
- const content=new THREE.Group(),annotationRoot=new THREE.Group(),ghostRoot=new THREE.Group();world.add(content,annotationRoot,ghostRoot);
+ const content=new THREE.Group(),terrainRoot=new THREE.Group(),trackRoot=new THREE.Group(),buildingsRoot=new THREE.Group(),itemsRoot=new THREE.Group(),annotationRoot=new THREE.Group(),ghostRoot=new THREE.Group();
+ content.add(terrainRoot,trackRoot,buildingsRoot,itemsRoot);world.add(content,annotationRoot,ghostRoot);
+ annotationRoot.visible=options.showAnnotations!==false;
+ const layerState:BlissEditor3DLayers={ground:options.showGround!==false,terrain:true,track:true,buildings:true,items:true,...options.layers};
 
  const base=new THREE.Mesh(
   new THREE.PlaneGeometry(30720,30720),
   new THREE.MeshBasicMaterial({color:0x466f35,side:THREE.DoubleSide,toneMapped:false})
  );
- base.rotation.x=-Math.PI/2;base.position.set(15360,-3,15360);base.visible=options.showGround!==false;world.add(base);
+ base.rotation.x=-Math.PI/2;base.position.set(15360,-3,15360);base.visible=layerState.ground;world.add(base);
 
  const pickPlane=new THREE.Mesh(
   new THREE.PlaneGeometry(30720,30720),
@@ -152,8 +158,12 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   }else borderGeometry.dispose();
  };
 
+ const clearRoot=(root:THREE.Group)=>{while(root.children.length){const child=root.children[root.children.length-1];root.remove(child);disposeObject(child);}};
+ const applyLayers=()=>{
+  base.visible=layerState.ground;terrainRoot.visible=layerState.terrain;trackRoot.visible=layerState.track;buildingsRoot.visible=layerState.buildings;itemsRoot.visible=layerState.items;
+ };
  const rebuild=(source:BlissTrack)=>{
-  while(content.children.length){const child=content.children[content.children.length-1];content.remove(child);disposeObject(child);}
+  clearRoot(terrainRoot);clearRoot(trackRoot);clearRoot(buildingsRoot);clearRoot(itemsRoot);
   modelFactory=createTrackModelFactory(materials,2);rebuildAnnotations(source);
   for(let y=0;y<30;y++)for(let x=0;x<30;x++){
    const at=y*30+x,terrain=source.terrain[at],sourceId=source.track[at],selected=hillRenderSelection(terrain,sourceId);
@@ -165,7 +175,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
      if(shape){
       const model=modelFactory(shape,0,true);
       model.position.set(x*1024+512,terrain===6?450:0,row*1024+512);
-      model.rotation.y=descriptor.rotation*Math.PI/512;content.add(model);
+      model.rotation.y=descriptor.rotation*Math.PI/512;terrainRoot.add(model);
      }
     }
    }
@@ -176,9 +186,11 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
    if(terrain===6){
     const high=assets.shapes.GAME2?.high;
     if(high)for(const underlay of elevatedRoadUnderlays(origin,descriptor.multiTile)){
-     const grass=modelFactory(high,0,true);grass.position.set(...underlay.position);content.add(grass);
+     const grass=modelFactory(high,0,true);grass.position.set(...underlay.position);terrainRoot.add(grass);
     }
    }
+   const element=blissElementData[sourceId],road=!!element&&element.ctype.some(value=>value!==0),building=!road&&/(tennis|station|barn|office|windmill|ship|diner)/i.test(element?.id??'');
+   const root=road?trackRoot:building?buildingsRoot:itemsRoot;
    const parts=[descriptor,...(descriptor.overlay?[(trackRenderModels as Record<string,typeof descriptor>)[String(descriptor.overlay)]]:[])].filter(Boolean);
    for(const part of parts){
     if(!part?.shape)continue;
@@ -187,9 +199,10 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
     const placement=trackRenderPlacement(part,x,row,terrain===6?450:0,0);
     const paint=part.paint===255?0:placement.paint;
     const model=modelFactory(shape,paint);
-    model.position.set(...placement.position);model.rotation.y=placement.rotation;content.add(model);
+    model.position.set(...placement.position);model.rotation.y=placement.rotation;root.add(model);
    }
   }
+  applyLayers();
  };
 
  const updateCamera=()=>{
@@ -199,7 +212,8 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
    target.y+Math.sin(elevation)*distance,
    target.z+Math.cos(azimuth)*cos*distance
   );
-  camera.up.set(0,1,0);camera.lookAt(target);
+  const vertical=Math.abs(Math.cos(elevation))<.015;
+  camera.up.set(vertical?0:0,vertical?0:1,vertical?-1:0);camera.lookAt(target);
  };
 
  const resize=()=>{
@@ -261,6 +275,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   orbit,
   pan,
   dolly,
+  setLayers(next){Object.assign(layerState,next);applyLayers();render();},
   close(){clearGhost();disposeObject(content);disposeObject(annotationRoot);disposeObject(base);hover.geometry.dispose();(hover.material as THREE.Material).dispose();pickPlane.geometry.dispose();(pickPlane.material as THREE.Material).dispose();renderer.dispose();renderer.forceContextLoss();}
  };
 }
