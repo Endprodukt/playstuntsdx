@@ -12,6 +12,7 @@ export type EnhancedTrackMenuPresentation=ModernTrackMenuPresentation&{
  inPreview(event:{clientX:number;clientY:number}):boolean;
  actionAt(event:{clientX:number;clientY:number}):ModernTrackMenuAction;
  scrollDropdown(delta:number):boolean;
+ wheelAction(delta:number):ModernTrackMenuAction|undefined;
  orbit(dx:number,dy:number):void;
  pan(dx:number,dy:number):void;
  dolly(delta:number,x:number,y:number):void;
@@ -175,6 +176,11 @@ export function createEnhancedTrackMenuPresentation(options:{
    dropdownStart=Math.max(0,Math.min(maxStart,dropdownStart+direction));
    selectedTrack=Math.max(dropdownStart,Math.min(dropdownStart+dropdownRows-1,selectedTrack));
    render();return true;
+  },
+  wheelAction(delta){
+   if(dropdownOpen||hoverAction.type!=='selector'||!tracks.length)return undefined;
+   const direction=delta>0?1:-1;
+   return {type:'track',index:(selectedTrack+direction+tracks.length)%tracks.length};
   },
   render,
   active(active){enabled=active;if(active)render();},
