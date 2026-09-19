@@ -42,6 +42,7 @@ export async function createBrowserNativeMenus(...args:Parameters<typeof createC
     steering:state.grip.steeringAngle,
     knobX:state.engine.knobX,
     knobY:state.engine.knobY,
+    showGear:!!(state.engine.shifting||state.engine.shiftTimer),
    });
   };
 
