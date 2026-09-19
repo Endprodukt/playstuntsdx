@@ -191,6 +191,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     sceneryPreviews,
     writeTrack:editor.writeTrack,clearScores:editor.clearScores,exists:editor.exists,presets,
     analysisCars:options.assets.cars.map(car=>({id:car.id,name:car.name})),
+    setEditorMusicMuted:muted=>music.setOutputMuted(muted),
     enumerateTracks:()=>host.enumerate('','.trk'),readTrack:editor.readTrack,...customTracks,
    });
   }finally{input.setActive(true);await input.release();}
