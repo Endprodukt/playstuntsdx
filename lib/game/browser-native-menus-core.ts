@@ -192,7 +192,6 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   show('track');focusBrowserGameCanvas(canvas);const menuHost:NativeTrackMenuHost={...trackHost,track,configuration,baseline,groundModels:ground.resources,panoramas,loadTrack:async({path,name})=>Array.from(await files.read(path,name,'.trk')),readScores:async(name,path)=>files.exists(path,name,'.hig')?Array.from(await files.read(path,name,'.hig')):null,editTrack:async()=>{await editTrack();show('track');}};
   if(!options.displayMode){
    const [{decodeBlissTrack},{createBlissEditor3DView}]=await Promise.all([import('./bliss-track.ts'),import('./bliss-editor-3d.ts')]);
-   const previewCanvas=document.createElement('canvas');previewCanvas.width=1280;previewCanvas.height=800;
    const baselineView=new DataView(baseline.buffer,baseline.byteOffset,baseline.byteLength),d=0x2d1a0,signed=(at:number)=>baselineView.getInt16(d+at,true);
    const originalCamera={
     position:[signed(0x8f6),signed(0x8f8),-signed(0x8fa)] as [number,number,number],
@@ -200,8 +199,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     fov:2*Math.atan(100/120)*180/Math.PI
    };
    if(!enhancedMenuEnabled())return runNativeTrackMenu(menuHost);
-   if(enhancedMenuEnabled()){
-    const dialogs=createNativeDialogRuntime(menuHost);
+   const dialogs=createNativeDialogRuntime(menuHost);
     const enhanced=createEnhancedTrackMenuPresentation({canvas,assets:options.assets,decodeTrack:decodeBlissTrack,createPreview:createBlissEditor3DView,originalCamera,previewEnabled:interactiveTrackPreviewEnabled(),file:dialogs.file});
     let active=true,drag:'orbit'|'pan'|null=null,lastX=0,lastY=0;
     const presentEnhanced=()=>{if(!active){paint();return;}enhanced.render();if(options.graphics)options.graphics.refresh=presentEnhanced;};
@@ -219,10 +217,9 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     const wheel=(event:WheelEvent)=>{if(!enhanced.inPreview(event))return;event.preventDefault();enhanced.dolly(event.deltaY,event.clientX,event.clientY);};
     canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
     pixels.fill(0);
-    try{return await runNativeTrackMenu(menuHost,false,enhanced);}finally{
-     canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerup',pointerUp,true);canvas.removeEventListener('pointercancel',pointerUp,true);canvas.removeEventListener('wheel',wheel,true);
-     enhanced.close();if(options.graphics?.refresh===presentEnhanced)options.graphics.refresh=undefined;
-    }
+   try{return await runNativeTrackMenu(menuHost,false,enhanced);}finally{
+    canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerup',pointerUp,true);canvas.removeEventListener('pointercancel',pointerUp,true);canvas.removeEventListener('wheel',wheel,true);
+    enhanced.close();if(options.graphics?.refresh===presentEnhanced)options.graphics.refresh=undefined;
    }
   }
   const display=await prepareBrowserNativeTrackDisplay({catalog:await loadBrowserOriginalResourceCatalog()},options.displayMode,options.hercules),{owner}=display;
