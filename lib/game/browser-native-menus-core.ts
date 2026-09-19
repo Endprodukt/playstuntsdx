@@ -162,11 +162,17 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     model.render(target,0,safePaint);
     if(!modelMemory)return null;
     modernShowroom??=createUpgradedCarMenu(palette,showroomMaterials.indices);
-    const rendered=modernShowroom.draw(modelMemory,Math.max(640,Math.round(canvas.width*.7)),Math.max(320,Math.round(canvas.height*.46)));
-    const snapshot=document.createElement('canvas');snapshot.width=rendered.width;snapshot.height=rendered.height;
+    const width=Math.max(640,Math.round(canvas.width*.7)),height=Math.max(320,Math.round(canvas.height*.46));
+    const snapshot=document.createElement('canvas');snapshot.width=width;snapshot.height=height;
     const snapshotContext=snapshot.getContext('2d');if(!snapshotContext)return null;
-    snapshotContext.clearRect(0,0,snapshot.width,snapshot.height);snapshotContext.drawImage(rendered,0,0);
-    return {canvas:snapshot,paintCount};
+    const memory=modelMemory;
+    const renderAngle=(angle:number)=>{
+     new DataView(memory.buffer,memory.byteOffset,memory.byteLength).setInt16(0x2d1a0+0xb00e,angle&1023,true);
+     const rendered=modernShowroom!.draw(memory,width,height);
+     snapshotContext.clearRect(0,0,width,height);snapshotContext.drawImage(rendered,0,0);
+    };
+    renderAngle(0);
+    return {canvas:snapshot,paintCount,render:renderAngle};
    };
    const modern=createEnhancedCarMenuPresentation({canvas,palette,preview:modernPreview});
    const pickZip=()=>new Promise<File|null>(resolve=>{
