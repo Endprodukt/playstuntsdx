@@ -16,7 +16,7 @@ import type {RaceSpawn} from './race-spawn.ts';
 type Menus=Awaited<ReturnType<typeof createBrowserNativeMenus>>;
 /** Original manual race/results repetition, retaining one recording bank,
  * saved menu state and browser OPL stream until the player returns to menus. */
-export async function runBrowserNativeManualRace(options:{context:AudioContext;data:NativeDemoData;menus:Menus;menu:NativeDemoMenuState&{mouse?:boolean;joystick?:boolean};spawn?:RaceSpawn;signal:AbortSignal;displayMode?:NativeBrowserDisplayMode;hercules?:boolean;mt32Output?:Mt32StereoOutput;replay?:NativeSelectedReplay;stopMusic():void;onStage?:(stage:'loading'|'race'|'results'|'seeking')=>void;onFrame?:(frame:number,mode:number,clock:number,blocked:number)=>void}){
+export async function runBrowserNativeManualRace(options:{context:AudioContext;data:NativeDemoData;menus:Menus;menu:NativeDemoMenuState&{mouse?:boolean;joystick?:boolean};spawn?:RaceSpawn;editorTest?:boolean;signal:AbortSignal;displayMode?:NativeBrowserDisplayMode;hercules?:boolean;mt32Output?:Mt32StereoOutput;replay?:NativeSelectedReplay;stopMusic():void;onStage?:(stage:'loading'|'race'|'results'|'seeking')=>void;onFrame?:(frame:number,mode:number,clock:number,blocked:number)=>void}){
  if(options.data.soundDevice?.kind==='mt32'&&!options.mt32Output)throw Error('Roland race requires an initialized synthesizer output');
  let rolandAudio:ReturnType<typeof createBrowserMt32RaceAudio>|undefined;
  const {context,menus,signal}=options;let pcAudio:ReturnType<typeof createBrowserPcSpeakerRaceAudio>|undefined;
@@ -56,7 +56,7 @@ export async function runBrowserNativeManualRace(options:{context:AudioContext;d
   presentation=await preparePresentation();
   for(;;){
    options.onStage?.('race');
-   runtime=await runBrowserAllocatedRaceLoop(runtime,menus,presentation,audio,{signal,showWaiting,onFrame:options.onFrame,
+   runtime=await runBrowserAllocatedRaceLoop(runtime,menus,presentation,audio,{signal,showWaiting,onFrame:options.onFrame,editorTest:options.editorTest,confirmBackToEditor:async()=>window.confirm('Back to Editor?'),
     async loadReplay(before){
      const loaded=await menus.loadAllocatedRaceReplay(data,before,{showWaiting,progress,writeAudio:audio!.write},presentation);aborted();
      if(!loaded)return;runtime=loaded;presentation=await preparePresentation();return {runtime,presentation};
