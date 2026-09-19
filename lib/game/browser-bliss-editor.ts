@@ -448,6 +448,14 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  const roadSnap3D=(clientX:number,clientY:number,fallback=0,alreadySnapped=false)=>{
   if(!editor3D)return null;
+  // First use the actual rendered road under the pointer only to identify its
+  // X/Z footprint. Final placement still goes through the same 2D road snap
+  // used by the 2D editor, so camera perspective never defines the spawn.
+  const visible=editor3D.worldAt(clientX,clientY);
+  if(visible){
+   const direct=roadSnap(visible.x,visible.z,fallback,alreadySnapped);
+   if(direct.snapped)return direct;
+  }
   const rect=map3D.getBoundingClientRect();
   let best:{x:number;z:number;heading:number;distance:number}|undefined;
   const consider=(x:number,z:number,heading:number)=>{
@@ -630,6 +638,8 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const spawn3DMarker=document.createElement('div');
  spawn3DMarker.style.cssText='position:absolute;display:none;z-index:8;pointer-events:none;width:34px;height:46px;transform:translate(-50%,-82%);filter:drop-shadow(0 2px 3px #000);';
  spawn3DMarker.innerHTML='<svg viewBox="0 0 34 46" width="34" height="46"><path d="M17 1v17m0-17-6 7m6-7 6 7" fill="none" stroke="#ffca3a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="17" cy="23" r="4.5" fill="#ffca3a"/><path d="M13 28h8l3 8-3 1-2-5v13h-4v-9h-3v9H8V32l-2 5-3-1 3-8z" fill="#ffca3a"/></svg>';
+ const spawn3DGraphic=spawn3DMarker.querySelector<SVGSVGElement>('svg')!;
+ spawn3DGraphic.style.transformOrigin='50% 82%';spawn3DGraphic.style.transformBox='fill-box';
  const map=document.createElement('canvas');map.width=BLISS_ORIGINAL_MAP_SIZE;map.height=BLISS_ORIGINAL_MAP_SIZE;map.style.cssText='grid-area:1/1;display:block;image-rendering:pixelated;width:480px;height:480px;max-width:none;max-height:none;cursor:crosshair;box-shadow:0 0 0 1px #333;flex:none;';
  const map3D=document.createElement('canvas');map3D.style.cssText='grid-area:1/1;display:none;width:100%;height:100%;min-width:0;min-height:320px;align-self:stretch;justify-self:stretch;cursor:crosshair;background:#111;';
  const setSpawn=(x:number,z:number,heading=suggestedSpawnHeading(x,z),y?:number)=>{const sx=Math.max(0,Math.min(30719,x)),sz=Math.max(0,Math.min(30719,z));testSpawn={x:sx,y:y??spawnHeightAt(sx,sz),z:sz,heading:normalizeRaceHeading(heading)};refreshSpawnControls();renderMap();if(viewMode==='3d')editor3D?.setHover({x:Math.max(0,Math.min(29,Math.floor(testSpawn.x/1024))),y:Math.max(0,Math.min(29,29-Math.floor(testSpawn.z/1024)))});};
@@ -908,8 +918,8 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
     spawn3DMarker.style.display='block';
     spawn3DMarker.style.left=(canvasRect.left-wrapRect.left+projected.x)+'px';
     spawn3DMarker.style.top=(canvasRect.top-wrapRect.top+projected.y)+'px';
-    spawn3DMarker.style.scale=String(worldScale);
-    spawn3DMarker.style.rotate=forward?(Math.atan2(forward.x-projected.x,-(forward.y-projected.y))*180/Math.PI)+'deg':'0deg';
+    const screenAngle=forward?Math.atan2(forward.x-projected.x,-(forward.y-projected.y))*180/Math.PI:0;
+    spawn3DGraphic.style.transform='rotate('+screenAngle+'deg) scale('+worldScale+')';
    }else spawn3DMarker.style.display='none';
   }else spawn3DMarker.style.display='none';
  };
