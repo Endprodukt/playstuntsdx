@@ -143,12 +143,13 @@ export function createNativeRaceSession(data:NativeRaceData,options:{transporter
   teleportPlayer(spawn:RaceSpawn){
    if(recording)return false;
    const x=Math.max(0,Math.min(30719,Math.round(spawn.x))),z=Math.max(0,Math.min(30719,Math.round(spawn.z))),heading=normalizeRaceHeading(spawn.heading);
+   const y=typeof spawn.y==='number'&&Number.isFinite(spawn.y)?Math.round(spawn.y):undefined;
    const column=Math.max(0,Math.min(29,Math.floor(x/1024))),worldRow=Math.max(0,Math.min(29,Math.floor(z/1024))),terrainRow=29-worldRow;
    const terrain=raw[901+terrainRow*30+column]??0,hill:0|1=terrain===6?1:0,angle=(-heading)&1023;
    const next=state.memory.slice(),region=initializePlayerRace(next.subarray(d+0x8c06,d+0x8f15),data.simulation,next[d+0x8fc7],column,terrainRow,angle,hill);
    next.set(region,d+0x8c06);
    const view=new DataView(next.buffer,next.byteOffset,next.byteLength);
-   view.setInt32(d+0x8c38,x*64,true);view.setInt32(d+0x8c40,z*64,true);
+   view.setInt32(d+0x8c38,x*64,true);if(y!==undefined)view.setInt32(d+0x8c3c,y*64,true);view.setInt32(d+0x8c40,z*64,true);
    view.setInt16(d+0x8c50,heading,true);view.setInt16(d+0x8c52,0,true);view.setInt16(d+0x8c54,0,true);
    next[d+0xa3c2]=0;next[d+0x7fee]=0;
    resetOriginalInactiveRaceClock(next,d);
