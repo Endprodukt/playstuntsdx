@@ -39,7 +39,9 @@ import {runNativeMainMenuSelection} from './native-main-menu.ts';
 import {restoreOriginalMainMenuPixels} from './main-menu-raster.ts';
 import {originalMainMenuBounds} from './main-menu-hit.ts';
 import {ENHANCED_TEXTURES_EVENT,enhancedTexturesEnabled} from './enhanced-textures.ts';
-import {runNativeCarMenu,type NativeCarMenuHost} from './native-car-runtime.ts';
+import {runNativeCarMenu,type NativeCarMenuHost,type NativeMenuCar} from './native-car-runtime.ts';
+import {createEnhancedCarMenuPresentation} from './enhanced-car-menu-presentation.ts';
+import {runModernCarMenu,type ModernCarMenuAction,type ModernCarMenuHost} from './modern-car-menu-runtime.ts';
 import {runNativeOpponentMenu,type NativeOpponentHost} from './native-opponent-runtime.ts';
 import {enhancedMenuEnabled,modernTrackEditorEnabled,runNativeOptions,type NativeOptionsHost} from './native-options-runtime.ts';
 import {createEnhancedTrackMenuPresentation} from './enhanced-track-menu-presentation.ts';
@@ -140,8 +142,65 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   return {editor,art,terrainNames,presets};
  });
  const car=async(config:number[],opponent:number)=>{
-  show('car');focusBrowserGameCanvas(canvas);const carHost:NativeCarMenuHost={...host,configuration:config,opponent,opponentArt:opponent?opponentArt.resources['opp'+opponent]:undefined,baseline,cars:options.assets.cars as unknown as NativeCarMenuHost['cars'],art:carArt.resources,descriptions:carArt.descriptions,bank:id=>binary('car-models/'+id.toLowerCase()+'.bin')};
+  show('car');focusBrowserGameCanvas(canvas);
+  let carAssetRevision=0;
+  const bank=async(id:string)=>{
+   const response=await fetch('/game/car-models/'+id.toLowerCase()+'.bin?v='+carAssetRevision);
+   if(!response.ok)throw Error('Car model could not load: '+id);
+   return new Uint8Array(await response.arrayBuffer());
+  };
+  const carHost:NativeCarMenuHost={...host,configuration:config,opponent,opponentArt:opponent?opponentArt.resources['opp'+opponent]:undefined,baseline,cars:options.assets.cars as unknown as NativeCarMenuHost['cars'],art:carArt.resources,descriptions:carArt.descriptions,bank};
   if(!options.displayMode){
+   if(enhancedMenuEnabled()){
+    const actions:ModernCarMenuAction[]=[];
+    const modern=createEnhancedCarMenuPresentation({canvas,palette,materialIndices:showroomMaterials.indices,baseline,stopArt:carArt.resources.stop,bank});
+    const pickZip=()=>new Promise<File|null>(resolve=>{
+     const picker=document.createElement('input');picker.type='file';picker.accept='.zip,application/zip';picker.style.display='none';
+     const finish=(file:File|null)=>{picker.remove();resolve(file);};
+     picker.addEventListener('change',()=>finish(picker.files?.[0]??null),{once:true});
+     picker.addEventListener('cancel',()=>finish(null),{once:true});
+     document.body.appendChild(picker);picker.click();
+    });
+    const refreshCars=async()=>{
+     const stamp=Date.now();
+     const [assetsResponse,artResponse]=await Promise.all([fetch('/game/assets.json?v='+stamp),fetch('/game/car-menu-art.json?v='+stamp)]);
+     if(!assetsResponse.ok||!artResponse.ok)throw Error('Refreshed custom car assets could not be loaded.');
+     const nextAssets=await assetsResponse.json() as Assets;
+     const nextArt=await artResponse.json() as {resources:NativeCarMenuHost['art'];descriptions:NativeCarMenuHost['descriptions']};
+     options.assets.cars.splice(0,options.assets.cars.length,...nextAssets.cars);
+     for(const key of Object.keys(options.assets.shapes))delete options.assets.shapes[key];
+     Object.assign(options.assets.shapes,nextAssets.shapes);
+     Object.assign(carArt.resources,nextArt.resources);Object.assign(carArt.descriptions,nextArt.descriptions);
+     carAssetRevision++;return options.assets.cars as unknown as readonly NativeMenuCar[];
+    };
+    const modernHost:ModernCarMenuHost={...carHost,
+     takeModernAction:()=>actions.shift(),
+     refreshCars,
+     async importCar(){
+      const selected=await pickZip();if(!selected)return null;
+      const before=new Set(options.assets.cars.map(item=>item.id));
+      const core=(window as typeof window&{__TAURI__?:{core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}}}).__TAURI__?.core;
+      if(!core){window.alert('Custom car import is available in the desktop build.');return null;}
+      const bytes=new Uint8Array(await selected.arrayBuffer());
+      try{await core.invoke<void>('import_custom_car_package',{filename:selected.name,data:Array.from(bytes)});}
+      catch(reason){window.alert('Custom car import failed: '+(reason instanceof Error?reason.message:String(reason)));return null;}
+      const cars=await refreshCars(),added=cars.find(item=>!before.has(item.id));
+      if(!added){window.alert('The ZIP was imported, but no new valid Stunts car was found.');return null;}
+      return {id:added.id};
+     }
+    };
+    const pointerDown=(event:PointerEvent)=>{
+     if(event.button!==0)return;const action=modern.actionAt(event);if(action.type==='none')return;
+     event.preventDefault();event.stopImmediatePropagation();actions.push(action);
+    };
+    const pointerMove=(event:PointerEvent)=>modern.hoverAt(event);
+    const pointerLeave=()=>modern.clearHover();
+    const wheel=(event:WheelEvent)=>{if(modern.scrollDropdown(event.deltaY)){event.preventDefault();event.stopImmediatePropagation();}};
+    canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerleave',pointerLeave,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
+    try{return await runModernCarMenu(modernHost,modern);}finally{
+     canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerleave',pointerLeave,true);canvas.removeEventListener('wheel',wheel,true);
+    }
+   }
    const preview=document.createElement('canvas');preview.width=canvas.width;preview.height=canvas.height;const previewContext=preview.getContext('2d')!;
    const base=document.createElement('canvas');base.width=320;base.height=200;const baseContext=base.getContext('2d')!,baseImage=baseContext.createImageData(320,200);
    let modelMemory:Uint8Array|undefined,showroom:ReturnType<typeof createUpgradedCarMenu>|undefined,failed=false;
