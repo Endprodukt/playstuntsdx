@@ -136,7 +136,7 @@ export function installDesktopRaceMap(assets:Assets){
 
  function drawPaths(ctx:CanvasRenderingContext2D,width:number,height:number){
   if(!settings.layers.paths||!cachedPaths.length||!preview)return;
-  const scaleX=width/900,scaleY=height/900;ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
+  const scaleX=width/Math.max(1,map3d.clientWidth),scaleY=height/Math.max(1,map3d.clientHeight);ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
   cachedPaths.forEach((trace,index)=>{
    if(trace.steps.length<2)return;
    ctx.beginPath();let started=false;
