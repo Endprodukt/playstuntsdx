@@ -3,6 +3,7 @@ export interface NativeRaceIterationEndHost {
  memory():Uint8Array;resetMouse(mode:number):void;control(mode:number,start:number,current:number):void;
  pauseAudio():void;replayControls():Promise<void>;key():number;command(key:number):void|Promise<void>;
  mouseButtons():number;joystickButtons():number;
+ interceptKey?(key:number):Promise<'exit'|'consume'|void>;
 }
 /** Original13f52..14030, manual-game branch. Keyboard arrows are drained
  * before the next frame. Replay input returns to the renderer even when it
@@ -16,7 +17,14 @@ export async function finishNativeRaceIteration(host:NativeRaceIterationEndHost,
  }
  if(host.memory()[d+0xa3c2]===2){await host.replayControls();return 'render' as const;}
  let key:number;
- do{key=host.key()&65535;if(key)await host.command(key);}while(key===0x4800||key===0x4b00||key===0x4d00||key===0x5000);
+ do{
+  key=host.key()&65535;
+  if(key){
+   const intercepted=await host.interceptKey?.(key);
+   if(intercepted==='exit'){host.memory()[d+0x8018]=0;return 'exit' as const;}
+   if(intercepted!=='consume')await host.command(key);
+  }
+ }while(key===0x4800||key===0x4b00||key===0x4d00||key===0x5000);
  m=host.memory();
  if(m[d+0xa3c2]===1&&((host.mouseButtons()&3)!==0||(host.joystickButtons()&0x30)!==0)){
   m=host.memory();m[d+0xa3c2]=0;m[d+0x7fee]=0;return 'initialize' as const;
