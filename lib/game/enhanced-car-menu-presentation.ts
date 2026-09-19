@@ -11,10 +11,11 @@ const dropdownRowHeight=15,dropdownRows=8;
 export function createEnhancedCarMenuPresentation(options:{
  canvas:HTMLCanvasElement;
  palette:number[];
+ preview:(car:NativeMenuCar,paint:number)=>Promise<{canvas:HTMLCanvasElement;paintCount:number}|null>;
 }):ModernCarMenuPresentation{
  const {canvas}=options,ctx=canvas.getContext('2d')!;
  let cars:readonly NativeMenuCar[]=[],selected=0,dropdownOpen=false,dropdownStart=0,hover:ModernCarMenuAction={type:'none'};
- let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,closed=false;
+ let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,closed=false,previewCanvas:HTMLCanvasElement|undefined,previewError=false;
 
  const sx=()=>canvas.width/320,sy=()=>canvas.height/200;
  const rect=(x:number,y:number,w:number,h:number,fill:string,stroke='#3b3b3b',radius=5,lineWidth=1)=>{
@@ -136,8 +137,11 @@ export function createEnhancedCarMenuPresentation(options:{
   rect(7,44,220,153,'#111','#3b3b3b',6);
   ctx.save();ctx.beginPath();ctx.roundRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy(),4*Math.min(sx(),sy()));ctx.clip();
   ctx.fillStyle='#0a0b0a';ctx.fillRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
-  fittedLabel(current?.name??current?.id??'CAR',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2-4,previewRect.w-20,9,'#d8d66d',700,'center');
-  label('HIGH-RES PREVIEW TEMPORARILY DISABLED',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2+10,4.2,'#777',500,'center');
+  if(previewCanvas){
+   ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+   ctx.drawImage(previewCanvas,previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
+  }else if(previewError)label('PREVIEW UNAVAILABLE',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,5,'#a77',600,'center');
+  else label('LOADING CAR…',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,5,'#777',600,'center');
   ctx.restore();
  };
  const render=()=>{
@@ -161,7 +165,14 @@ export function createEnhancedCarMenuPresentation(options:{
  return {
   setCars(next,nextSelected,open){cars=next;selected=Math.max(0,Math.min(Math.max(0,cars.length-1),nextSelected));dropdownOpen=open;updateDropdownStart();},
   async draw(car,transmission,paint){
-   current=car;currentTransmission=transmission;currentPaint=paint;paintCount=8;
+   current=car;currentTransmission=transmission;currentPaint=paint;previewCanvas=undefined;previewError=false;render();
+   try{
+    const preview=await options.preview(car,paint);
+    if(preview){previewCanvas=preview.canvas;paintCount=Math.max(1,preview.paintCount|0);}
+    else{previewError=true;paintCount=1;}
+   }catch(reason){
+    previewError=true;paintCount=1;console.error('[Modern Car Select] High-res preview failed:',reason);
+   }
    render();return {paintCount};
   },
   actionAt(event){
