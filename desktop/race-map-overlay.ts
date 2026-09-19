@@ -9,6 +9,7 @@ type Layer='ground'|'terrain'|'track'|'buildings'|'items'|'paths';
 type Settings={width:number;height:number;layers:Record<Layer,boolean>};
 
 const settingsKey='playstunts-dx-race-map-v1';
+const openMapOnRaceStartStorageKey='playstunts-dx-open-map-on-race-start';
 const layers:readonly {id:Layer;label:string}[]=[
  {id:'ground',label:'Ground'},
  {id:'terrain',label:'Terrain'},
@@ -56,7 +57,7 @@ function drawArrow(ctx:CanvasRenderingContext2D,x:number,y:number,heading:number
 
 export function installDesktopRaceMap(assets:Assets){
  const settings=loadSettings();
- let frame:RaceMapFrame|undefined,visible=false,disposed=false;
+ let frame:RaceMapFrame|undefined,visible=false,disposed=false,openedForRace=false;
  let cachedSignature=-1,cachedTrack:BlissTrack|undefined,cachedPaths:ReturnType<typeof traceBlissPath>[]=[];
  let preview:BlissEditor3DView|undefined;
 
@@ -198,9 +199,15 @@ export function installDesktopRaceMap(assets:Assets){
  resizeObserver.observe(panel);
 
  const onFrame=(event:Event)=>{
-  frame=(event as CustomEvent<RaceMapFrame>).detail;syncVisibility();if(visible)draw();
+  frame=(event as CustomEvent<RaceMapFrame>).detail;
+  if(!openedForRace){
+   openedForRace=true;
+   const saved=window.localStorage.getItem(openMapOnRaceStartStorageKey)?.trim().toLowerCase();
+   if(saved&&['1','true','yes','on'].includes(saved))visible=true;
+  }
+  syncVisibility();if(visible)draw();
  };
- const onClear=()=>{frame=undefined;visible=false;syncVisibility();};
+ const onClear=()=>{frame=undefined;visible=false;openedForRace=false;syncVisibility();};
  const onKey=(event:KeyboardEvent)=>{
   if(disposed||event.repeat||!frame||blissEditorActive())return;
   const target=event.target as HTMLElement|null;
