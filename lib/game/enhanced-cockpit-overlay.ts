@@ -251,15 +251,18 @@ export function createEnhancedCockpitOverlay(){
    }
 
    if(activeReplay&&replayNative){
-    // Replay transport artwork is native UI, not cockpit artwork. Restore the
-    // exact rectangles described by the original replay resources directly
-    // from the native framebuffer. Do not use a guessed horizontal strip:
-    // several replay controls extend above the old y=144 cutoff.
+    // Replay transport artwork is native UI, not cockpit artwork. Restore one
+    // contiguous native rectangle covering the entire transport instead of
+    // several neighbouring control rectangles. Separate scaled blits can land
+    // on slightly different pixel boundaries and leave 1px seams; one union
+    // rectangle keeps the transport bit-for-bit aligned with the native frame.
+    const left=Math.min(...activeReplay.rects.map(rect=>rect.x));
+    const top=Math.min(...activeReplay.rects.map(rect=>rect.y));
+    const right=Math.max(...activeReplay.rects.map(rect=>rect.x+rect.width));
+    const bottom=Math.max(...activeReplay.rects.map(rect=>rect.y+rect.height));
+    const nativeWidth=right-left,nativeHeight=bottom-top;
     context.imageSmoothingEnabled=false;
-    for(const rect of activeReplay.rects){
-     const dx=offsetX+rect.x*sx,dy=rect.y*sy,dw=rect.width*sx,dh=rect.height*sy;
-     context.drawImage(replayNative,rect.x,rect.y,rect.width,rect.height,dx,dy,dw,dh);
-    }
+    context.drawImage(replayNative,left,top,nativeWidth,nativeHeight,offsetX+left*sx,top*sy,nativeWidth*sx,nativeHeight*sy);
    }
    return true;
   },
