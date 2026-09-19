@@ -1372,12 +1372,19 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
 
  type TournamentSite={name:string;url:string};
  const tournamentStorageKey='playstuntsdx.bliss.tournaments.v1';
+ const defaultTournamentSites:readonly TournamentSite[]=[
+  {name:'ZakStunts',url:'https://zak.stunts.hu/'},
+  {name:'Race For Kicks',url:'https://www.raceforkicks.com/'},
+  {name:'Custom Car Championship',url:'https://ccc.mystunts.net/'},
+ ];
  const loadTournamentSites=():TournamentSite[]=>{
   try{
-   const value=JSON.parse(localStorage.getItem(tournamentStorageKey)??'[]');
-   if(!Array.isArray(value))return [];
+   const stored=localStorage.getItem(tournamentStorageKey);
+   if(stored===null)return defaultTournamentSites.map(site=>({...site}));
+   const value=JSON.parse(stored);
+   if(!Array.isArray(value))return defaultTournamentSites.map(site=>({...site}));
    return value.filter(row=>row&&typeof row.name==='string'&&typeof row.url==='string').map(row=>({name:row.name,url:row.url}));
-  }catch{return [];}
+  }catch{return defaultTournamentSites.map(site=>({...site}));}
  };
  const saveTournamentSites=(sites:readonly TournamentSite[])=>{try{localStorage.setItem(tournamentStorageKey,JSON.stringify(sites));}catch{}};
 
