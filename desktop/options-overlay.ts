@@ -1,6 +1,7 @@
 import type {Assets} from '../lib/game/types';
 import {ENGINE_SOUND_PRESETS,loadSoundModSettings,saveSoundModSettings,type EngineSoundPreset} from '../lib/game/sound-mod-settings';
 const fpsStorageKey='playstunts-dx-fps-visible';
+const graphicsStorageKey='playstunts-dx-enhanced-graphics';
 const steeringDeadzoneStorageKey='playstunts-dx-steering-deadzone-percent';
 const optionsButtonStorageKey='playstunts-dx-show-options-button';
 const openMapOnRaceStartStorageKey='playstunts-dx-open-map-on-race-start';
@@ -80,7 +81,8 @@ function saveFpsVisible(visible:boolean){
 }
 
 function gameCanvas(){return document.querySelector<HTMLCanvasElement>('.desktop-game-shell canvas');}
-function graphicsEnabled(){return document.querySelector<HTMLButtonElement>('.desktop-game-shell .game-toolbar button[aria-pressed]')?.getAttribute('aria-pressed')==='true';}
+function graphicsToggle(){return document.querySelector<HTMLButtonElement>('.desktop-game-shell .game-toolbar button[aria-pressed]');}
+function graphicsEnabled(){return graphicsToggle()?.getAttribute('aria-pressed')==='true';}
 
 function dispatchFpsShortcut(){
  const canvas=gameCanvas();
@@ -104,6 +106,13 @@ export function installDesktopOptionsOverlay(assets?:Assets){
   if(dispatchFpsShortcut())fpsStateApplied=true;
  };
 
+ const renderGraphicsState=()=>{
+  const button=section?.querySelector<HTMLButtonElement>('button[data-graphics-toggle]');
+  if(!button)return;
+  const enabled=graphicsEnabled();
+  button.textContent=enabled?'On':'Off';
+  button.setAttribute('aria-pressed',String(enabled));
+ };
  const renderFpsState=()=>{
   const button=section?.querySelector<HTMLButtonElement>('button[data-fps-toggle]');
   if(!button)return;
@@ -155,15 +164,6 @@ export function installDesktopOptionsOverlay(assets?:Assets){
   section=document.createElement('div');
   section.style.cssText='margin-top:12px;padding:12px;background:#181818;border:1px solid #444;border-radius:6px;';
   const heading=document.createElement('div');heading.textContent='General';heading.style.cssText='font-size:15px;font-weight:700;margin-bottom:8px;';
-  const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) 84px;gap:8px;align-items:center;';
-  const label=document.createElement('div');label.textContent='FPS Counter';label.style.cssText='font-size:12px;color:#ddd;';
-  const fps=document.createElement('button');fps.type='button';fps.dataset.fpsToggle='1';fps.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;text-align:center;';
-  fps.addEventListener('click',()=>{
-   const next=!storedFpsVisible();saveFpsVisible(next);
-   if(graphicsEnabled()&&dispatchFpsShortcut())fpsStateApplied=true;else fpsStateApplied=false;
-   renderFpsState();
-  });
-  row.append(label,fps);
 
   const mapRow=document.createElement('div');mapRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) 84px;gap:8px;align-items:center;margin-top:9px;';
   const mapLabel=document.createElement('div');mapLabel.textContent='Open Map on Race Start';mapLabel.title='Automatically opens the Race Map at the start of each race/restart. You can still close it with F9 or M.';mapLabel.style.cssText='font-size:12px;color:#ddd;';
@@ -176,6 +176,31 @@ export function installDesktopOptionsOverlay(assets?:Assets){
   const buttonToggle=document.createElement('button');buttonToggle.type='button';buttonToggle.dataset.optionsButtonToggle='1';buttonToggle.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;text-align:center;';
   buttonToggle.addEventListener('click',()=>{const next=!storedOptionsButtonVisible();void persistOptionsButtonVisible(next);renderOptionsButtonState();});
   buttonRow.append(buttonLabel,buttonToggle);
+
+  const videoSection=document.createElement('div');videoSection.style.cssText='margin-top:12px;padding-top:10px;border-top:1px solid #333;';
+  const videoHeading=document.createElement('div');videoHeading.textContent='Video';videoHeading.style.cssText='font-size:13px;font-weight:700;margin-bottom:8px;';
+
+  const graphicsRow=document.createElement('div');graphicsRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) 84px;gap:8px;align-items:center;';
+  const graphicsLabel=document.createElement('div');graphicsLabel.textContent='High-Res Graphics';graphicsLabel.title='Switches live between the original Stunts graphics and the enhanced high-resolution renderer.';graphicsLabel.style.cssText='font-size:12px;color:#ddd;';
+  const graphicsButton=document.createElement('button');graphicsButton.type='button';graphicsButton.dataset.graphicsToggle='1';graphicsButton.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;text-align:center;';
+  graphicsButton.addEventListener('click',()=>{
+   const toggle=graphicsToggle();if(!toggle)return;
+   toggle.click();
+   window.localStorage.setItem(graphicsStorageKey,String(toggle.getAttribute('aria-pressed')==='true'));
+   renderGraphicsState();applyStoredFps();
+  });
+  graphicsRow.append(graphicsLabel,graphicsButton);
+
+  const fpsRow=document.createElement('div');fpsRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) 84px;gap:8px;align-items:center;margin-top:9px;';
+  const fpsLabel=document.createElement('div');fpsLabel.textContent='FPS Counter';fpsLabel.style.cssText='font-size:12px;color:#ddd;';
+  const fps=document.createElement('button');fps.type='button';fps.dataset.fpsToggle='1';fps.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;text-align:center;';
+  fps.addEventListener('click',()=>{
+   const next=!storedFpsVisible();saveFpsVisible(next);
+   if(graphicsEnabled()&&dispatchFpsShortcut())fpsStateApplied=true;else fpsStateApplied=false;
+   renderFpsState();
+  });
+  fpsRow.append(fpsLabel,fps);
+  videoSection.append(videoHeading,graphicsRow,fpsRow);
 
   const soundSection=document.createElement('div');soundSection.style.cssText='margin-top:12px;padding-top:10px;border-top:1px solid #333;';
   const soundHeading=document.createElement('div');soundHeading.textContent='Sound Mods';soundHeading.style.cssText='font-size:13px;font-weight:700;margin-bottom:8px;';
@@ -222,7 +247,7 @@ export function installDesktopOptionsOverlay(assets?:Assets){
   deadzone.addEventListener('change',()=>void persistSteeringDeadzone(Number(deadzone.value)));
   deadzoneRow.append(deadzoneLabel,deadzone,deadzoneValue);
 
-  section.append(heading,row,mapRow,buttonRow,deadzoneRow,soundSection);panel.insertBefore(section,controlsSection);renderFpsState();renderOpenMapState();renderOptionsButtonState();renderSteeringDeadzone();renderSoundModState();applyStoredFps();
+  section.append(heading,mapRow,buttonRow,deadzoneRow,videoSection,soundSection);panel.insertBefore(section,controlsSection);renderGraphicsState();renderFpsState();renderOpenMapState();renderOptionsButtonState();renderSteeringDeadzone();renderSoundModState();applyStoredFps();
  };
  frame=requestAnimationFrame(mount);
 
@@ -233,7 +258,7 @@ export function installDesktopOptionsOverlay(assets?:Assets){
  };
  window.addEventListener('keydown',onTrustedF,true);
 
- const graphicsObserver=new MutationObserver(()=>requestAnimationFrame(applyStoredFps));
+ const graphicsObserver=new MutationObserver(()=>requestAnimationFrame(()=>{renderGraphicsState();applyStoredFps();}));
  const observeGraphics=()=>{
   if(disposed)return;
   const toggle=document.querySelector<HTMLButtonElement>('.desktop-game-shell .game-toolbar button[aria-pressed]');
