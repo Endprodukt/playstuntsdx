@@ -13,6 +13,7 @@ import {updateSkidRuntime} from './skid-runtime.ts';
 import {updateCarAudioTarget} from './car-audio-target.ts';
 import type {LoadedEffectResource} from './effect-runtime.ts';
 import type {Vector} from '../physics/math.ts';
+import {adlibInstrument} from './adlib.ts';
 export type RaceAudioState=Omit<EngineRuntimeStartState,'car'>&{cars:Uint8Array[];markers:Uint8Array;busy:number[];carCounter:number;soundFlags:number[]};
 /** Car-handle operations over one original driver, timer pool and voice pool.
  * The caller owns allocation and the original ordering of game requests.
@@ -49,6 +50,13 @@ export function createRaceAudio(before:RaceAudioState,resources:LoadedEffectReso
    state={...state,...audio};enabled=nextEnabled===1;return {writes,savedVolumes:restored,enabled:nextEnabled};
   },
   start(handle:number){const car=carAt(handle);return apply(handle,startEngineRuntime({...state,car},instrumentAt(car)));},
+  patchEngineInstrument(handle:number){
+   const car=carAt(handle),instrument=instrumentAt(car),writes:number[][]=[];
+   // Reprogram only voices already owned by this car. Do not restart the
+   // engine/timer state: the native race startup already did that correctly.
+   for(let i=1;i<state.voices.length;i++)if(state.voices[i][0]===handle)writes.push(...adlibInstrument(Array.from(instrument),i-1));
+   return writes;
+  },
   impacts(handle:number,flags:number,active:boolean){return apply(handle,impactAudioRuntime({...state,car:carAt(handle)},flags,active,runtimeResources,enabled,master));},
   crash(handle:number){return apply(handle,startCrashRuntime({...state,car:carAt(handle)},runtimeResources,enabled,master));},
   skid(handle:number,variant:1|2|'stop'){return apply(handle,updateSkidRuntime({...state,car:carAt(handle)},variant,runtimeResources,enabled,master));},
