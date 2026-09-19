@@ -161,19 +161,24 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
 
  const clearRoot=(root:THREE.Group)=>{while(root.children.length){const child=root.children[root.children.length-1];root.remove(child);disposeObject(child);}};
  const flatTerrain=(source:BlissTrack)=>{
-  const grass:number[]=[],hillGrass:number[]=[],water:number[]=[];
+  const grass:number[]=[],water:number[]=[],support=new Set<string>();
   const cell=(target:number[],x:number,y:number,h:number)=>{
+   if(x<0||x>=30||y<0||y>=30)return;
    const row=29-y,x0=x*1024,x1=x0+1024,z0=row*1024,z1=z0+1024;
    target.push(x0,h,z0,x1,h,z0,x1,h,z1,x0,h,z0,x1,h,z1,x0,h,z1);
   };
+  // Terrain hill/slope models can extend into neighbouring cells. The normal
+  // Track Select view has the global dark-green ground behind those overhangs.
+  // When Ground is hidden in the race map, reproduce that same support locally.
   for(let y=0;y<30;y++)for(let x=0;x<30;x++){
    const terrain=source.terrain[y*30+x];
-   if(terrain===0)cell(grass,x,y,-1);
-   // Hill/slope meshes intentionally leave triangular gaps. In the normal
-   // preview those gaps visually belong to the raised light-grass terrain,
-   // not the dark ground plane. Keep a separate bright support underneath.
-   if(terrain>=6)cell(hillGrass,x,y,-1);
+   if(terrain===0)support.add(x+','+y);
+   if(terrain>=6)for(let oy=-1;oy<=1;oy++)for(let ox=-1;ox<=1;ox++)support.add((x+ox)+','+(y+oy));
    if(terrain>=1&&terrain<=5)cell(water,x,y,-2);
+  }
+  for(const key of support){
+   const [x,y]=key.split(',').map(Number);
+   if(x>=0&&x<30&&y>=0&&y<30)cell(grass,x,y,-1);
   }
   const add=(vertices:number[],colour:number,order:number)=>{
    if(!vertices.length)return;
@@ -183,7 +188,6 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   };
   add(water,0x0080d0,-.6);
   add(grass,0x466f35,-.5);
-  add(hillGrass,0x7fdf7b,-.45);
  };
  const applyLayers=()=>{
   base.visible=layerState.ground;terrainRoot.visible=layerState.terrain;trackRoot.visible=layerState.track;buildingsRoot.visible=layerState.buildings;itemsRoot.visible=layerState.items;
