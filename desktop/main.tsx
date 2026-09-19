@@ -71,9 +71,7 @@ function DesktopApp() {
   useEffect(() => {
     const removeDriveControls = installDesktopDriveControls();
     const removeControlBindings = installDesktopControlBindings();
-    const removeOptionsOverlay = installDesktopOptionsOverlay();
     return () => {
-      removeOptionsOverlay();
       removeControlBindings();
       removeDriveControls();
     };
@@ -81,7 +79,12 @@ function DesktopApp() {
 
   useEffect(() => {
     if (!assets) return;
-    return installDesktopRaceMap(assets);
+    const removeOptionsOverlay = installDesktopOptionsOverlay(assets);
+    const removeRaceMap = installDesktopRaceMap(assets);
+    return () => {
+      removeRaceMap();
+      removeOptionsOverlay();
+    };
   }, [assets]);
 
   useEffect(() => {
