@@ -85,9 +85,11 @@ export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joysti
   if(wheelSelected){
    const wheel=getDesktopWheelInput();
    if(!wheel.configured||!wheel.connected)return {mask:0,direction:0,axis:0};
-   const horizontal=Math.max(-1,Math.min(1,wheel.steering));
-   const left=wheel.hatLeft||horizontal<-.18,right=wheel.hatRight||horizontal>.18,up=wheel.hatUp||wheel.throttle>.12,down=wheel.hatDown||wheel.brake>.12;
-   return {axis:horizontal,mask:(up?1:0)|(down?2:0)|(right?4:0)|(left?8:0),direction:up?(left?8:right?2:1):down?(left?6:right?4:5):left?7:right?3:0};
+   // Menus deliberately ignore every analogue wheel axis. Steering, throttle
+   // and brake must never move menu selection; only the wheel's digital hat
+   // remains available alongside mouse and keyboard navigation.
+   const left=wheel.hatLeft,right=wheel.hatRight,up=wheel.hatUp,down=wheel.hatDown;
+   return {axis:0,mask:(up?1:0)|(down?2:0)|(right?4:0)|(left?8:0),direction:up?(left?8:right?2:1):down?(left?6:right?4:5):left?7:right?3:0};
   }
   const pad=Array.from(navigator.getGamepads?.()??[]).find(p=>p?.connected);if(!pad)return {mask:0,direction:0,axis:0};
   const horizontal=pad.axes[0]??0,vertical=pad.axes[1]??0,pressed=(i:number)=>!!pad.buttons[i]?.pressed;
