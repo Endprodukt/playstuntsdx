@@ -461,8 +461,18 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  for(const control of [zoomOut,zoomReset,zoomIn,zoomFit])control.style.padding='4px 8px';
  const spawnTool=document.createElement('button');spawnTool.type='button';spawnTool.draggable=false;spawnTool.title='Drag onto the map to choose a test start';spawnTool.innerHTML='<svg viewBox="0 0 20 24" width="14" height="17" aria-hidden="true"><circle cx="10" cy="4" r="3" fill="#e6b94a"/><path d="M7 8h6l2 6-2 1-1-4v11H9v-7H7v7H4V11l-1 4-2-1 2-6z" fill="#e6b94a"/></svg>';
  spawnTool.style.cssText='border:1px solid #665a32;background:#262116;color:#eee;border-radius:4px;padding:3px 7px;cursor:grab;';
- const spawnLeft=button('↶',()=>{if(testSpawn){testSpawn.heading=normalizeRaceHeading(testSpawn.heading-32);renderMap();editor3D?.render();}});
- const spawnRight=button('↷',()=>{if(testSpawn){testSpawn.heading=normalizeRaceHeading(testSpawn.heading+32);renderMap();editor3D?.render();}});
+ const headingDistance=(a:number,b:number)=>Math.abs((((a-b)+512)&1023)-512);
+ const rotatePlacedBy=(step:number)=>{
+  if(!testSpawn)return;
+  const snapped=roadSnap(testSpawn.x,testSpawn.z,0,true);
+  if(snapped.snapped){
+   const forward=normalizeRaceHeading(snapped.heading),reverse=normalizeRaceHeading(forward+512);
+   testSpawn.heading=headingDistance(testSpawn.heading,forward)<=headingDistance(testSpawn.heading,reverse)?reverse:forward;
+  }else testSpawn.heading=normalizeRaceHeading(testSpawn.heading+step);
+  renderMap();editor3D?.render();
+ };
+ const spawnLeft=button('↶',()=>rotatePlacedBy(-32));
+ const spawnRight=button('↷',()=>rotatePlacedBy(32));
  const cars=[...(host.analysisCars??[])].sort((a,b)=>a.name.localeCompare(b.name));
  const testCar=document.createElement('select');testCar.title='Car used by Test from here';testCar.setAttribute('aria-label','Test car');
  testCar.style.cssText='border:1px solid #555;background:#202020;color:#eee;border-radius:4px;padding:4px 7px;font:11px/1.1 system-ui,Segoe UI,sans-serif;max-width:150px;';
@@ -492,9 +502,11 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
     point={x:px*30720,z:(1-py)*30720};
    }else if(editor3D)point=editor3D.worldAt(event.clientX,event.clientY);
    if(point){
-    const result=roadSnap(point.x,point.z,testSpawn?.heading??0,dragSnapped);dragSnapped=result.snapped;snapped=result.snapped;
+    const wasSnapped=dragSnapped,result=roadSnap(point.x,point.z,testSpawn?.heading??0,dragSnapped);snapped=result.snapped;
+    if(snapped&&!wasSnapped)dragHeadingOffset=0;
+    dragSnapped=snapped;
     const roadY=spawnHeightAt(result.x,result.z);
-    candidate={x:result.x,y:roadY,z:result.z,heading:normalizeRaceHeading(result.heading+dragHeadingOffset)};
+    candidate={x:result.x,y:roadY,z:result.z,heading:normalizeRaceHeading(result.heading+(snapped?(dragHeadingOffset===512?512:0):dragHeadingOffset))};
     if(snapped){
      if(viewMode==='2d'){gx=rect.left+result.x/30720*rect.width;gy=rect.top+(1-result.z/30720)*rect.height;}
      else if(editor3D){const p=editor3D.projectWorld(result.x,result.z,candidate.y??0);if(p){gx=rect.left+p.x;gy=rect.top+p.y;}}
@@ -528,8 +540,13 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const rotateDraggingSpawn=(event:WheelEvent)=>{
   if(!spawnDragging)return;
   event.preventDefault();event.stopImmediatePropagation();
-  const step=event.deltaY>0?32:-32;dragHeadingOffset=normalizeRaceHeading(dragHeadingOffset+step);
-  if(dragCandidate)dragCandidate.heading=normalizeRaceHeading(dragCandidate.heading+step);
+  if(dragSnapped){
+   dragHeadingOffset=dragHeadingOffset===512?0:512;
+   if(dragCandidate)dragCandidate.heading=normalizeRaceHeading(dragCandidate.heading+512);
+  }else{
+   const step=event.deltaY>0?32:-32;dragHeadingOffset=normalizeRaceHeading(dragHeadingOffset+step);
+   if(dragCandidate)dragCandidate.heading=normalizeRaceHeading(dragCandidate.heading+step);
+  }
   rotateDragGhost(dragCandidate?.heading??dragHeadingOffset);
  };
  const rotatePlacedSpawn=(event:WheelEvent)=>{
@@ -543,7 +560,12 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   }else return false;
   if(Math.hypot(event.clientX-mx,event.clientY-my)>34)return false;
   event.preventDefault();event.stopImmediatePropagation();
-  testSpawn.heading=normalizeRaceHeading(testSpawn.heading+(event.deltaY>0?32:-32));renderMap();return true;
+  const snapped=roadSnap(testSpawn.x,testSpawn.z,0,true);
+  if(snapped.snapped){
+   const forward=normalizeRaceHeading(snapped.heading),reverse=normalizeRaceHeading(forward+512);
+   testSpawn.heading=headingDistance(testSpawn.heading,forward)<=headingDistance(testSpawn.heading,reverse)?reverse:forward;
+  }else testSpawn.heading=normalizeRaceHeading(testSpawn.heading+(event.deltaY>0?32:-32));
+  renderMap();return true;
  };
  window.addEventListener('pointermove',updateSpawnDrag,true);
  window.addEventListener('pointerup',finishSpawnDrag,true);
