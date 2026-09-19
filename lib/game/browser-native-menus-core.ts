@@ -67,6 +67,7 @@ import type {NativeHighScorePreparationHost} from './native-high-score-preparati
 import type {Assets} from './types.ts';
 import {blissOriginalSceneryPreview} from './bliss-scenery-preview.ts';
 import {clearRaceMapFrame,publishRaceMapFrame} from './race-map-state.ts';
+import {RACE_TELEPORT_EVENT,type RaceSpawn} from './race-spawn.ts';
 const HIRES_MAIN_MENU='/game/hires/main-menu.png';
 type TextResources={resources:NativeDialogHost['resources']};
 type ScreenResources=NativeEditorHost['screenResources'];
@@ -479,6 +480,8 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     try{const shown=upgraded.draw(canvas);if(shown)graphics.performanceFrame?.(performance.now());graphics.notice?.(shown?'Upgraded driving graphics · experimental':'Original graphics for this scene');}catch{failed=true;upgraded.close();upgraded=undefined;display();graphics.notice?.('Upgraded graphics are unavailable. Original graphics remain active.');}
    };
    const gameText=await json<TextResources>('race-dialog-text');
+   const onTeleport=(event:Event)=>{const spawn=(event as CustomEvent<RaceSpawn>).detail;if(!spawn)return;runtime.session.teleportPlayer(spawn);graphics?.refresh?.();};
+   window.addEventListener(RACE_TELEPORT_EVENT,onTeleport as EventListener);
    activeRace=runtime;racePoll=onPoll;
    const memory=()=>runtime.session.state.memory;
    const display=()=>{pixels.set(runtime.pixels);show('race');paint(alternate?.palette,undefined,alternate?.owner);};
@@ -543,7 +546,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     hideCursor(){canvas.style.cursor='none';},
     counter:()=>originalElapsedInputTicks(memory(),0x2d1a0)&65535,nextFrame:input.nextFrame,key:input.takeKey,mouseButtons:()=>input.mouse().buttons,joystickButtons:input.joystickButtons,releaseInput:input.release,resetMouse:input.resetMouse,
     devices:{mouse:input.mouse,controls:input.controls,keyDown:input.keyDown,joystickSteering:input.joystickSteering},
-    close(){closed=true;clearRaceMapFrame();upgraded?.close();graphics?.setPerformancePaused?.(false);graphics?.resetPerformance?.();if(graphics&&(graphics.refresh===presentWorld||graphics.refresh===dialogRefresh))graphics.refresh=undefined;if(activeRace===runtime){const m=memory();drivingSettings.graphics=m[0x2d1a0+0x134];drivingSettings.mouse=!!m[0x2d1a0+0x12c];drivingSettings.joystick=!!m[0x2d1a0+0x4602];activeRace=undefined;racePoll=undefined;}}
+    close(){closed=true;window.removeEventListener(RACE_TELEPORT_EVENT,onTeleport as EventListener);clearRaceMapFrame();upgraded?.close();graphics?.setPerformancePaused?.(false);graphics?.resetPerformance?.();if(graphics&&(graphics.refresh===presentWorld||graphics.refresh===dialogRefresh))graphics.refresh=undefined;if(activeRace===runtime){const m=memory();drivingSettings.graphics=m[0x2d1a0+0x134];drivingSettings.mouse=!!m[0x2d1a0+0x12c];drivingSettings.joystick=!!m[0x2d1a0+0x4602];activeRace=undefined;racePoll=undefined;}}
    };
   },
   async replayPresentation(session:ReturnType<typeof createNativeRaceSession>,background:Uint8Array,replayFont:Uint8Array){
