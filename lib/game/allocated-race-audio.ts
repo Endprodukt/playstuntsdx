@@ -26,6 +26,7 @@ export function createAllocatedRaceAudio(memory:()=>Uint8Array,d:number,driverSe
  };
  return {
   start(handle:number){return operate(race=>race.start(handle));},
+  patchEngineInstrument(handle:number){return operate(race=>race.patchEngineInstrument(handle));},
   impacts(handle:number,flags:number,active:boolean){return operate(race=>race.impacts(handle,flags,active));},
   crash(handle:number){return operate(race=>race.crash(handle));},
   update(handle:number,rpm:number,previous:Vector,current:Vector,interval:number){operate(race=>race.update(handle,rpm,previous,current,interval));},
