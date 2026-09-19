@@ -36,8 +36,20 @@ function attachManualRaceRuntime(data:Parameters<typeof createNativeManualRaceSe
   attach(0x8fc2,0x8016);
   if(memory[d+0x8fc8])attach(0x8fc9,0x86de);
  }
- const audio=createNativeAllocatedSound(()=>session.state.memory,d,0x39e1,data.soundDevice,engineOverrides);
- const engineOverrideWrites=engineOverrides.size?[...engineOverrides.keys()].flatMap(handle=>audio.start(handle)):[];
+ let audio=createNativeAllocatedSound(()=>session.state.memory,d,0x39e1,data.soundDevice,engineOverrides);
+ let engineOverrideWrites:number[][]=[];
+ if(engineOverrides.size){
+  const beforeOverride=session.state.memory.slice();
+  try{
+   engineOverrideWrites=[...engineOverrides.keys()].flatMap(handle=>audio.start(handle));
+  }catch(reason){
+   console.error('[Sound Mod] Engine override start failed; restoring original race audio.',reason);
+   session.state.memory.set(beforeOverride);
+   engineOverrides.clear();
+   audio=createNativeAllocatedSound(()=>session.state.memory,d,0x39e1,data.soundDevice);
+   engineOverrideWrites=[];
+  }
+ }
  const renderer=createNativeOriginalRenderer(session.state.memory,prepared.raw,analyzeRoute(prepared.raw,data.records,data.vectors,data.samples,data.objects,undefined,{sample:false}),{allocatedResources:true,originalViewport:true,originalCameras:{objects:data.objects,planes:data.planes}});
  let captureGraphics=false;
  let graphicsSource:Uint8Array|undefined,graphicsLive:Uint8Array|undefined,graphicsMask:Uint8Array|undefined,graphicsRevision=0,graphicsKey='',hasPendingGraphics=false;
