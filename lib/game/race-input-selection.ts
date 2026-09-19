@@ -6,15 +6,16 @@ export interface NativeRaceInputHost {
  mouse():{x:number;y:number;buttons:number};joystickSteering():number;
  controls():number;keyDown(scan:number):number;
 }
-/** Preserve the original 31-point joystick steering curve for a desktop wheel,
- * but interpolate between its samples instead of reducing the calibrated wheel
- * to the original 63 discrete joystick positions first. */
+/** Map a calibrated desktop wheel directly onto Stunts' existing steering
+ * range. The original 31-point joystick response curve is intentionally not
+ * used here: it was designed for short-travel analogue sticks and makes a
+ * physical wheel feel sticky/non-linear around centre. The game still receives
+ * exactly the same steering target range and owns all vehicle physics. */
 export function originalWheelSteeringTarget(memory:Uint8Array,d:number,value:number){
- const normalized=Math.max(-1,Math.min(1,value)),magnitude=Math.abs(normalized)*31;
- const low=Math.floor(magnitude),high=Math.min(31,low+1),fraction=magnitude-low;
- const at=(index:number)=>index===0?0:memory[d+0x306c+index];
- const shaped=Math.round(at(low)+(at(high)-at(low))*fraction);
- return normalized<0?-shaped:shaped;
+ const normalized=Math.max(-1,Math.min(1,value));
+ if(Math.abs(normalized)<1e-4)return 0;
+ const fullLock=memory[d+0x306c+31];
+ return Math.round(normalized*fullLock);
 }
 /** Original14414..14599. Null ends this capture call; a returned word goes
  * to the existing14599 recording tail. Forced capture records a zero byte. */
