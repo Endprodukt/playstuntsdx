@@ -52,7 +52,7 @@ function curvedStepCandidate(x:number,z:number,step:BlissPathTraceStep){
  while(delta>Math.PI)delta-=Math.PI*2;
  // Adjacent connectors must follow the quarter-circle, never the 270° arc.
  if(Math.abs(delta)>Math.PI/2+.01)delta+=delta<0?Math.PI*2:-Math.PI*2;
- const radius=Math.hypot(p0.x-cx,p0.z-cz),samples=Math.max(12,step.width*12);
+ const radius=step.width===2?1536:512,samples=Math.max(16,step.width*16);
  let best:BlissRoadSnapResult|undefined;
  for(let i=0;i<samples;i++){
   const t0=i/samples,t1=(i+1)/samples;
