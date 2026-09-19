@@ -6,6 +6,7 @@ import {originalOpeningExitDecision} from './opening-exit-flow.ts';
 export interface NativeMainMenuHost extends MainMenuPresentation {
  counter():number;
  input():Promise<NativeMenuInput&{keyboardKey?:number}>;
+ release?():Promise<void>;
 }
 
 type TauriCore={invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>};
@@ -52,8 +53,11 @@ export async function runNativeMainMenuSelection(host:NativeMainMenuHost){
   menu.frame(delta);
   const input=await host.input(),selection=wheelMenuSelection(),throttle=wheelThrottlePressed(),throttlePress=throttle&&!throttleHeld;
   if(input.key===27&&await confirmDesktopExit()){
-   // The confirmation dialog owns the Escape press. If the user cancels,
-   // remain in this main-menu loop instead of replaying the intro.
+   // The confirmation dialog uses its own input adapter on the same canvas.
+   // Drain the opening menu adapter too, otherwise the click on "No" survives
+   // the dialog and can immediately activate the menu item underneath it.
+   await host.release?.();
+   time=host.counter();
    continue;
   }
   const wheelChanged=selection!==lastWheelSelection;
