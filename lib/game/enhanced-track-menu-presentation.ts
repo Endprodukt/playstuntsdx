@@ -24,6 +24,7 @@ export function createEnhancedTrackMenuPresentation(options:{
  decodeTrack:(bytes:Uint8Array)=>BlissTrack;
  createPreview:PreviewFactory;
  originalCamera:{position:[number,number,number];target:[number,number,number];fov:number};
+ previewEnabled:boolean;
  file:NativeTrackMenuPresentation['file'];
 }):EnhancedTrackMenuPresentation{
  const {canvas}=options,ctx=canvas.getContext('2d')!;
@@ -62,10 +63,11 @@ export function createEnhancedTrackMenuPresentation(options:{
   label(track.name||'UNTITLED',304,18.5,12,'#fff',700,'right');
 
   rect(7,36,213,128,'#111');
-  const view=ensurePreview();view.render();
   ctx.save();ctx.beginPath();ctx.roundRect(11*sx(),40*sy(),205*sx(),120*sy(),4*Math.min(sx(),sy()));ctx.clip();
   ctx.fillStyle='#0a0a0a';ctx.fillRect(11*sx(),40*sy(),205*sx(),120*sy());
-  ctx.drawImage(previewCanvas,11*sx(),40*sy(),205*sx(),120*sy());ctx.restore();
+  if(options.previewEnabled){const view=ensurePreview();view.render();ctx.drawImage(previewCanvas,11*sx(),40*sy(),205*sx(),120*sy());}
+  else label('3D PREVIEW DISABLED',113.5,100,10,'#777',600,'center');
+  ctx.restore();
 
   rect(225,36,88,128,'#111');
   label('TRACK INFO',232,47,9,'#aaa',700);
@@ -88,15 +90,15 @@ export function createEnhancedTrackMenuPresentation(options:{
 
  return {
   file:options.file,
-  async draw(nextTrack,nextScore){track=nextTrack;score=nextScore;signature='';ensurePreview();render();},
+  async draw(nextTrack,nextScore){track=nextTrack;score=nextScore;signature='';if(options.previewEnabled)ensurePreview();render();},
   capture(){return {restore:render,close(){}};},
   outline(nextSelection){selection=Math.max(0,Math.min(2,nextSelection));render();},
   render,
   active(active){enabled=active;if(active)render();},
-  inPreview(event){const r=canvas.getBoundingClientRect(),x=(event.clientX-r.left)*320/r.width,y=(event.clientY-r.top)*200/r.height;return enabled&&x>=11&&x<=216&&y>=40&&y<=160;},
-  orbit(dx,dy){ensurePreview().orbit(dx,dy);render();},
-  pan(dx,dy){ensurePreview().pan(dx,dy);render();},
-  dolly(delta,x,y){ensurePreview().dolly(delta,x,y);render();},
+  inPreview(event){const r=canvas.getBoundingClientRect(),x=(event.clientX-r.left)*320/r.width,y=(event.clientY-r.top)*200/r.height;return enabled&&options.previewEnabled&&x>=11&&x<=216&&y>=40&&y<=160;},
+  orbit(dx,dy){if(options.previewEnabled){ensurePreview().orbit(dx,dy);render();}},
+  pan(dx,dy){if(options.previewEnabled){ensurePreview().pan(dx,dy);render();}},
+  dolly(delta,x,y){if(options.previewEnabled){ensurePreview().dolly(delta,x,y);render();}},
   close(){preview?.close();preview=undefined;previewCanvas.width=previewCanvas.height=1;}
  };
 }
