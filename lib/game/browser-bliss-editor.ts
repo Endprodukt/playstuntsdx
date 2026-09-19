@@ -488,6 +488,15 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const dragGhostGraphic=dragGhost.querySelector<SVGSVGElement>('svg')!;
  dragGhostGraphic.style.transformOrigin='50% 85%';dragGhostGraphic.style.transformBox='fill-box';
  const rotateDragGhost=(heading:number)=>{dragGhostGraphic.style.transform='rotate('+(heading*-360/1024)+'deg)';};
+ const orientDragGhost=(candidate:RaceSpawn|undefined)=>{
+  if(viewMode==='3d'&&candidate&&editor3D){
+   const a=editor3D.projectWorld(candidate.x,candidate.z,candidate.y??0);
+   const angle=candidate.heading*Math.PI/512,fx=-Math.sin(angle),fz=Math.cos(angle);
+   const b=editor3D.projectWorld(candidate.x+fx*512,candidate.z+fz*512,candidate.y??0);
+   if(a&&b){dragGhostGraphic.style.transform='rotate('+(Math.atan2(b.x-a.x,-(b.y-a.y))*180/Math.PI)+'deg)';return;}
+  }
+  rotateDragGhost(candidate?.heading??dragHeadingOffset);
+ };
  document.body.appendChild(dragGhost);
  let spawnDragging=false,spawnPointerId=-1,dragSnapped=false,dragHeadingOffset=0,dragCandidate:RaceSpawn|undefined;
  const updateSpawnDrag=(event:PointerEvent)=>{
@@ -514,13 +523,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    }
   }else dragSnapped=false;
   dragCandidate=candidate;dragGhost.style.left=gx+'px';dragGhost.style.top=gy+'px';
-  if(viewMode==='3d'&&candidate&&editor3D){
-   const a=editor3D.projectWorld(candidate.x,candidate.z,candidate.y??0);
-   const angle=candidate.heading*Math.PI/512,fx=-Math.sin(angle),fz=Math.cos(angle);
-   const b=editor3D.projectWorld(candidate.x+fx*512,candidate.z+fz*512,candidate.y??0);
-   if(a&&b)dragGhostGraphic.style.transform='rotate('+(Math.atan2(b.x-a.x,-(b.y-a.y))*180/Math.PI)+'deg)';
-   else rotateDragGhost(candidate.heading);
-  }else rotateDragGhost(candidate?.heading??0);
+  orientDragGhost(candidate);
   dragGhost.style.filter=snapped?'drop-shadow(0 0 5px #8fd85f)':'drop-shadow(0 2px 2px #000)';
  };
  const finishSpawnDrag=(event:PointerEvent)=>{
@@ -547,7 +550,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    const step=event.deltaY>0?32:-32;dragHeadingOffset=normalizeRaceHeading(dragHeadingOffset+step);
    if(dragCandidate)dragCandidate.heading=normalizeRaceHeading(dragCandidate.heading+step);
   }
-  rotateDragGhost(dragCandidate?.heading??dragHeadingOffset);
+  orientDragGhost(dragCandidate);
  };
  const rotatePlacedSpawn=(event:WheelEvent)=>{
   if(!testSpawn)return false;
