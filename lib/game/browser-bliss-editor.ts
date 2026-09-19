@@ -10,7 +10,7 @@ import {setBlissEditorActive} from './bliss-editor-presence.ts';
 import {blissTerrainPresets,type BlissTerrainPreset} from './bliss-terrain-presets.ts';
 import {BLISS_TRANSPARENT_COLOUR,setBlissTrackMetadata,type BlissMetadata} from './bliss-metadata.ts';
 import {blissRoundToEven,blissSceneryAvailability,blissSceneryDefaults,type BlissSceneryPlacement,type BlissSceneryRule} from './bliss-scenery-generator.ts';
-import {blissTournamentUrl,parseBlissScoreboard,parseBlissTournamentConfig,type BlissTournamentRace} from './bliss-tournaments.ts';
+import {blissTournamentUrl,isZakStuntsTournament,parseBlissScoreboard,parseBlissTournamentConfig,parseZakStuntsCurrentRace,parseZakStuntsScoreboard,type BlissTournamentRace} from './bliss-tournaments.ts';
 import {blissEstimatedTimeCentiseconds,blissTimey,summarizeBlissTrackAnalysis,traceBlissPath,type BlissRouteAnalysis} from './bliss-route.ts';
 import {BLISS_PLAYER_CARD_ICON,BLISS_OPPONENT_CARD_ICON} from './bliss-card-icons.ts';
 import type {Assets} from './types.ts';
@@ -1407,7 +1407,6 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const defaultTournamentSites:readonly TournamentSite[]=[
   {name:'ZakStunts',url:'https://zak.stunts.hu/'},
   {name:'Race For Kicks',url:'https://www.raceforkicks.com/'},
-  {name:'Custom Car Championship',url:'https://ccc.mystunts.net/'},
  ];
  const loadTournamentSites=():TournamentSite[]=>{
   try{
@@ -1415,7 +1414,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    if(stored===null)return defaultTournamentSites.map(site=>({...site}));
    const value=JSON.parse(stored);
    if(!Array.isArray(value))return defaultTournamentSites.map(site=>({...site}));
-   return value.filter(row=>row&&typeof row.name==='string'&&typeof row.url==='string').map(row=>({name:row.name,url:row.url}));
+   return value.filter(row=>row&&typeof row.name==='string'&&typeof row.url==='string'&&!(/^Custom Car Championship$/i.test(row.name)&&/ccc\.mystunts\.net/i.test(row.url))).map(row=>({name:row.name,url:row.url}));
   }catch{return defaultTournamentSites.map(site=>({...site}));}
  };
  const saveTournamentSites=(sites:readonly TournamentSite[])=>{try{localStorage.setItem(tournamentStorageKey,JSON.stringify(sites));}catch{}};
@@ -1427,7 +1426,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   try{bytes=await host.fetchUrl(blissTournamentUrl(site.url,race.scoreboard));}
   catch(error){await centeredNotice('Scoreboard','Could not load the scoreboard: '+String(error));return;}
   if(!bytes.length){await centeredNotice('Scoreboard','There is no scoreboard for this race yet.');return;}
-  const entries=parseBlissScoreboard(bytes);
+  const entries=isZakStuntsTournament(site.url)?parseZakStuntsScoreboard(bytes):parseBlissScoreboard(bytes);
   modalOpen=true;
   const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:24px;';
   const box=document.createElement('div');box.style.cssText='width:min(820px,94vw);max-height:86vh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#1e1e34;border:2px solid #9090ad;color:#eee;padding:18px 20px;box-shadow:0 22px 70px #000;border-radius:6px;font:13px/1.35 system-ui,Segoe UI,sans-serif;';
@@ -1526,8 +1525,15 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    if(!host.fetchUrl){close();await centeredNotice('Tournaments','Network access is unavailable in this build.');return;}
    connect.disabled=true;connect.textContent='Connecting…';
    try{
-    const cfg=await host.fetchUrl(blissTournamentUrl(site.url,'tour.cfg')),race=parseBlissTournamentConfig(cfg);
-    if(!race.tournament&&!race.trackFile)throw Error('tour.cfg does not contain Bliss tournament information');
+    let race:BlissTournamentRace;
+    if(isZakStuntsTournament(site.url)){
+     const homepage=await host.fetchUrl(blissTournamentUrl(site.url,''));
+     race=parseZakStuntsCurrentRace(homepage);
+    }else{
+     const cfg=await host.fetchUrl(blissTournamentUrl(site.url,'tour.cfg'));
+     race=parseBlissTournamentConfig(cfg);
+     if(!race.tournament&&!race.trackFile)throw Error('tour.cfg does not contain Bliss tournament information');
+    }
     close();await showTournamentRace(site,race);
    }catch(error){connect.disabled=false;connect.textContent='Connect';status.textContent='Tournament connection failed: '+String(error);status.style.color='#ff9b9b';}
   });
