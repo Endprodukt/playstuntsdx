@@ -26,6 +26,7 @@ export interface BlissEditor3DView {
  dolly(delta:number,clientX:number,clientY:number):void;
  setLayers(layers:Partial<BlissEditor3DLayers>):void;
  projectWorld(x:number,z:number,y?:number):{x:number;y:number}|null;
+ roadHeightAt(x:number,z:number):number|null;
  worldAt(clientX:number,clientY:number):{x:number;z:number}|null;
  cameraState():BlissEditor3DCameraState;
  close():void;
@@ -272,6 +273,13 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   const x=Math.floor(hit.point.x/1024),row=Math.floor((-hit.point.z)/1024),y=29-row;
   return x>=0&&x<30&&y>=0&&y<30?{x,y}:null;
  };
+ const roadHeightAt=(x:number,z:number)=>{
+  const origin=new THREE.Vector3(THREE.MathUtils.clamp(x,0,30719),4000,-THREE.MathUtils.clamp(z,0,30719));
+  raycaster.set(origin,new THREE.Vector3(0,-1,0));
+  const hits=raycaster.intersectObject(trackRoot,true);
+  if(!hits.length)return null;
+  return hits[0].point.y;
+ };
  const worldAt=(clientX:number,clientY:number)=>{
   const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return null;
   pointer.set((clientX-rect.left)/rect.width*2-1,-((clientY-rect.top)/rect.height*2-1));
@@ -323,7 +331,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   pan,
   dolly,
   setLayers(next){Object.assign(layerState,next);applyLayers();render();},
-  projectWorld,worldAt,
+  projectWorld,roadHeightAt,worldAt,
   cameraState(){updateCamera();return {position:[camera.position.x,camera.position.y,camera.position.z],target:[target.x,target.y,target.z],fov:camera.fov};},
   close(){clearGhost();disposeObject(content);disposeObject(annotationRoot);disposeObject(base);hover.geometry.dispose();(hover.material as THREE.Material).dispose();pickPlane.geometry.dispose();(pickPlane.material as THREE.Material).dispose();renderer.dispose();renderer.forceContextLoss();}
  };
