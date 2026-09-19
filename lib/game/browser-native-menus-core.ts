@@ -41,10 +41,10 @@ import {originalMainMenuBounds} from './main-menu-hit.ts';
 import {ENHANCED_TEXTURES_EVENT,enhancedTexturesEnabled} from './enhanced-textures.ts';
 import {runNativeCarMenu,type NativeCarMenuHost} from './native-car-runtime.ts';
 import {runNativeOpponentMenu,type NativeOpponentHost} from './native-opponent-runtime.ts';
-import {enhancedMenuEnabled,interactiveTrackPreviewEnabled,runNativeOptions,type NativeOptionsHost} from './native-options-runtime.ts';
+import {enhancedMenuEnabled,interactiveTrackPreviewEnabled,modernTrackEditorEnabled,runNativeOptions,type NativeOptionsHost} from './native-options-runtime.ts';
 import {createEnhancedTrackMenuPresentation} from './enhanced-track-menu-presentation.ts';
 import {runNativeTrackMenu,type NativeTrackMenuHost} from './native-track-runtime.ts';
-import type {NativeEditorHost} from './native-editor-runtime.ts';
+import {runNativeEditor,type NativeEditorHost} from './native-editor-runtime.ts';
 import {createBrowserMenuInput} from './browser-menu-input.ts';
 import {createNativeFileStore,openNativeFilePersistence,nativeFileKey} from './native-file-store.ts';
 import {createNativeEditorFileWrites} from './native-editor-file-writes.ts';
@@ -163,12 +163,17 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   await runNativeOpponentMenu(opponentHost,display.presentation);
  };
  const editTrack=async()=>{
-  show('editor');input.setActive(false);
+  show('editor');
+  const loaded=await loadEditorResources();
+  if(!modernTrackEditorEnabled()){
+   focusBrowserGameCanvas(canvas);
+   await runNativeEditor(loaded.editor);
+   return;
+  }
+  input.setActive(false);
   try{
-   const [{runBrowserBlissEditor},{editor,art,terrainNames,presets}]=await Promise.all([
-    import('./browser-bliss-editor.ts'),
-    loadEditorResources(),
-   ]);
+   const {runBrowserBlissEditor}=await import('./browser-bliss-editor.ts');
+   const {editor,art,terrainNames,presets}=loaded;
    const sceneryPreviews=panoramas.slice(0,5).map((entry,index)=>blissOriginalSceneryPreview(baseline,index,entry.resources,palette));
    const tauriCore=(window as typeof window&{__TAURI__?:{core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}}}).__TAURI__?.core;
    const customTracks=tauriCore?{
