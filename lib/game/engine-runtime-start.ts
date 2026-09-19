@@ -18,8 +18,7 @@ export function startEngineRuntime(before:EngineRuntimeStartState,instrument:Uin
    view(timer).setUint16(0x1e,offset,true);view(timer).setUint16(0x20,segment,true);
    timer[0x47]=instrument[0x43]<16?instrument[0x43]:(owner&15)+1;
    for(let i=1;i<voices.length;i++)if(voices[i][0]===owner){
-    for(const [field,control] of [[0x29,0x16],[0x2b,0x17],[0x2c,0x18]])if(timer[field]&&patch[control]>=129&&patch[control]<=133)throw Error('Unreconstructed engine instrument controller');
-    writes.push(...adlibInstrument(patch,i-1));
+    writes.push(...adlibInstrument(patch,i-1,timer));
    }
   }else if(call.kind==='note'){
    const [pitch,owner]=call.args,c=view(command);c.setUint32(0,pitch,true);command[4]=255;c.setUint32(6,0xffffffe0,true);
