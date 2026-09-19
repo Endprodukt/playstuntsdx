@@ -207,20 +207,29 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    };
    const enhanced=createEnhancedTrackMenuPresentation({canvas,assets:options.assets,decodeTrack:decodeBlissTrack,createPreview:createBlissEditor3DView,originalCamera:overviewCamera,previewEnabled:interactiveTrackPreviewEnabled()});
    let active=true,drag:'orbit'|'pan'|null=null,lastX=0,lastY=0;
+   const modernActions:ReturnType<typeof enhanced['actionAt']>[]=[];
    const presentEnhanced=()=>{if(!active){paint();return;}enhanced.render();if(options.graphics)options.graphics.refresh=presentEnhanced;};
    menuHost.present=presentEnhanced;
    menuHost.setOverviewActive=(value)=>{active=value;enhanced.active(value);if(!value)paint();};
 
    const pointerDown=(event:PointerEvent)=>{
-    if(!enhanced.inPreview(event)||(event.button!==0&&event.button!==2))return;
-    event.preventDefault();event.stopImmediatePropagation();drag=event.button===0?'orbit':'pan';lastX=event.clientX;lastY=event.clientY;canvas.setPointerCapture(event.pointerId);
+    if(enhanced.inPreview(event)&&(event.button===0||event.button===2)){
+     event.preventDefault();event.stopImmediatePropagation();drag=event.button===0?'orbit':'pan';lastX=event.clientX;lastY=event.clientY;canvas.setPointerCapture(event.pointerId);return;
+    }
+    if(event.button!==0)return;
+    const action=enhanced.actionAt(event);
+    if(action.type==='none')return;
+    event.preventDefault();event.stopImmediatePropagation();modernActions.push(action);
    };
    const pointerMove=(event:PointerEvent)=>{
     if(!drag)return;event.preventDefault();event.stopImmediatePropagation();const dx=event.clientX-lastX,dy=event.clientY-lastY;lastX=event.clientX;lastY=event.clientY;
     if(drag==='orbit')enhanced.orbit(dx,dy);else enhanced.pan(dx,dy);
    };
    const pointerUp=(event:PointerEvent)=>{if(drag){event.preventDefault();event.stopImmediatePropagation();}drag=null;if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);};
-   const wheel=(event:WheelEvent)=>{if(!enhanced.inPreview(event))return;event.preventDefault();enhanced.dolly(event.deltaY,event.clientX,event.clientY);};
+   const wheel=(event:WheelEvent)=>{
+    if(enhanced.inPreview(event)){event.preventDefault();enhanced.dolly(event.deltaY,event.clientX,event.clientY);return;}
+    if(enhanced.scrollDropdown(event.deltaY)){event.preventDefault();event.stopImmediatePropagation();}
+   };
    canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
 
    const pickTrackFile=()=>new Promise<File|null>(resolve=>{
@@ -230,7 +239,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     picker.addEventListener('cancel',()=>finish(null),{once:true});
     document.body.appendChild(picker);picker.click();
    });
-   const modernHost:ModernTrackMenuHost={...menuHost,async importTrack(){
+   const modernHost:ModernTrackMenuHost={...menuHost,takeModernAction:()=>modernActions.shift(),async importTrack(){
     const selected=await pickTrackFile();if(!selected)return null;
     const data=new Uint8Array(await selected.arrayBuffer());
     if(data.length<1802||data.length>13802){window.alert(`Track files must contain 1802 to 13802 bytes. This file contains ${data.length}.`);return null;}
