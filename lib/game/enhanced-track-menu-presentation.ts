@@ -10,6 +10,8 @@ type PreviewFactory=(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,opt
 export type EnhancedTrackMenuPresentation=ModernTrackMenuPresentation&{
  active(active:boolean):void;
  inPreview(event:{clientX:number;clientY:number}):boolean;
+ actionAt(event:{clientX:number;clientY:number}):ModernTrackMenuAction;
+ scrollDropdown(delta:number):boolean;
  orbit(dx:number,dy:number):void;
  pan(dx:number,dy:number):void;
  dolly(delta:number,x:number,y:number):void;
@@ -136,6 +138,14 @@ export function createEnhancedTrackMenuPresentation(options:{
   async draw(nextTrack,nextScore){track=nextTrack;score=nextScore;signature='';if(options.previewEnabled)ensurePreview();render();},
   setTracks(names,nextSelected,open){tracks=[...names];selectedTrack=Math.max(0,Math.min(Math.max(0,tracks.length-1),nextSelected));dropdownOpen=open;updateDropdownStart();},
   hit,
+  actionAt(event){const r=canvas.getBoundingClientRect();return hit((event.clientX-r.left)*320/r.width,(event.clientY-r.top)*200/r.height);},
+  scrollDropdown(delta){
+   if(!dropdownOpen||tracks.length<=dropdownRows)return false;
+   const maxStart=Math.max(0,tracks.length-dropdownRows),direction=delta>0?1:-1;
+   dropdownStart=Math.max(0,Math.min(maxStart,dropdownStart+direction));
+   selectedTrack=Math.max(dropdownStart,Math.min(dropdownStart+dropdownRows-1,selectedTrack));
+   render();return true;
+  },
   render,
   active(active){enabled=active;if(active)render();},
   inPreview(event){
