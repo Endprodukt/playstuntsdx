@@ -34,7 +34,7 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
  const initial=host.configuration.slice(),offset=host.opponent?7:0,paintOffset=offset+4,transmissionOffset=offset+5;
  let cars=[...host.cars].sort((a,b)=>(a.name??a.id).localeCompare(b.name??b.id)),open=false;
  let selected=Math.max(0,cars.findIndex(car=>car.id===idAt(host.configuration,offset)));
- let paint=host.configuration[paintOffset]??0,transmission=host.configuration[transmissionOffset]??0,paintCount=1;
+ let paint=host.configuration[paintOffset]??0,transmission=host.configuration[transmissionOffset]??0,paintCount=1,typePrefix='',typeDeadline=0;
 
  const sync=async(resetPaint=false)=>{
   if(!cars.length)return;
@@ -69,7 +69,20 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
     return;
    }
 
-   const keyboard=input.keyboardKey??0;
+   const keyboard=input.keyboardKey??0,textKey=input.textKey??0;
+   if(open&&textKey>=32&&textKey<127){
+    const ch=String.fromCharCode(textKey).toLocaleUpperCase(),now=performance.now();
+    const labels=cars.map(car=>(car.name??car.id).toLocaleUpperCase());
+    const sameSingle=typePrefix.length===1&&typePrefix===ch&&now<=typeDeadline;
+    let prefix=now<=typeDeadline&&!sameSingle?typePrefix+ch:ch;
+    let index=-1;
+    if(sameSingle){
+     for(let step=1;step<=cars.length;step++){const i=(selected+step)%cars.length;if(labels[i].startsWith(ch)){index=i;break;}}
+    }else index=labels.findIndex(label=>label.startsWith(prefix));
+    if(index<0&&prefix.length>1){prefix=ch;index=labels.findIndex(label=>label.startsWith(prefix));}
+    if(index>=0){selected=index;typePrefix=prefix;typeDeadline=now+750;display.setCars(cars,selected,true);display.render();}
+    continue;
+   }
    if(keyboard===27){host.configuration.splice(0,host.configuration.length,...initial);return;}
    if(keyboard===keyUp||keyboard===keyDown){
     if(open){selected=(selected+(keyboard===keyDown?1:-1)+cars.length)%cars.length;display.setCars(cars,selected,true);display.render();}
