@@ -1861,20 +1861,91 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
 
  function showHelp(initial:0|1){
   if(helpOverlay){helpOverlay.remove();helpOverlay=null;modalOpen=false;overlay.focus();return;}
-  let helpPage=initial;
   modalOpen=true;
-  const shade=document.createElement('div');shade.tabIndex=-1;helpOverlay=shade;shade.style.cssText='position:fixed;inset:0;z-index:2147483640;background:rgba(0,0,0,.72);display:grid;place-items:center;padding:30px;';
+  const shade=document.createElement('div');shade.tabIndex=-1;helpOverlay=shade;shade.style.cssText='position:fixed;inset:0;z-index:2147483640;background:rgba(0,0,0,.72);display:grid;place-items:center;padding:24px;';
   const closeHelp=()=>{if(helpOverlay!==shade)return;helpOverlay=null;modalOpen=false;shade.remove();overlay.focus();};
-  const box=document.createElement('div');box.style.cssText='width:min(760px,90vw);max-height:88vh;overflow:auto;background:#1e1e34;border:2px solid #80809a;color:#ddd;padding:18px 22px;box-shadow:0 18px 60px #000;font:14px/1.35 ui-monospace,Consolas,monospace;';
-  const heading=document.createElement('h2');heading.style.cssText='text-align:center;font-size:16px;margin:0 0 12px;border-bottom:1px solid #aaa;padding-bottom:8px;';
-  const table=document.createElement('div');table.style.cssText='display:grid;grid-template-columns:120px 1fr;column-gap:18px;row-gap:2px;';
-  const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:center;gap:8px;margin-top:16px;';
-  const optionsButton=button('Option keys',()=>{helpPage=0;draw();}),tilesButton=button('Tile shortcuts',()=>{helpPage=1;draw();}),close=button('Back',closeHelp);
-  actions.append(optionsButton,tilesButton,close);box.append(heading,table,actions);shade.append(box);document.body.append(shade);
-  const draw=()=>{heading.textContent=helpPage===0?'Help — Option keys':'Help — Tile shortcuts';table.replaceChildren();for(const [keyName,description] of helpPage===0?OPTION_HELP:TILE_HELP){const a=document.createElement('span'),b=document.createElement('span');a.textContent=keyName;a.style.color='#d7d76a';b.textContent=description;b.style.color='#aaaaff';table.append(a,b);}setActive(optionsButton,helpPage===0);setActive(tilesButton,helpPage===1);};
+  const box=document.createElement('div');box.style.cssText='width:min(920px,94vw);height:min(760px,90vh);display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;background:#171717;border:1px solid #555;border-radius:9px;color:#ddd;box-shadow:0 18px 60px #000;font:13px/1.45 system-ui,Segoe UI,sans-serif;overflow:hidden;';
+  const heading=document.createElement('div');heading.style.cssText='padding:16px 20px 12px;border-bottom:1px solid #333;';
+  const title=document.createElement('h2');title.textContent='Track Editor Manual';title.style.cssText='font-size:18px;margin:0;color:#f1f1f1;';
+  const subtitle=document.createElement('div');subtitle.textContent='PlayStunts DX · Bliss-compatible editor';subtitle.style.cssText='margin-top:3px;color:#888;font-size:11px;';
+  heading.append(title,subtitle);
+
+  const nav=document.createElement('div');nav.style.cssText='display:flex;gap:5px;flex-wrap:wrap;padding:9px 14px;background:#111;border-bottom:1px solid #2f2f2f;';
+  const content=document.createElement('div');content.style.cssText='overflow:auto;scroll-behavior:smooth;padding:18px 22px 28px;min-height:0;';
+  const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:flex-end;padding:9px 14px;border-top:1px solid #333;background:#111;';
+  const close=button('Back',closeHelp);actions.append(close);
+
+  const section=(id:string,titleText:string,bodyText:string)=>{
+   const s=document.createElement('section');s.id='help-'+id;s.style.cssText='scroll-margin-top:8px;margin:0 0 28px;';
+   const h=document.createElement('h3');h.textContent=titleText;h.style.cssText='font-size:15px;color:#e8e8e8;margin:0 0 8px;padding-bottom:5px;border-bottom:1px solid #333;';
+   const p=document.createElement('div');p.style.cssText='color:#bdbdbd;white-space:pre-line;max-width:780px;';p.textContent=bodyText;
+   s.append(h,p);content.append(s);return s;
+  };
+  const tableSection=(id:string,titleText:string,rows:readonly (readonly [string,string])[])=>{
+   const s=document.createElement('section');s.id='help-'+id;s.style.cssText='scroll-margin-top:8px;margin:0 0 28px;';
+   const h=document.createElement('h3');h.textContent=titleText;h.style.cssText='font-size:15px;color:#e8e8e8;margin:0 0 9px;padding-bottom:5px;border-bottom:1px solid #333;';
+   const grid=document.createElement('div');grid.style.cssText='display:grid;grid-template-columns:minmax(105px,150px) minmax(0,1fr);gap:5px 16px;align-items:start;';
+   for(const [keyName,description] of rows){
+    const a=document.createElement('kbd');a.textContent=keyName;a.style.cssText='display:inline-block;width:max-content;max-width:145px;padding:3px 5px;border:1px solid #484848;border-radius:4px;background:#202020;color:#d8d66d;font:600 11px/1.25 ui-monospace,Consolas,monospace;';
+    const b=document.createElement('span');b.textContent=description;b.style.color='#bcbcbc';grid.append(a,b);
+   }
+   s.append(h,grid);content.append(s);return s;
+  };
+
+  const sections=[
+   ['basics','Basics',()=>section('basics','Basics',
+`The editor works directly on a 30 × 30 Stunts track grid.
+
+Choose a track piece from the palette on the left, then place it on the map. Left click paints, right click erases, and the middle mouse button picks an existing element. The active track piece is shown above the palette.
+
+Use the 2D / 3D switch above the map whenever you want to inspect the result spatially. The editor keeps normal Bliss-compatible track data while adding PlayStunts DX conveniences such as high-resolution previews, metadata and custom-track saving.`)],
+   ['pieces','Track Pieces',()=>section('pieces','Track Pieces',
+`The palette is split across twelve pages. F1–F12 switch directly between those pages. Many common road types can also be selected with letter shortcuts.
+
+Smart placement tries to choose a matching variant for connected roads where possible. Manual mode disables some of that protection and allows raw or conflicting combinations, which is useful for advanced editing but easier to misuse.
+
+The scenery selector below the palette changes the track landscape/background independently from the individual scenery objects placed on the grid.`)],
+   ['editing','Selection & Editing',()=>section('editing','Selection & Editing',
+`Hold Ctrl and drag with the left mouse button, or use the Select toolbar button, to mark a rectangular area.
+
+Copy and Cut store the selected track/terrain block in the clipboard. Paste enters hovering-paste mode so the block can be moved before placement. Flip and Rotate affect the current selection or paste block; when no selection exists, the toolbar variants can transform the whole track.
+
+TRK and TER decide which layers are affected by destructive operations. Undo and Redo work on normal editor operations and strokes.`)],
+   ['view3d','3D View',()=>section('view3d','3D View',
+`Switch the center view from 2D to 3D with the toggle above the map.
+
+In the 3D view, Ctrl + left-drag orbits the camera, Ctrl + right-drag pans, and the mouse wheel zooms. The zoom controls above the map also work in both views.
+
+The 3D view is for inspection and navigation; track editing remains driven by the same underlying 30 × 30 track data.`)],
+   ['scenery','Scenery & Tools',()=>section('scenery','Scenery & Tools',
+`Generate Scenery creates scenery automatically from configurable placement rules and percentages.
+
+Track Analysis inspects the route, identifies paths and errors, and can calculate estimated times for the available cars. Track Information edits title, author, comment and championship metadata. Tournaments handles Bliss-compatible tournament configuration and scoreboards.
+
+WAR toggles conflict/warning marks, GRID toggles the grid, COL enables annotation/colouring mode, and TRK SHOT exports the complete map or the current selection.`)],
+   ['saving','Saving & Custom Tracks',()=>section('saving','Saving & Custom Tracks',
+`New creates a fresh track from a terrain preset. Load opens an existing track. Save writes the current track to Custom Tracks; Save As lets you choose a new name.
+
+Track names are limited to eight Stunts-compatible characters. Supplied/original tracks are protected from being overwritten through the Custom Tracks workflow.
+
+The editor stores Bliss metadata where supported, including creation date, editing time and PlayStunts DX as the editing tool.`)],
+   ['keys','Option Keys',()=>tableSection('keys','Option Keys',OPTION_HELP)],
+   ['tiles','Tile Shortcuts',()=>tableSection('tiles','Tile Shortcuts',TILE_HELP)],
+  ] as const;
+
+  const built=new Map<string,HTMLElement>();
+  for(const [, ,build] of sections){const s=build();built.set(s.id.replace('help-',''),s);}
+  const jump=(id:string)=>{built.get(id)?.scrollIntoView({behavior:'smooth',block:'start'});};
+
+  for(const [id,labelText] of sections){
+   const b=button(labelText,()=>jump(id));b.style.cssText+='padding:5px 8px;font-size:10px;background:#1d1d1d;border-color:#3f3f3f;color:#ccc;';
+   nav.append(b);
+  }
+
+  box.append(heading,nav,content,actions);shade.append(box);document.body.append(shade);
   shade.addEventListener('keydown',event=>{if(event.code==='Escape'||event.code==='F1'){event.preventDefault();event.stopPropagation();closeHelp();}},true);
   shade.addEventListener('pointerdown',event=>{if(event.target===shade)closeHelp();});
-  draw();requestAnimationFrame(()=>shade.focus());
+  requestAnimationFrame(()=>{shade.focus();jump(initial===1?'tiles':'basics');});
  }
 
  function canvasBmpBlob(canvas:HTMLCanvasElement){
