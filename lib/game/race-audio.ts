@@ -21,16 +21,9 @@ export type RaceAudioState=Omit<EngineRuntimeStartState,'car'>&{cars:Uint8Array[
 export function createRaceAudio(before:RaceAudioState,resources:LoadedEffectResource[],enabled=true,master=127,engineOverrides:ReadonlyMap<number,Uint8Array>=new Map()){
  let state=structuredClone(before);
  const runtimeResources=[...resources];
- for(const [handle,instrument] of engineOverrides){
-  const car=state.cars[handle];if(!car||instrument.length<100)continue;
-  // Synthetic far pointers are only identifiers inside the reconstructed audio
-  // runtime; no DOS memory dereference is performed for these resources.
-  const segment=0xf000+(handle&0xff),offset=0;
-  const view=new DataView(car.buffer,car.byteOffset,car.byteLength);view.setUint16(0x24,offset,true);view.setUint16(0x26,segment,true);
-  runtimeResources.push({headerOffset:0,headerSegment:0,header:new Uint8Array(),instrumentOffset:offset,instrumentSegment:segment,instrument:instrument.slice(0,100),sequenceOffset:0,sequenceSegment:0,sequence:new Uint8Array()});
- }
  const carAt=(handle:number)=>{const car=state.cars[handle];if(!car)throw Error('Missing original car audio handle');return car;};
- const instrumentAt=(car:Uint8Array)=>{
+ const instrumentAt=(car:Uint8Array,handle?:number)=>{
+  if(handle!==undefined){const overridden=engineOverrides.get(handle);if(overridden?.length>=100)return overridden;}
   const v=new DataView(car.buffer,car.byteOffset,car.byteLength),offset=v.getUint16(0x24,true),segment=v.getUint16(0x26,true);
   const resource=runtimeResources.find(r=>r.instrumentOffset===offset&&r.instrumentSegment===segment);
   if(!resource)throw Error('Missing original car engine instrument');return resource.instrument;
@@ -49,9 +42,9 @@ export function createRaceAudio(before:RaceAudioState,resources:LoadedEffectReso
    const {writes,savedVolumes:restored,enabled:nextEnabled,...audio}=next;
    state={...state,...audio};enabled=nextEnabled===1;return {writes,savedVolumes:restored,enabled:nextEnabled};
   },
-  start(handle:number){const car=carAt(handle);return apply(handle,startEngineRuntime({...state,car},instrumentAt(car)));},
+  start(handle:number){const car=carAt(handle);return apply(handle,startEngineRuntime({...state,car},instrumentAt(car,handle)));},
   patchEngineInstrument(handle:number){
-   const car=carAt(handle),instrument=instrumentAt(car),writes:number[][]=[];
+   const car=carAt(handle),instrument=instrumentAt(car,handle),writes:number[][]=[];
    // Reprogram only voices already owned by this car. Do not restart the
    // engine/timer state: the native race startup already did that correctly.
    for(let i=1;i<state.voices.length;i++)if(state.voices[i][0]===handle)writes.push(...adlibInstrument(Array.from(instrument),i-1));
@@ -66,11 +59,11 @@ export function createRaceAudio(before:RaceAudioState,resources:LoadedEffectReso
    const writes=apply(handle,next);state.soundFlags=previousFlags;return writes;
   },
   update(handle:number,rpm:number,previous:Vector,current:Vector,interval:number){
-   const car=carAt(handle),instrument=instrumentAt(car),cars=state.cars.slice();
+   const car=carAt(handle),instrument=instrumentAt(car,handle),cars=state.cars.slice();
    cars[handle]=updateCarAudioTarget(car,rpm,previous,current,interval,instrument[14],instrument[15]);state={...state,cars};
   },
   tick(){
-   const next=stepCarAudioInterrupt({...state,car:carAt(0)},runtimeResources,enabled,master);
+   const next=stepCarAudioInterrupt({...state,car:carAt(0)},runtimeResources,enabled,master,(handle)=>engineOverrides.get(handle));
    state={...state,...next};return next.writes;
   },
   exit(queue:DrivingAudioExitState){
@@ -89,7 +82,7 @@ export function createRaceAudio(before:RaceAudioState,resources:LoadedEffectReso
     }
     if(request.handle===undefined)throw Error('Missing original audio request handle');
     const handle=request.handle,car=carAt(handle);
-    if(request.kind==='engine-start')writes.push(...apply(handle,startEngineRuntime({...state,car},instrumentAt(car))));
+    if(request.kind==='engine-start')writes.push(...apply(handle,startEngineRuntime({...state,car},instrumentAt(car,handle))));
     else if(request.kind==='engine-stop')writes.push(...apply(handle,stopEngineRuntime({...state,car})));
     else writes.push(...apply(handle,updateSkidRuntime({...state,car},request.kind==='skid-start'?1:request.kind==='skid2-start'?2:'stop',runtimeResources,enabled,master)));
    }
