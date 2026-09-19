@@ -6,7 +6,6 @@ import {blissParentElement} from './bliss-edit.ts';
 import {blissTrackHash} from './bliss-track.ts';
 import {changeBlissMaterial,findBlissElementByName,smartSelectBliss} from './bliss-shortcuts.ts';
 import {blissTrackTransforms,transformBlissTerrainCode,transformBlissTrackCode,type BlissTransformOperation} from './bliss-transformations.ts';
-import {BLISS_TOOL_ICON_COLUMNS,BLISS_TOOL_ICON_SIZE,BLISS_TOOL_ICON_SPRITE} from './bliss-tool-icons.ts';
 import {setBlissEditorActive} from './bliss-editor-presence.ts';
 import {blissTerrainPresets,type BlissTerrainPreset} from './bliss-terrain-presets.ts';
 import {BLISS_TRANSPARENT_COLOUR,setBlissTrackMetadata,type BlissMetadata} from './bliss-metadata.ts';
@@ -355,7 +354,8 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const map3D=document.createElement('canvas');map3D.style.cssText='grid-area:1/1;display:none;width:100%;height:100%;min-width:0;min-height:320px;align-self:stretch;justify-self:stretch;cursor:crosshair;background:#111;';
  mapWrap.append(map,map3D);mapPanel.append(zoomBar,mapWrap);
 
- const toolsPanel=panel('Bliss tools');
+ const toolsPanel=panel('');
+ toolsPanel.querySelector('strong')?.remove();
  toolsPanel.style.display='grid';toolsPanel.style.gridTemplateRows='auto auto auto minmax(0,1fr)';toolsPanel.style.gap='10px';toolsPanel.style.minHeight='0';
  const attachHoverHelp=(control:HTMLElement,help:HoverHelp)=>{
   const shortcut=help.shortcut?('Shortcut: '+help.shortcut+'\n'):'';
@@ -364,15 +364,38 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   control.title=help.name+'\n'+shortcut+help.description;
   control.setAttribute('aria-label',help.name+(help.shortcut?' — '+help.shortcut:'')+'. '+help.description);
  };
- const quick=document.createElement('div');quick.style.cssText='display:grid;grid-template-columns:repeat(4,48px);gap:4px;justify-content:center;padding:6px;background:#17172a;border:1px solid #303047;border-radius:5px;';
+ const quick=document.createElement('div');quick.style.cssText='display:grid;grid-template-columns:repeat(4,48px);gap:5px;justify-content:center;padding:7px;background:#141414;border:1px solid #303030;border-radius:7px;';
+ const toolIcons:readonly string[]=[
+  '<rect x="5" y="5" width="14" height="14" rx="1.5"/><path d="M8 8h8v8H8z" opacity=".18"/>',
+  '<rect x="8" y="8" width="11" height="11" rx="1.5"/><path d="M5 16V5h11"/>',
+  '<path d="m6 6 12 12M18 6 6 18"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>',
+  '<path d="M7 6h10v4H7zM6 10h12v9H6z"/><path d="M9 6V4h6v2"/>',
+  '<path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"/>',
+  '<path d="M12 4v16M8 8l4-4 4 4M8 16l4 4 4-4"/>',
+  '<path d="M7 9a6 6 0 1 1 1 8"/><path d="M7 5v4h4"/>',
+  '<path d="M17 9a6 6 0 1 0-1 8"/><path d="M17 5v4h-4"/>',
+  '<circle cx="12" cy="12" r="8"/><path d="M12 10v6M12 7.5h.01"/>',
+  '<path d="M9 7H5v4"/><path d="M5.5 10.5A7 7 0 1 0 8 6"/>',
+  '<path d="M15 7h4v4"/><path d="M18.5 10.5A7 7 0 1 1 16 6"/>',
+  '<circle cx="12" cy="12" r="8"/><path d="M9.8 9.5a2.5 2.5 0 1 1 3.8 2.1c-1 .65-1.6 1.15-1.6 2.4M12 17h.01"/>',
+  '<path d="M5 19c1-4 3-6 7-6s6 2 7 6"/><path d="M8 13c-1-2-1-4 0-6 2 1 3 2 4 4 1-2 2-3 4-4 1 2 1 4 0 6"/>',
+  '<path d="M5 18V9M10 18V5M15 18v-7M20 18V7"/><path d="M4 18h17"/>',
+  '<path d="M7 5h10v3a5 5 0 0 1-10 0z"/><path d="M9 19h6M12 13v6"/><path d="M7 7H4v2a4 4 0 0 0 4 4M17 7h3v2a4 4 0 0 1-4 4"/>',
+  '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>'
+ ] as const;
  const quickButton=(icon:number,titleText:string,action?:()=>void)=>{
   const help=QUICK_TOOL_HELP[icon]??{name:titleText,description:titleText};
   const control=button('',()=>action?.());
-  control.style.cssText+='width:48px;height:48px;padding:1px;display:grid;place-items:center;background:#222238;border-color:#4a4a64;';
-  const image=document.createElement('span'),column=icon%BLISS_TOOL_ICON_COLUMNS,row=Math.floor(icon/BLISS_TOOL_ICON_COLUMNS);
-  image.style.cssText='display:block;width:'+BLISS_TOOL_ICON_SIZE+'px;height:'+BLISS_TOOL_ICON_SIZE+'px;background-image:url("'+BLISS_TOOL_ICON_SPRITE+'");background-repeat:no-repeat;background-size:'+(BLISS_TOOL_ICON_SIZE*BLISS_TOOL_ICON_COLUMNS)+'px '+(BLISS_TOOL_ICON_SIZE*5)+'px;background-position:-'+(column*BLISS_TOOL_ICON_SIZE)+'px -'+(row*BLISS_TOOL_ICON_SIZE)+'px;image-rendering:pixelated;';
-  control.replaceChildren(image);attachHoverHelp(control,help);
-  if(!action){control.setAttribute('aria-disabled','true');control.style.opacity='.35';control.style.cursor='help';}
+  control.style.cssText+='width:48px;height:48px;padding:0;display:grid;place-items:center;background:#1c1c1c;border-color:#3a3a3a;border-radius:7px;transition:background .12s,border-color .12s,transform .12s;';
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('width','25');svg.setAttribute('height','25');svg.setAttribute('aria-hidden','true');
+  svg.style.cssText='display:block;fill:none;stroke:#c9c9d0;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;pointer-events:none;';
+  svg.innerHTML=toolIcons[icon-4]??'<circle cx="12" cy="12" r="7"/>';
+  control.replaceChildren(svg);attachHoverHelp(control,help);
+  if(action){
+   control.addEventListener('mouseenter',()=>{control.style.background='#262626';control.style.borderColor='#555';});
+   control.addEventListener('mouseleave',()=>{control.style.background='#1c1c1c';control.style.borderColor='#3a3a3a';});
+  }else{control.setAttribute('aria-disabled','true');control.style.opacity='.35';control.style.cursor='help';}
   quick.append(control);return control;
  };
  // File operations live in the footer in PlayStunts DX to avoid duplicate
