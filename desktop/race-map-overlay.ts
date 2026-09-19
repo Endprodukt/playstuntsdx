@@ -1,8 +1,9 @@
 import {analyzeBlissRoute,traceBlissPath} from '../lib/game/bliss-route';
 import {decodeBlissTrack,type BlissTrack} from '../lib/game/bliss-track';
-import {blissElementData} from '../lib/game/bliss-element-data';
+import {createBlissEditor3DView,type BlissEditor3DView} from '../lib/game/bliss-editor-3d';
 import {RACE_MAP_CLEAR_EVENT,RACE_MAP_FRAME_EVENT,type RaceMapFrame} from '../lib/game/race-map-state';
 import {blissEditorActive} from '../lib/game/bliss-editor-presence';
+import type {Assets} from '../lib/game/types';
 
 type Layer='ground'|'terrain'|'track'|'buildings'|'items'|'paths';
 type Settings={size:number;layers:Record<Layer,boolean>};
@@ -19,7 +20,7 @@ const layers:readonly {id:Layer;label:string}[]=[
 
 const defaults:Settings={
  size:300,
- layers:{ground:true,terrain:true,track:true,buildings:true,items:true,paths:true},
+ layers:{ground:true,terrain:true,track:true,buildings:true,items:true,paths:false},
 };
 
 function loadSettings():Settings{
@@ -43,35 +44,19 @@ function trackSignature(track:ReadonlyArray<number>){
  return hash>>>0;
 }
 
-function terrainFill(code:number){
- if(code===0)return 'rgba(0,0,0,0)';
- if(code===6)return '#627f45';
- if(code===7||code===8||code===9||code===10)return '#526f3c';
- if(code===1||code===2)return '#58784a';
- return '#49693d';
-}
-
-function isBuilding(name:string){
- return /(tennis|station|barn|office|windmill|ship|diner)/i.test(name);
-}
-
-function isRoadElement(code:number){
- const element=blissElementData[code];
- return !!element&&element.ctype.some(value=>value!==0);
-}
-
 function drawArrow(ctx:CanvasRenderingContext2D,x:number,y:number,heading:number,scale:number){
  ctx.save();ctx.translate(x,y);ctx.rotate(-heading*Math.PI/512);
- ctx.beginPath();ctx.moveTo(0,-12*scale);ctx.lineTo(8*scale,9*scale);ctx.lineTo(0,5*scale);ctx.lineTo(-8*scale,9*scale);ctx.closePath();
- ctx.fillStyle='#fff';ctx.strokeStyle='#111';ctx.lineWidth=Math.max(1.5,2*scale);ctx.fill();ctx.stroke();
- ctx.beginPath();ctx.arc(0,0,2.7*scale,0,Math.PI*2);ctx.fillStyle='#d9e65b';ctx.fill();
+ ctx.beginPath();ctx.moveTo(0,-13*scale);ctx.lineTo(8*scale,9*scale);ctx.lineTo(0,5*scale);ctx.lineTo(-8*scale,9*scale);ctx.closePath();
+ ctx.fillStyle='#fff';ctx.strokeStyle='rgba(0,0,0,.9)';ctx.lineWidth=Math.max(2,2.6*scale);ctx.fill();ctx.stroke();
+ ctx.beginPath();ctx.arc(0,0,2.8*scale,0,Math.PI*2);ctx.fillStyle='#d9e65b';ctx.fill();
  ctx.restore();
 }
 
-export function installDesktopRaceMap(){
+export function installDesktopRaceMap(assets:Assets){
  const settings=loadSettings();
  let frame:RaceMapFrame|undefined,visible=false,disposed=false;
  let cachedSignature=-1,cachedTrack:BlissTrack|undefined,cachedPaths:ReturnType<typeof traceBlissPath>[]=[];
+ let preview:BlissEditor3DView|undefined;
 
  const root=document.createElement('div');
  root.style.cssText='position:fixed;left:12px;top:12px;z-index:2147483600;display:none;pointer-events:auto;font:12px/1.2 system-ui,Segoe UI,sans-serif;color:#eee;';
@@ -89,7 +74,9 @@ export function installDesktopRaceMap(){
  header.append(title,hint);
 
  const canvas=document.createElement('canvas');canvas.width=900;canvas.height=900;
- canvas.style.cssText='display:block;background:#0a0d09;border:1px solid #444;border-radius:5px;';
+ canvas.style.cssText='display:block;background:#080b08;border:1px solid #444;border-radius:5px;';
+
+ const map3d=document.createElement('canvas');map3d.width=900;map3d.height=900;
 
  const sizeRow=document.createElement('div');sizeRow.style.cssText='display:grid;grid-template-columns:42px 1fr 42px;gap:7px;align-items:center;margin-top:8px;';
  const sizeLabel=document.createElement('span');sizeLabel.textContent='Size';sizeLabel.style.color='#aaa';
@@ -110,7 +97,14 @@ export function installDesktopRaceMap(){
  for(const layer of layers){
   const button=document.createElement('button');button.type='button';button.textContent=layer.label;
   button.style.cssText='border:1px solid #555;border-radius:4px;padding:5px 6px;cursor:pointer;font:10px/1.1 system-ui,Segoe UI,sans-serif;';
-  button.addEventListener('click',()=>{settings.layers[layer.id]=!settings.layers[layer.id];storeSettings(settings);renderLayerButtons();draw();});
+  button.addEventListener('click',()=>{
+   settings.layers[layer.id]=!settings.layers[layer.id];storeSettings(settings);renderLayerButtons();
+   preview?.setLayers({
+    ground:settings.layers.ground,terrain:settings.layers.terrain,track:settings.layers.track,
+    buildings:settings.layers.buildings,items:settings.layers.items,
+   });
+   draw();
+  });
   layerButtons.set(layer.id,button);layerGrid.append(button);
  }
 
@@ -124,63 +118,56 @@ export function installDesktopRaceMap(){
 
  function rebuildTrack(){
   if(!frame)return;
-  const signature=trackSignature(frame.track);if(signature===cachedSignature&&cachedTrack)return;
+  const signature=trackSignature(frame.track);if(signature===cachedSignature&&cachedTrack&&preview)return;
   cachedSignature=signature;cachedTrack=decodeBlissTrack(Uint8Array.from(frame.track));
   cachedPaths=[];
   try{
    const analysis=analyzeBlissRoute(cachedTrack);
    cachedPaths=analysis.paths.slice(0,128).map((_,index)=>traceBlissPath(cachedTrack!,analysis,index));
   }catch{cachedPaths=[];}
+  preview?.close();
+  preview=createBlissEditor3DView(map3d,assets,cachedTrack,{
+   initialCamera:{position:[15360,50000,-15360],target:[15360,0,-15360],fov:36},
+   transparentBackground:true,
+   showGround:settings.layers.ground,
+   showAnnotations:false,
+   layers:{
+    ground:settings.layers.ground,terrain:settings.layers.terrain,track:settings.layers.track,
+    buildings:settings.layers.buildings,items:settings.layers.items,
+   },
+  });
+ }
+
+ function drawPaths(ctx:CanvasRenderingContext2D,width:number){
+  if(!settings.layers.paths||!cachedPaths.length)return;
+  const cell=width/30;ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
+  cachedPaths.forEach((trace,index)=>{
+   if(trace.steps.length<2)return;
+   ctx.beginPath();
+   trace.steps.forEach((step,stepIndex)=>{
+    const x=(step.x+.5)*cell,y=(step.y+.5)*cell;
+    if(stepIndex===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+   });
+   ctx.strokeStyle=index===0?'rgba(78,232,247,.88)':'rgba(78,232,247,.22)';
+   ctx.lineWidth=index===0?Math.max(2.5,cell*.11):Math.max(1.2,cell*.045);ctx.stroke();
+  });
+  ctx.restore();
  }
 
  function draw(){
   if(!frame||!visible)return;
-  rebuildTrack();if(!cachedTrack)return;
+  rebuildTrack();if(!cachedTrack||!preview)return;
+  preview.setLayers({
+   ground:settings.layers.ground,terrain:settings.layers.terrain,track:settings.layers.track,
+   buildings:settings.layers.buildings,items:settings.layers.items,
+  });
+  preview.render();
   const ctx=canvas.getContext('2d');if(!ctx)return;
-  const width=canvas.width,height=canvas.height,cell=width/30;
+  const width=canvas.width,height=canvas.height;
   ctx.clearRect(0,0,width,height);
-  ctx.fillStyle=settings.layers.ground?'#405f31':'rgba(7,9,7,.92)';ctx.fillRect(0,0,width,height);
-
-  if(settings.layers.terrain){
-   for(let y=0;y<30;y++)for(let x=0;x<30;x++){
-    const code=cachedTrack.terrain[y*30+x];if(!code)continue;
-    ctx.fillStyle=terrainFill(code);ctx.fillRect(x*cell,y*cell,cell+.5,cell+.5);
-   }
-  }
-
-  if(settings.layers.track||settings.layers.buildings||settings.layers.items){
-   for(let y=0;y<30;y++)for(let x=0;x<30;x++){
-    const code=cachedTrack.track[y*30+x];if(!code||code>=253)continue;
-    const element=blissElementData[code],name=element?.id??'',road=isRoadElement(code),building=!road&&isBuilding(name),item=!road&&!building;
-    const cx=x*cell+cell/2,cy=y*cell+cell/2;
-    if(road&&settings.layers.track){
-     ctx.fillStyle=element.material===1?'#8f7650':element.material===2?'#b7c7d2':'#878787';
-     ctx.strokeStyle='#303030';ctx.lineWidth=Math.max(1,cell*.06);ctx.fillRect(x*cell+cell*.13,y*cell+cell*.13,cell*.74,cell*.74);ctx.strokeRect(x*cell+cell*.13,y*cell+cell*.13,cell*.74,cell*.74);
-    }else if(building&&settings.layers.buildings){
-     ctx.fillStyle='#b88756';ctx.strokeStyle='#452f20';ctx.lineWidth=Math.max(1,cell*.06);ctx.fillRect(x*cell+cell*.2,y*cell+cell*.2,cell*.6,cell*.6);ctx.strokeRect(x*cell+cell*.2,y*cell+cell*.2,cell*.6,cell*.6);
-    }else if(item&&settings.layers.items){
-     ctx.beginPath();ctx.arc(cx,cy,cell*.18,0,Math.PI*2);ctx.fillStyle='#d2c46f';ctx.fill();
-    }
-   }
-  }
-
-  if(settings.layers.paths&&cachedPaths.length){
-   ctx.lineCap='round';ctx.lineJoin='round';
-   cachedPaths.forEach((trace,index)=>{
-    if(trace.steps.length<2)return;
-    ctx.beginPath();
-    trace.steps.forEach((step,stepIndex)=>{
-     const x=(step.x+.5)*cell,y=(step.y+.5)*cell;
-     if(stepIndex===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
-    });
-    ctx.strokeStyle=index===0?'rgba(92,230,244,.9)':'rgba(92,230,244,.28)';
-    ctx.lineWidth=index===0?Math.max(2,cell*.12):Math.max(1,cell*.055);ctx.stroke();
-   });
-  }
-
-  ctx.strokeStyle='rgba(255,255,255,.14)';ctx.lineWidth=1;
-  for(let i=1;i<30;i++){const p=i*cell;ctx.beginPath();ctx.moveTo(p,0);ctx.lineTo(p,height);ctx.stroke();ctx.beginPath();ctx.moveTo(0,p);ctx.lineTo(width,p);ctx.stroke();}
-
+  ctx.fillStyle='#080b08';ctx.fillRect(0,0,width,height);
+  ctx.drawImage(map3d,0,0,width,height);
+  drawPaths(ctx,width);
   const px=Math.max(0,Math.min(width,frame.x/30720*width));
   const py=Math.max(0,Math.min(height,(1-frame.z/30720)*height));
   drawArrow(ctx,px,py,frame.heading,width/900);
@@ -216,6 +203,6 @@ export function installDesktopRaceMap(){
  window.addEventListener('keydown',onKey,true);
 
  return ()=>{
-  disposed=true;window.removeEventListener(RACE_MAP_FRAME_EVENT,onFrame as EventListener);window.removeEventListener(RACE_MAP_CLEAR_EVENT,onClear);window.removeEventListener('keydown',onKey,true);root.remove();
+  disposed=true;preview?.close();window.removeEventListener(RACE_MAP_FRAME_EVENT,onFrame as EventListener);window.removeEventListener(RACE_MAP_CLEAR_EVENT,onClear);window.removeEventListener('keydown',onKey,true);root.remove();
  };
 }
