@@ -67,7 +67,12 @@ function attachManualRaceRuntime(data:Parameters<typeof createNativeManualRaceSe
  const controlReplay=createAllocatedReplayControl(()=>session.state.memory,()=>{if(!rendering)throw Error('Replay drawing requires the retained race framebuffer');return rendering;},d);
  return {...prepared,initialWrites:[...prepared.initialWrites,...engineOverrideWrites],audio,
   updateEngineSoundOverrides(overrides?:Readonly<Record<string,Uint8Array>>){
-   rebuildEngineOverrides(overrides);patchedVoiceInstrument.clear();return liveEnginePatchWrites();
+   rebuildEngineOverrides(overrides);patchedVoiceInstrument.clear();
+   const memory=session.state.memory,view=new DataView(memory.buffer,memory.byteOffset,memory.byteLength),writes:number[][]=[];
+   const handles=[view.getUint16(d+0x8016,true)];
+   if(memory[d+0x8fc8])handles.push(view.getUint16(d+0x86de,true));
+   for(const handle of handles)if(handle<25)writes.push(...audio.patchEngineInstrument(handle));
+   return writes;
   },
   enableGraphicsCapture(){captureGraphics=true;},
   graphicsFrame(){if(hasPendingGraphics){hasPendingGraphics=false;renderer.render(pendingGraphics,undefined,undefined,undefined,true,(memory,world)=>{rendering=memory;graphicsSource??=new Uint8Array(memory.length);graphicsLive??=new Uint8Array(pendingGraphics.length);graphicsSource.set(memory);graphicsLive.set(pendingGraphics);const key=nextGraphicsKey(pendingGraphics);if(key!==graphicsKey){graphicsKey=key;graphicsMask=undefined;graphicsRevision++;}drawNativeFullRedrawRaceLayers(memory,pendingGraphics,d,bp,world);});}if(!graphicsSource||!graphicsLive||!renderer.view)return;graphicsMask??=renderGraphicsMask(graphicsSource,graphicsLive,renderer.view.rectangle,renderer.view.fireballMask);return {...renderer.view,mask:graphicsMask,memory:graphicsLive,pixels:rendering!.subarray(0xa0000,0xa0000+64000),revision:graphicsRevision};},
