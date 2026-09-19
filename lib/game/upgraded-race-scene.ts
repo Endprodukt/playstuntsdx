@@ -38,6 +38,7 @@ import type {createNativeManualRaceRuntime} from './native-manual-race-runtime';
 import type {TrackObject} from '../physics/track';
 import type {CollisionPlane} from '../physics/plane';
 import {enhancedRaceAspect} from './enhanced-view-settings.ts';
+import {enhancedTexturesEnabled} from './enhanced-textures.ts';
 type Runtime=Pick<Awaited<ReturnType<typeof createNativeManualRaceRuntime>>,'raw'|'session'|'graphicsFrame'|'pixels'>;
 const ENHANCED_BACKGROUND_ROOT='/site/enhanced-backgrounds';
 const alpineSections=['alpine-scen.png','alpine-sce2.png','alpine-sce3.png','alpine-sce4.png'].map(name=>`${ENHANCED_BACKGROUND_ROOT}/${name}`);
@@ -353,7 +354,7 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    // move the far horizon; only its stabilized pitch determines the framing.
    const effectiveBackgroundHeight=chase||cameraMode===3?0:backgroundHeightCamera===sourceCamera?backgroundHeight:shown.camera.position[1];
    const background=backdrop.render(backgroundView.angles,effectiveBackgroundHeight,displayAspect,camera.fov,frame.projection,live[d+0x134]);
-   const enhancedBackgroundDrawn=enhancedBackground?.draw(context,{width:canvas.width,height:canvas.height,heading:backgroundView.angles[2],horizon:background.panoramaHorizon??enhancedPanoramaHorizon(background.pixels,background.ground,background.width),rotation:backgroundView.rotation,sky:paletteCss[background.sky],ground:paletteCss[background.ground]})??false;
+   const enhancedBackgroundDrawn=enhancedTexturesEnabled()&&(enhancedBackground?.draw(context,{width:canvas.width,height:canvas.height,heading:backgroundView.angles[2],horizon:background.panoramaHorizon??enhancedPanoramaHorizon(background.pixels,background.ground,background.width),rotation:backgroundView.rotation,sky:paletteCss[background.sky],ground:paletteCss[background.ground]})??false);
    if(!enhancedBackgroundDrawn){
     for(let i=0;i<64000;i++)skyPixels[i]=opaquePalette[background.pixels[i]];
     skyContext.putImageData(skyImage,0,0);
