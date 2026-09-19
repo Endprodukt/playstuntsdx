@@ -152,7 +152,22 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   const carHost:NativeCarMenuHost={...host,configuration:config,opponent,opponentArt:opponent?opponentArt.resources['opp'+opponent]:undefined,baseline,cars:options.assets.cars as unknown as NativeCarMenuHost['cars'],art:carArt.resources,descriptions:carArt.descriptions,bank};
   if(enhancedMenuEnabled()){
    const actions:ModernCarMenuAction[]=[];
-   const modern=createEnhancedCarMenuPresentation({canvas,palette});
+   let modernShowroom:ReturnType<typeof createUpgradedCarMenu>|undefined;
+   const modernPreview=async(car:NativeMenuCar,paint:number)=>{
+    const bankBytes=await bank(car.id),target=new Uint8Array(65536);
+    let modelMemory:Uint8Array|undefined;
+    const model=createOriginalCarMenuModel(baseline,bankBytes,carArt.resources.stop,(memory)=>{modelMemory=memory;});
+    const paintCount=Math.max(1,model.paintCount|0),safePaint=Math.max(0,Math.min(paint,paintCount-1));
+    model.render(target,0,safePaint);
+    if(!modelMemory)return null;
+    modernShowroom??=createUpgradedCarMenu(palette,showroomMaterials.indices);
+    const rendered=modernShowroom.draw(modelMemory,Math.max(640,Math.round(canvas.width*.7)),Math.max(320,Math.round(canvas.height*.46)));
+    const snapshot=document.createElement('canvas');snapshot.width=rendered.width;snapshot.height=rendered.height;
+    const snapshotContext=snapshot.getContext('2d');if(!snapshotContext)return null;
+    snapshotContext.clearRect(0,0,snapshot.width,snapshot.height);snapshotContext.drawImage(rendered,0,0);
+    return {canvas:snapshot,paintCount};
+   };
+   const modern=createEnhancedCarMenuPresentation({canvas,palette,preview:modernPreview});
    const pickZip=()=>new Promise<File|null>(resolve=>{
     const picker=document.createElement('input');picker.type='file';picker.accept='.zip,application/zip';picker.style.display='none';
     const finish=(file:File|null)=>{picker.remove();resolve(file);};
@@ -198,6 +213,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerleave',pointerLeave,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
    try{return await runModernCarMenu(modernHost,modern);}finally{
     canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerleave',pointerLeave,true);canvas.removeEventListener('wheel',wheel,true);
+    modernShowroom?.close();modernShowroom=undefined;
    }
   }
   if(!options.displayMode){
