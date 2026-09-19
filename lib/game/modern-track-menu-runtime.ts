@@ -57,7 +57,7 @@ export async function runModernTrackMenu(host:ModernTrackMenuHost,display:Modern
     else if(action.type==='track'){selected=action.index;await load(selected);}
     else if(action.type==='done')return;
     else if(action.type==='edit'){
-     await host.editTrack(host.track);
+     if(await host.editTrack(host.track)==='drive')return 'drive' as const;
      names=sortNames((await host.enumerate('','.trk')).map(stripExtension));open=false;await sync();
     }else if(action.type==='import'&&host.importTrack){
      const imported=await host.importTrack();
