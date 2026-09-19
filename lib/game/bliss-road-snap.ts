@@ -79,7 +79,17 @@ export function snapToBlissRoad(
    const step=trace.steps[i],previous=points[i-1],current=points[i],next=points[i+1];
    const curve=curvedStepCandidate(x,z,step,previous,next);
    if(curve&&(!best||curve.distance<best.distance))best=curve;
-   if(next&&!curve)best=addCandidate(best,x,z,current.x,current.z,next.x,next.z,false);
+   if(next&&!curve){
+    const id=blissElementData[step.code]?.id??'';
+    if(id==='Highway'){
+     const dx=next.x-current.x,dz=next.z-current.z,length=Math.hypot(dx,dz);
+     if(length){
+      const ox=-dz/length*240,oz=dx/length*240;
+      best=addCandidate(best,x,z,current.x+ox,current.z+oz,next.x+ox,next.z+oz,false);
+      best=addCandidate(best,x,z,current.x-ox,current.z-oz,next.x-ox,next.z-oz,false);
+     }else best=addCandidate(best,x,z,current.x,current.z,next.x,next.z,false);
+    }else best=addCandidate(best,x,z,current.x,current.z,next.x,next.z,false);
+   }
   }
  }
  const threshold=alreadySnapped?950:620;
