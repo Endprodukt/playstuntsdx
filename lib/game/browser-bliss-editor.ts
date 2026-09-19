@@ -415,7 +415,8 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  viewToggle.addEventListener('change',()=>{void setViewMode(viewToggle.checked?'3d':'2d');});
  view2D.addEventListener('click',event=>{event.preventDefault();viewToggle.checked=false;void setViewMode('2d');});
  view3D.addEventListener('click',event=>{event.preventDefault();viewToggle.checked=true;void setViewMode('3d');});
- const zoomOut=button('−',()=>{if(viewMode==='3d'){editor3D?.dolly(120,map3D.getBoundingClientRect().left+map3D.clientWidth/2,map3D.getBoundingClientRect().top+map3D.clientHeight/2);sync3DZoomLabel();}else setZoom(zoom-.25);}),zoomReset=button('100%',()=>{if(viewMode==='3d')void reset3DView();else setZoom(1);}),zoomIn=button('+',()=>{if(viewMode==='3d'){editor3D?.dolly(-120,map3D.getBoundingClientRect().left+map3D.clientWidth/2,map3D.getBoundingClientRect().top+map3D.clientHeight/2);sync3DZoomLabel();}else setZoom(zoom+.25);}),zoomFit=button('Fit',()=>fitMap());
+ const refresh3DSpawnOverlay=()=>{if(viewMode==='3d'&&testSpawn)renderMap();};
+ const zoomOut=button('−',()=>{if(viewMode==='3d'){editor3D?.dolly(120,map3D.getBoundingClientRect().left+map3D.clientWidth/2,map3D.getBoundingClientRect().top+map3D.clientHeight/2);sync3DZoomLabel();refresh3DSpawnOverlay();}else setZoom(zoom-.25);}),zoomReset=button('100%',()=>{if(viewMode==='3d')void reset3DView();else setZoom(1);}),zoomIn=button('+',()=>{if(viewMode==='3d'){editor3D?.dolly(-120,map3D.getBoundingClientRect().left+map3D.clientWidth/2,map3D.getBoundingClientRect().top+map3D.clientHeight/2);sync3DZoomLabel();refresh3DSpawnOverlay();}else setZoom(zoom+.25);}),zoomFit=button('Fit',()=>fitMap());
  zoomOut.title='Zoom out';zoomIn.title='Zoom in';zoomReset.title='Actual size';zoomFit.title='Fit map to editor';
  for(const control of [zoomOut,zoomReset,zoomIn,zoomFit])control.style.padding='4px 8px';
  const spawnTool=document.createElement('button');spawnTool.type='button';spawnTool.draggable=false;spawnTool.title='Drag onto the map to choose a test start';spawnTool.innerHTML='<svg viewBox="0 0 20 24" width="14" height="17" aria-hidden="true"><circle cx="10" cy="4" r="3" fill="#e6b94a"/><path d="M7 8h6l2 6-2 1-1-4v11H9v-7H7v7H4V11l-1 4-2-1 2-6z" fill="#e6b94a"/></svg>';
@@ -946,7 +947,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  async function reset3DView(){
   if(!editor3D)return;
-  editor3D.resetView();editor3D.render();sync3DZoomLabel();
+  editor3D.resetView();editor3D.render();sync3DZoomLabel();refresh3DSpawnOverlay();
  }
   async function setViewMode(mode:'2d'|'3d'){
   viewMode=mode;host.onViewModeChange?.(mode);viewToggle.checked=mode==='3d';viewKnob.style.transform=mode==='3d'?'translateX(16px)':'translateX(0)';view2D.style.color=mode==='2d'?'#fff':'#777';view3D.style.color=mode==='3d'?'#fff':'#777';
@@ -1089,7 +1090,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(viewMode!=='3d'||!editor3D)return;
   if(view3DDrag){
    const dx=event.clientX-view3DLastX,dy=event.clientY-view3DLastY;view3DLastX=event.clientX;view3DLastY=event.clientY;
-   if(view3DDrag==='orbit')editor3D.orbit(dx,dy);else editor3D.pan(dx,dy);return;
+   if(view3DDrag==='orbit')editor3D.orbit(dx,dy);else editor3D.pan(dx,dy);refresh3DSpawnOverlay();return;
   }
   const cell=update3DCell(event);
   if(view3DPaint&&cell){
@@ -1106,10 +1107,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(viewMode!=='3d'||!editor3D)return;
   const binding=wheelBinding(event),plainBinding=event.ctrlKey?[event.deltaY<0?'WheelUp':'WheelDown'].join(''):binding;
   const cameraAction=actionForBinding(binding,'3d')??actionForBinding(plainBinding,'3d');
-  if(cameraAction?.id==='dollyIn3D'){event.preventDefault();editor3D.dolly(-Math.max(40,Math.abs(event.deltaY)),event.clientX,event.clientY);sync3DZoomLabel();return;}
-  if(cameraAction?.id==='dollyOut3D'){event.preventDefault();editor3D.dolly(Math.max(40,Math.abs(event.deltaY)),event.clientX,event.clientY);sync3DZoomLabel();return;}
+  if(cameraAction?.id==='dollyIn3D'){event.preventDefault();editor3D.dolly(-Math.max(40,Math.abs(event.deltaY)),event.clientX,event.clientY);sync3DZoomLabel();refresh3DSpawnOverlay();return;}
+  if(cameraAction?.id==='dollyOut3D'){event.preventDefault();editor3D.dolly(Math.max(40,Math.abs(event.deltaY)),event.clientX,event.clientY);sync3DZoomLabel();refresh3DSpawnOverlay();return;}
   const action=actionForBinding(binding);
-  if(action?.id==='zoomIn'||action?.id==='zoomOut'){event.preventDefault();editor3D.dolly(action.id==='zoomIn'?-120:120,event.clientX,event.clientY);sync3DZoomLabel();return;}
+  if(action?.id==='zoomIn'||action?.id==='zoomOut'){event.preventDefault();editor3D.dolly(action.id==='zoomIn'?-120:120,event.clientX,event.clientY);sync3DZoomLabel();refresh3DSpawnOverlay();return;}
   if(action){event.preventDefault();executeBoundAction(action,event.shiftKey);}
  },{passive:false});
 
