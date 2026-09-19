@@ -24,6 +24,7 @@ export interface BlissEditor3DView {
  pan(dx:number,dy:number):void;
  dolly(delta:number,clientX:number,clientY:number):void;
  setLayers(layers:Partial<BlissEditor3DLayers>):void;
+ projectWorld(x:number,z:number,y?:number):{x:number;y:number}|null;
  close():void;
 }
 
@@ -61,7 +62,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   new THREE.PlaneGeometry(30720,30720),
   new THREE.MeshBasicMaterial({color:0x466f35,side:THREE.DoubleSide,toneMapped:false})
  );
- base.rotation.x=-Math.PI/2;base.position.set(15360,-3,15360);base.visible=layerState.ground;world.add(base);
+ base.rotation.x=-Math.PI/2;base.position.set(15360,-700,15360);base.visible=layerState.ground;world.add(base);
 
  const pickPlane=new THREE.Mesh(
   new THREE.PlaneGeometry(30720,30720),
@@ -159,12 +160,24 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
  };
 
  const clearRoot=(root:THREE.Group)=>{while(root.children.length){const child=root.children[root.children.length-1];root.remove(child);disposeObject(child);}};
+ const flatTerrain=(source:BlissTrack)=>{
+  const vertices:number[]=[];
+  for(let y=0;y<30;y++)for(let x=0;x<30;x++){
+   if(source.terrain[y*30+x]!==0)continue;
+   const row=29-y,x0=x*1024,x1=x0+1024,z0=row*1024,z1=z0+1024,h=-1;
+   vertices.push(x0,h,z0,x1,h,z0,x1,h,z1,x0,h,z0,x1,h,z1,x0,h,z1);
+  }
+  if(!vertices.length)return;
+  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));geometry.computeVertexNormals();
+  const mesh=new THREE.Mesh(geometry,new THREE.MeshBasicMaterial({color:0x466f35,side:THREE.DoubleSide,toneMapped:false}));
+  mesh.renderOrder=-.5;terrainRoot.add(mesh);
+ };
  const applyLayers=()=>{
   base.visible=layerState.ground;terrainRoot.visible=layerState.terrain;trackRoot.visible=layerState.track;buildingsRoot.visible=layerState.buildings;itemsRoot.visible=layerState.items;
  };
  const rebuild=(source:BlissTrack)=>{
   clearRoot(terrainRoot);clearRoot(trackRoot);clearRoot(buildingsRoot);clearRoot(itemsRoot);
-  modelFactory=createTrackModelFactory(materials,2);rebuildAnnotations(source);
+  modelFactory=createTrackModelFactory(materials,2);rebuildAnnotations(source);flatTerrain(source);
   for(let y=0;y<30;y++)for(let x=0;x<30;x++){
    const at=y*30+x,terrain=source.terrain[at],sourceId=source.track[at],selected=hillRenderSelection(terrain,sourceId);
    const row=29-y;
@@ -224,6 +237,13 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
  };
 
  const render=()=>{resize();updateCamera();renderer.render(scene,camera);};
+ const projectWorld=(x:number,z:number,y=0)=>{
+  resize();updateCamera();
+  const point=new THREE.Vector3(x,y,-z).project(camera);
+  if(!Number.isFinite(point.x+point.y+point.z))return null;
+  const width=Math.max(1,canvas.clientWidth||canvas.width),height=Math.max(1,canvas.clientHeight||canvas.height);
+  return {x:(point.x*.5+.5)*width,y:(-.5*point.y+.5)*height};
+ };
  const cellAt=(clientX:number,clientY:number)=>{
   const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return null;
   pointer.set((clientX-rect.left)/rect.width*2-1,-((clientY-rect.top)/rect.height*2-1));
@@ -276,6 +296,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   pan,
   dolly,
   setLayers(next){Object.assign(layerState,next);applyLayers();render();},
+  projectWorld,
   close(){clearGhost();disposeObject(content);disposeObject(annotationRoot);disposeObject(base);hover.geometry.dispose();(hover.material as THREE.Material).dispose();pickPlane.geometry.dispose();(pickPlane.material as THREE.Material).dispose();renderer.dispose();renderer.forceContextLoss();}
  };
 }
