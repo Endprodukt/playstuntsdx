@@ -18,6 +18,7 @@ export interface ModernTrackMenuPresentation {
 
 export interface ModernTrackMenuHost extends NativeTrackMenuHost {
  importTrack?:()=>Promise<{name:string;path:string;raw:number[]}|null>;
+ takeModernAction?:()=>ModernTrackMenuAction|undefined;
 }
 
 const stripExtension=(name:string)=>name.replace(/\.trk$/i,'');
@@ -27,7 +28,7 @@ export async function runModernTrackMenu(host:ModernTrackMenuHost,display:Modern
  let names=(await host.enumerate('','.trk')).map(stripExtension);
  const includeCurrent=()=>{if(!names.some(name=>name.toLowerCase()===host.track.name.toLowerCase()))names.unshift(host.track.name);};
  includeCurrent();
- let selected=Math.max(0,names.findIndex(name=>name.toLowerCase()===host.track.name.toLowerCase())),open=false,previousButtons=0;
+ let selected=Math.max(0,names.findIndex(name=>name.toLowerCase()===host.track.name.toLowerCase())),open=false;
 
  const sync=async()=>{
   includeCurrent();
@@ -49,8 +50,26 @@ export async function runModernTrackMenu(host:ModernTrackMenuHost,display:Modern
  await sync();
  try{
   for(;;){
-   const input=await host.input(),pressed=(input.buttons&3)!==0&&(previousButtons&3)===0;
-   previousButtons=input.buttons;
+   const input=await host.input(),action=host.takeModernAction?.();
+   if(action){
+    if(action.type==='selector'){open=!open;display.setTracks(names,selected,open);display.render();}
+    else if(action.type==='track'){selected=action.index;await load(selected);}
+    else if(action.type==='done')return;
+    else if(action.type==='edit'){
+     await host.editTrack(host.track);
+     names=(await host.enumerate('','.trk')).map(stripExtension);open=false;await sync();
+    }else if(action.type==='import'&&host.importTrack){
+     const imported=await host.importTrack();
+     if(imported){
+      host.track.name=imported.name;host.track.path=imported.path;host.track.raw=imported.raw;
+      host.configuration.splice(13,9,...Array.from({length:9},(_,i)=>imported.name.charCodeAt(i)||0));
+      names=(await host.enumerate('','.trk')).map(stripExtension);
+      if(!names.some(name=>name.toLowerCase()===imported.name.toLowerCase()))names.unshift(imported.name);
+      open=false;await sync();
+     }
+    }
+    continue;
+   }
    if(input.key===27){if(open){open=false;display.setTracks(names,selected,false);display.render();}else return;continue;}
    if(input.key===keyUp||input.key===keyDown){
     if(names.length){
@@ -63,24 +82,6 @@ export async function runModernTrackMenu(host:ModernTrackMenuHost,display:Modern
    if(input.key===13||input.key===32){
     if(open)await load(selected);else{open=true;display.setTracks(names,selected,true);display.render();}
     continue;
-   }
-   if(!pressed||!input.mouseActive)continue;
-   const action=display.hit(input.x,input.y);
-   if(action.type==='selector'){open=!open;display.setTracks(names,selected,open);display.render();}
-   else if(action.type==='track'){selected=action.index;await load(selected);}
-   else if(action.type==='done')return;
-   else if(action.type==='edit'){
-    await host.editTrack(host.track);
-    names=(await host.enumerate('','.trk')).map(stripExtension);open=false;await sync();
-   }else if(action.type==='import'&&host.importTrack){
-    const imported=await host.importTrack();
-    if(imported){
-     host.track.name=imported.name;host.track.path=imported.path;host.track.raw=imported.raw;
-     host.configuration.splice(13,9,...Array.from({length:9},(_,i)=>imported.name.charCodeAt(i)||0));
-     names=(await host.enumerate('','.trk')).map(stripExtension);
-     if(!names.some(name=>name.toLowerCase()===imported.name.toLowerCase()))names.unshift(imported.name);
-     open=false;await sync();
-    }
    }
   }
  }finally{display.close();}
