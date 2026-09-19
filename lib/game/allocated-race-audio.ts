@@ -8,7 +8,7 @@ import {stopEffect} from './effect-stop.ts';
 import type {Vector} from '../physics/math.ts';
 /** One allocated race's regular AdLib resources and live memory state.
  * Construct after allocation and music shutdown; discard before freeing banks. */
-export function createAllocatedRaceAudio(memory:()=>Uint8Array,d:number,driverSegment:number){
+export function createAllocatedRaceAudio(memory:()=>Uint8Array,d:number,driverSegment:number,engineOverrides:ReadonlyMap<number,Uint8Array>=new Map()){
  const view=()=>{const m=memory();return new DataView(m.buffer,m.byteOffset,m.byteLength);};
  const word=(at:number)=>view().getUint16(d+at,true),byte=(at:number)=>memory()[d+at];
  if(byte(0x4e06))throw Error('Allocated race audio requires the regular AdLib driver');
@@ -16,7 +16,7 @@ export function createAllocatedRaceAudio(memory:()=>Uint8Array,d:number,driverSe
  const resources=readOriginalCarSoundResources(memory(),d,handles);
  const state=()=>readOriginalRaceAudioState(memory(),d,driverSegment);
  const operate=<T>(operation:(race:ReturnType<typeof createRaceAudio>)=>T)=>{
-  const race=createRaceAudio(state(),resources,byte(0x4e05)!==0,byte(0x9f5a));
+  const race=createRaceAudio(state(),resources,byte(0x4e05)!==0,byte(0x9f5a),engineOverrides);
   const result=operation(race);writeOriginalRaceAudioState(memory(),d,race.snapshot());return result;
  };
  const dispatch=(requests:readonly RaceAudioRequest[])=>{
