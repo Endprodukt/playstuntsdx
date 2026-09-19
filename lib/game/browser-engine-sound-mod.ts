@@ -31,6 +31,7 @@ export async function loadConfiguredEngineSoundOverrides(data:NativeDemoData){
    instrument=engi.bytes.slice(0,100);cache.set(file,instrument);
   }
   overrides[car.id.toUpperCase()]=instrument;
+  console.info(`[Sound Mod] ${car.id} -> ${info.label} (${file})`);
  }
  return Object.keys(overrides).length?overrides:undefined;
 }
