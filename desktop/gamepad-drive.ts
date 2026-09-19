@@ -99,7 +99,13 @@ const oldStorageKey = 'playstunts-dx-wheel-bindings-v1';
 const axisCaptureThreshold = 0.42;
 const buttonCaptureThreshold = 0.55;
 const steeringDeadzoneStorageKey = 'playstunts-dx-steering-deadzone-percent';
+const optionsButtonStorageKey = 'playstunts-dx-show-options-button';
 const defaultSteeringDeadzonePercent = 4;
+
+function optionsButtonVisible() {
+  const stored = window.localStorage.getItem(optionsButtonStorageKey);
+  return stored === null || !['0', 'false', 'no', 'off'].includes(stored.trim().toLowerCase());
+}
 
 function steeringDeadzonePercent() {
   const stored = window.localStorage.getItem(steeringDeadzoneStorageKey);
@@ -423,6 +429,7 @@ export function installDesktopDriveControls() {
       captureNotice='';
       if(stage!=='done')stage='idle';
     }
+    ui.toggle.style.display = optionsButtonVisible() ? 'block' : 'none';
     ui.panel.style.display = setupOpen ? 'block' : 'none';
     ui.status.textContent = stageText();
     ui.bindings.textContent = bindingsText();
