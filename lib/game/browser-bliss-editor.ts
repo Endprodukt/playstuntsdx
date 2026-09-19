@@ -370,7 +370,14 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    const x0=xCell*1024,x1=(xCell+shape.width)*1024,zNorth=(30-yCell)*1024,zSouth=(30-yCell-shape.height)*1024;
    const edges=[{x:(x0+x1)/2,z:zNorth},{x:x1,z:(zNorth+zSouth)/2},{x:(x0+x1)/2,z:zSouth},{x:x0,z:(zNorth+zSouth)/2}];
    const a=connections[0],b=connections[1];
-   if(((a-b+4)%4)===2){considerSegment(edges[a].x,edges[a].z,edges[b].x,edges[b].z);continue;}
+   if(((a-b+4)%4)===2){
+    if(data.id==='Highway'){
+     const ax=edges[a].x,az=edges[a].z,bx=edges[b].x,bz=edges[b].z,dx=bx-ax,dz=bz-az,length=Math.hypot(dx,dz);
+     if(length){const ox=-dz/length*240,oz=dx/length*240;considerSegment(ax+ox,az+oz,bx+ox,bz+oz);considerSegment(ax-ox,az-oz,bx-ox,bz-oz);}
+     else considerSegment(ax,az,bx,bz);
+    }else considerSegment(edges[a].x,edges[a].z,edges[b].x,edges[b].z);
+    continue;
+   }
    let cx=0,cz=0;const key=[a,b].sort((l,r)=>l-r).join(',');
    if(key==='0,1'){cx=x1;cz=zNorth;}else if(key==='1,2'){cx=x1;cz=zSouth;}else if(key==='2,3'){cx=x0;cz=zSouth;}else if(key==='0,3'){cx=x0;cz=zNorth;}else continue;
    const p0=edges[a],p1=edges[b],start=Math.atan2(p0.z-cz,p0.x-cx),end0=Math.atan2(p1.z-cz,p1.x-cx);let delta=end0-start;
@@ -401,6 +408,31 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   return best&&best.distance<=threshold?{...best,snapped:true}:{x,z,heading:routed.heading,distance:best?.distance??Infinity,snapped:false};
  };
  const suggestedSpawnHeading=(x:number,z:number)=>roadSnap(x,z,0,false).heading;
+ const spawnHeightAt=(x:number,z:number)=>{
+  const xCell=Math.max(0,Math.min(29,Math.floor(x/1024))),worldRow=Math.max(0,Math.min(29,Math.floor(z/1024))),yCell=29-worldRow;
+  const parent=blissParentElement(core.track,xCell,yCell,core.definitions),code=parent.code,name=blissElementData[code]?.id??'';
+  const terrain=core.track.terrain[yCell*30+xCell]??0;
+  // Height is track-data driven, never picked from visible 3D geometry.
+  // Roofed pieces such as tunnels remain on the road deck beneath the roof.
+  if(/Tunnel|Pipe|Loop/i.test(name))return 0;
+  if(terrain===6||/Elevated road|Solid elev\. road|Elevated span|Elevated corner|Span over road/i.test(name))return 450;
+  if(/Bridge ramp|Elevated ramp|Solid ramp/i.test(name)){
+   const road=localRoadSnap(x,z,0,true);
+   if(!road.snapped)return 0;
+   const shape=blissTransformations.track[code];
+   if(!shape)return 0;
+   const x0=parent.x*1024,x1=(parent.x+shape.width)*1024,zNorth=(30-parent.y)*1024,zSouth=(30-parent.y-shape.height)*1024;
+   const data=blissElementData[code],connections=data.ctype.map((value,index)=>value?index:-1).filter(index=>index>=0);
+   if(connections.length!==2)return 225;
+   const edges=[{x:(x0+x1)/2,z:zNorth},{x:x1,z:(zNorth+zSouth)/2},{x:(x0+x1)/2,z:zSouth},{x:x0,z:(zNorth+zSouth)/2}];
+   const p0=edges[connections[0]],p1=edges[connections[1]],dx=p1.x-p0.x,dz=p1.z-p0.z,l2=dx*dx+dz*dz;
+   const t=l2?Math.max(0,Math.min(1,((road.x-p0.x)*dx+(road.z-p0.z)*dz)/l2)):.5;
+   const alt0=Math.abs(data.cisalt[connections[0]])>0,alt1=Math.abs(data.cisalt[connections[1]])>0;
+   if(alt0!==alt1)return (alt0?1-t:t)*450;
+   return 225;
+  }
+  return 0;
+ };
  const mapPanel=panel('30 × 30 track');
  mapPanel.style.display='grid';mapPanel.style.gridTemplateRows='auto auto minmax(0,1fr)';mapPanel.style.placeItems='stretch';
  const zoomBar=document.createElement('div');zoomBar.style.cssText='display:flex;justify-content:center;align-items:center;gap:5px;margin:-2px 0 8px;flex-wrap:wrap;';
@@ -453,7 +485,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    }else if(editor3D)point=editor3D.worldAt(event.clientX,event.clientY);
    if(point){
     const result=roadSnap(point.x,point.z,testSpawn?.heading??0,dragSnapped);dragSnapped=result.snapped;snapped=result.snapped;
-    const roadY=viewMode==='3d'&&editor3D?(editor3D.roadHeightAt(result.x,result.z)??0):testSpawn?.y??0;
+    const roadY=spawnHeightAt(result.x,result.z);
     candidate={x:result.x,y:roadY,z:result.z,heading:normalizeRaceHeading(result.heading+dragHeadingOffset)};
     if(snapped){
      if(viewMode==='2d'){gx=rect.left+result.x/30720*rect.width;gy=rect.top+(1-result.z/30720)*rect.height;}
@@ -515,7 +547,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  spawn3DMarker.innerHTML='<svg viewBox="0 0 34 46" width="34" height="46"><path d="M17 1v17m0-17-6 7m6-7 6 7" fill="none" stroke="#ffca3a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="17" cy="23" r="4.5" fill="#ffca3a"/><path d="M13 28h8l3 8-3 1-2-5v13h-4v-9h-3v9H8V32l-2 5-3-1 3-8z" fill="#ffca3a"/></svg>';
  const map=document.createElement('canvas');map.width=BLISS_ORIGINAL_MAP_SIZE;map.height=BLISS_ORIGINAL_MAP_SIZE;map.style.cssText='grid-area:1/1;display:block;image-rendering:pixelated;width:480px;height:480px;max-width:none;max-height:none;cursor:crosshair;box-shadow:0 0 0 1px #333;flex:none;';
  const map3D=document.createElement('canvas');map3D.style.cssText='grid-area:1/1;display:none;width:100%;height:100%;min-width:0;min-height:320px;align-self:stretch;justify-self:stretch;cursor:crosshair;background:#111;';
- const setSpawn=(x:number,z:number,heading=suggestedSpawnHeading(x,z),y?:number)=>{testSpawn={x:Math.max(0,Math.min(30719,x)),y,z:Math.max(0,Math.min(30719,z)),heading:normalizeRaceHeading(heading)};refreshSpawnControls();renderMap();if(viewMode==='3d')editor3D?.setHover({x:Math.max(0,Math.min(29,Math.floor(testSpawn.x/1024))),y:Math.max(0,Math.min(29,29-Math.floor(testSpawn.z/1024)))});};
+ const setSpawn=(x:number,z:number,heading=suggestedSpawnHeading(x,z),y?:number)=>{const sx=Math.max(0,Math.min(30719,x)),sz=Math.max(0,Math.min(30719,z));testSpawn={x:sx,y:y??spawnHeightAt(sx,sz),z:sz,heading:normalizeRaceHeading(heading)};refreshSpawnControls();renderMap();if(viewMode==='3d')editor3D?.setHover({x:Math.max(0,Math.min(29,Math.floor(testSpawn.x/1024))),y:Math.max(0,Math.min(29,29-Math.floor(testSpawn.z/1024)))});};
 
  mapWrap.append(map,map3D,spawn3DMarker);mapPanel.append(zoomBar,mapWrap);
 
@@ -786,9 +818,12 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    const forward=editor3D.projectWorld(testSpawn.x+fx*512,testSpawn.z+fz*512,markerY);
    if(projected){
     const canvasRect=map3D.getBoundingClientRect(),wrapRect=mapWrap.getBoundingClientRect();
+    const up=editor3D.projectWorld(testSpawn.x,testSpawn.z,markerY+420);
+    const worldScale=up?Math.max(.18,Math.min(2.6,Math.hypot(up.x-projected.x,up.y-projected.y)/46)):1;
     spawn3DMarker.style.display='block';
     spawn3DMarker.style.left=(canvasRect.left-wrapRect.left+projected.x)+'px';
     spawn3DMarker.style.top=(canvasRect.top-wrapRect.top+projected.y)+'px';
+    spawn3DMarker.style.scale=String(worldScale);
     spawn3DMarker.style.rotate=forward?(Math.atan2(forward.x-projected.x,-(forward.y-projected.y))*180/Math.PI)+'deg':'0deg';
    }else spawn3DMarker.style.display='none';
   }else spawn3DMarker.style.display='none';
