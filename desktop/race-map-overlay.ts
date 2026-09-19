@@ -94,7 +94,7 @@ export function installDesktopRaceMap(assets:Assets){
   event.preventDefault();if(!preview||!frame)return;
   const visibleBounds=canvas.getBoundingClientRect(),hiddenBounds=map3d.getBoundingClientRect();
   const point=preview.worldAt(hiddenBounds.left+(event.clientX-visibleBounds.left),hiddenBounds.top+(event.clientY-visibleBounds.top));if(!point)return;
-  spawn={x:point.x,z:point.z,heading:frame.heading};refreshSpawnControls();draw();
+  spawn={x:point.x,z:point.z,heading:suggestedSpawnHeading(point.x,point.z,frame.heading)};refreshSpawnControls();draw();
  });
  canvas.addEventListener('wheel',event=>{
   if(!spawn||!preview)return;
@@ -159,6 +159,23 @@ export function installDesktopRaceMap(assets:Assets){
     buildings:settings.layers.buildings,items:settings.layers.items,
    },
   });
+ }
+
+ function suggestedSpawnHeading(x:number,z:number,fallback:number){
+  let bestStep:{x:number;y:number}|undefined,nextStep:{x:number;y:number}|undefined,bestDistance=Infinity;
+  for(const trace of cachedPaths){
+   for(let i=0;i<trace.steps.length;i++){
+    const step=trace.steps[i],sx=(step.x+.5)*1024,sz=(29-step.y+.5)*1024,distance=Math.hypot(x-sx,z-sz);
+    if(distance>=bestDistance)continue;
+    const next=trace.steps[Math.min(trace.steps.length-1,i+1)]===step?trace.steps[Math.max(0,i-1)]:trace.steps[Math.min(trace.steps.length-1,i+1)];
+    bestDistance=distance;bestStep=step;nextStep=next;
+   }
+  }
+  if(bestStep&&nextStep){
+   const ax=(bestStep.x+.5)*1024,az=(29-bestStep.y+.5)*1024,bx=(nextStep.x+.5)*1024,bz=(29-nextStep.y+.5)*1024;
+   if(ax!==bx||az!==bz)return normalizeRaceHeading(-Math.atan2(bx-ax,bz-az)*512/Math.PI);
+  }
+  return normalizeRaceHeading(fallback);
  }
 
  function drawPaths(ctx:CanvasRenderingContext2D,width:number,height:number){
