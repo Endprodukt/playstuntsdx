@@ -21,6 +21,7 @@ import type {NativeBrowserDisplayMode} from '@/lib/game/browser-native-display-r
 import {createNativePcSpeakerMusic} from '@/lib/game/native-pc-speaker-music';
 import {runBrowserNativeManualRace} from '@/lib/game/browser-native-manual-race';
 import {createBrowserNativeMenus,type BrowserGraphicsSwitch} from '@/lib/game/browser-native-menus';
+import type {NativeMenuTransition} from '@/lib/game/native-menu-coordinator';
 import {loadBrowserNativeDemoData,runBrowserNativeDemo,type BrowserNativeDemoData} from '@/lib/game/browser-native-demo';
 import type {Assets} from '@/lib/game/types';
 import {originalTitleCards} from '@/lib/game/title-cards';
@@ -183,7 +184,7 @@ export default function OpeningSequence({assets,onBack,backLabel="← Back",soun
    menus=await createBrowserNativeMenus({settings:{mouse:false,joystick:false,graphics:0},graphics:graphics.current,canvas:element,assets,music,audioContext:runAudio,displayMode,hercules,signal:demoAbort.signal,track:{name:'DEFAULT',path:directory,raw:initialTrack??[...assets.tracks.find(t=>t.name==='DEFAULT')!.raw]},onScreen:screen=>{if(!disposed)setStatus(screen==='main'?'Original main menu':screen==='editor'?'Original track editor':screen==='race'?'Stunts':screen==='results'?'Race results':screen==='replay'?'Replay':'Original '+screen+' menu');}});
    if(disposed){menus.close();return;}
    element.dataset.openingComplete='true';
-   let queuedTransition:Awaited<ReturnType<typeof menus.run>>|undefined;
+   let queuedTransition:NativeMenuTransition|undefined;
    for(;;){
     if(disposed)return;openingInput.setActive(false);
     if(originalOpeningExitDecision(openingKey??0)==='confirm'){
