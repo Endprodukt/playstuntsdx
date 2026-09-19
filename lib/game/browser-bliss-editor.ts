@@ -15,6 +15,7 @@ import {blissEstimatedTimeCentiseconds,blissTimey,summarizeBlissTrackAnalysis,tr
 import {BLISS_PLAYER_CARD_ICON,BLISS_OPPONENT_CARD_ICON} from './bliss-card-icons.ts';
 import type {Assets} from './types.ts';
 import type {BlissEditor3DView} from './bliss-editor-3d.ts';
+import {normalizeRaceHeading,type RaceSpawn} from './race-spawn.ts';
 
 export interface BrowserBlissEditorHost {
  canvas:HTMLCanvasElement;
@@ -242,7 +243,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  let brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,activePaintAction:'paint'|'erase'|null=null,selecting=false,selectionAnchor:{x:number;y:number}|null=null,closed=false,zoom=1;
  let activeArea:EditorArea='grid',paletteCursor=0,lastPlaced:{x:number;y:number}|null=null;
- let viewMode:'2d'|'3d'='2d',editor3D:BlissEditor3DView|undefined;
+ let viewMode:'2d'|'3d'='2d',editor3D:BlissEditor3DView|undefined,testSpawn:RaceSpawn|undefined;
  let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false,colouringMode=false;
  let selectionTool=false,pasteMode=false,manualHex='',manualHexDeadline=0,modalOpen=false,analysisCarIndex=-1,suppressMapCursor=false;
  let helpOverlay:HTMLDivElement|null=null;
@@ -331,6 +332,22 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  sceneryBox.append(sceneryTitle,sceneryPreview,sceneryButtons);
  palettePanel.append(selectedPiece,paletteGrid,pageBar,sceneryBox);
 
+ const suggestedSpawnHeading=(x:number,z:number)=>{
+  try{
+   const analysis=analyzeBlissRoute(core.track),pathIndex=Math.max(0,analysis.paths.findIndex(path=>path.finishes)),trace=traceBlissPath(core.track,analysis,pathIndex);
+   let best=-1,bestDistance=Infinity;
+   for(let i=0;i<trace.steps.length;i++){
+    const step=trace.steps[i],sx=(step.x+.5)*1024,sz=(29-step.y+.5)*1024,distance=Math.hypot(x-sx,z-sz);
+    if(distance<bestDistance){best=i;bestDistance=distance;}
+   }
+   if(best>=0&&trace.steps.length>1){
+    const a=trace.steps[best],b=trace.steps[Math.min(trace.steps.length-1,best+1)]===a?trace.steps[Math.max(0,best-1)]:trace.steps[Math.min(trace.steps.length-1,best+1)];
+    const ax=(a.x+.5)*1024,az=(29-a.y+.5)*1024,bx=(b.x+.5)*1024,bz=(29-b.y+.5)*1024;
+    if(ax!==bx||az!==bz)return normalizeRaceHeading(-Math.atan2(bx-ax,bz-az)*512/Math.PI);
+   }
+  }catch{}
+  return 0;
+ };
  const mapPanel=panel('30 × 30 track');
  mapPanel.style.display='grid';mapPanel.style.gridTemplateRows='auto auto minmax(0,1fr)';mapPanel.style.placeItems='stretch';
  const zoomBar=document.createElement('div');zoomBar.style.cssText='display:flex;justify-content:center;align-items:center;gap:5px;margin:-2px 0 8px;flex-wrap:wrap;';
@@ -348,10 +365,32 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const zoomOut=button('−',()=>{if(viewMode==='3d'){editor3D?.dolly(120,map3D.getBoundingClientRect().left+map3D.clientWidth/2,map3D.getBoundingClientRect().top+map3D.clientHeight/2);sync3DZoomLabel();}else setZoom(zoom-.25);}),zoomReset=button('100%',()=>{if(viewMode==='3d')void reset3DView();else setZoom(1);}),zoomIn=button('+',()=>{if(viewMode==='3d'){editor3D?.dolly(-120,map3D.getBoundingClientRect().left+map3D.clientWidth/2,map3D.getBoundingClientRect().top+map3D.clientHeight/2);sync3DZoomLabel();}else setZoom(zoom+.25);}),zoomFit=button('Fit',()=>fitMap());
  zoomOut.title='Zoom out';zoomIn.title='Zoom in';zoomReset.title='Actual size';zoomFit.title='Fit map to editor';
  for(const control of [zoomOut,zoomReset,zoomIn,zoomFit])control.style.padding='4px 8px';
- zoomBar.append(viewSwitch,zoomOut,zoomReset,zoomIn,zoomFit);
+ const spawnTool=document.createElement('button');spawnTool.type='button';spawnTool.draggable=true;spawnTool.title='Drag onto the map to choose a test start';spawnTool.innerHTML='<svg viewBox="0 0 20 24" width="14" height="17" aria-hidden="true"><circle cx="10" cy="4" r="3" fill="#e6b94a"/><path d="M7 8h6l2 6-2 1-1-4v11H9v-7H7v7H4V11l-1 4-2-1 2-6z" fill="#e6b94a"/></svg>';
+ spawnTool.style.cssText='border:1px solid #665a32;background:#262116;color:#eee;border-radius:4px;padding:3px 7px;cursor:grab;';
+ const spawnLeft=button('↶',()=>{if(testSpawn){testSpawn.heading=normalizeRaceHeading(testSpawn.heading-32);renderMap();}});
+ const spawnRight=button('↷',()=>{if(testSpawn){testSpawn.heading=normalizeRaceHeading(testSpawn.heading+32);renderMap();}});
+ const testHere=button('Test from here',()=>{if(testSpawn)finishTest(testSpawn);});
+ for(const control of [spawnLeft,spawnRight,testHere])control.style.display='none';
+ const refreshSpawnControls=()=>{const show=!!testSpawn;spawnLeft.style.display=spawnRight.style.display=testHere.style.display=show?'inline-block':'none';};
+ spawnTool.addEventListener('dragstart',event=>{event.dataTransfer?.setData('text/plain','playstunts-editor-spawn');if(event.dataTransfer)event.dataTransfer.effectAllowed='copy';});
+ zoomBar.append(viewSwitch,zoomOut,zoomReset,zoomIn,zoomFit,spawnTool,spawnLeft,spawnRight,testHere);
  const mapWrap=document.createElement('div');mapWrap.style.cssText='min-height:0;min-width:0;display:grid;place-items:center;overflow:auto;background:#050505;border-radius:4px;position:relative;';
  const map=document.createElement('canvas');map.width=BLISS_ORIGINAL_MAP_SIZE;map.height=BLISS_ORIGINAL_MAP_SIZE;map.style.cssText='grid-area:1/1;display:block;image-rendering:pixelated;width:480px;height:480px;max-width:none;max-height:none;cursor:crosshair;box-shadow:0 0 0 1px #333;flex:none;';
  const map3D=document.createElement('canvas');map3D.style.cssText='grid-area:1/1;display:none;width:100%;height:100%;min-width:0;min-height:320px;align-self:stretch;justify-self:stretch;cursor:crosshair;background:#111;';
+ const setSpawn=(x:number,z:number)=>{testSpawn={x:Math.max(0,Math.min(30719,x)),z:Math.max(0,Math.min(30719,z)),heading:suggestedSpawnHeading(x,z)};refreshSpawnControls();renderMap();};
+ const allowSpawnDrop=(target:HTMLCanvasElement)=>{
+  target.addEventListener('dragover',event=>{event.preventDefault();if(event.dataTransfer)event.dataTransfer.dropEffect='copy';});
+  target.addEventListener('drop',event=>{
+   event.preventDefault();
+   if(target===map){
+    const rect=map.getBoundingClientRect(),px=(event.clientX-rect.left)*map.width/Math.max(1,rect.width),py=(event.clientY-rect.top)*map.height/Math.max(1,rect.height);
+    setSpawn(px/BLISS_ORIGINAL_MAP_SIZE*30720,(1-py/BLISS_ORIGINAL_MAP_SIZE)*30720);
+   }else if(editor3D){
+    const point=editor3D.worldAt(event.clientX,event.clientY);if(point)setSpawn(point.x,point.z);
+   }
+  });
+ };
+ allowSpawnDrop(map);allowSpawnDrop(map3D);
  mapWrap.append(map,map3D);mapPanel.append(zoomBar,mapWrap);
 
  const toolsPanel=panel('');
@@ -608,6 +647,13 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(!suppressMapCursor&&!brushPreviewShown){
    context.save();context.strokeStyle=activeArea==='grid'?'#fff':'rgba(255,255,255,.55)';context.lineWidth=1;context.strokeRect(cellX*16+.5,cellY*16+.5,15,15);context.restore();
   }
+  if(testSpawn){
+   const x=testSpawn.x/30720*BLISS_ORIGINAL_MAP_SIZE,y=(1-testSpawn.z/30720)*BLISS_ORIGINAL_MAP_SIZE;
+   context.save();context.translate(x,y);context.rotate(-testSpawn.heading*Math.PI/512);context.strokeStyle='#ffca3a';context.fillStyle='#ffca3a';context.lineWidth=2;
+   context.beginPath();context.moveTo(0,-13);context.lineTo(0,7);context.stroke();
+   context.beginPath();context.moveTo(0,-13);context.lineTo(-4,-7);context.lineTo(4,-7);context.closePath();context.fill();
+   context.beginPath();context.arc(0,2,4,0,Math.PI*2);context.fill();context.restore();
+  }
  };
  const updateArea=()=>{
   palettePanel.style.boxShadow=activeArea==='palette'?'0 0 0 2px #879341 inset':'none';
@@ -776,7 +822,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   if(mode==='3d'){
    if(!editor3D){const module=await import('./bliss-editor-3d.ts');editor3D=module.createBlissEditor3DView(map3D,host.assets,core.track);}
    else editor3D.update(core.track);
-   requestAnimationFrame(()=>{editor3D?.render();sync3DZoomLabel();});
+   requestAnimationFrame(()=>{editor3D?.render();if(testSpawn)editor3D?.setHover({x:Math.max(0,Math.min(29,Math.floor(testSpawn.x/1024))),y:Math.max(0,Math.min(29,29-Math.floor(testSpawn.z/1024)))});sync3DZoomLabel();});
    status.textContent='3D view · Ctrl + Left drag orbit · Ctrl + Right drag move · Wheel / Ctrl+Wheel dolly';
    status.style.color='#aee18a';
   }else{editor3D?.setHover(null);editor3D?.setGhost(null,0,false,0);zoomReset.textContent=Math.round(zoom*100)+'%';renderMap();requestAnimationFrame(()=>fitMap());}
@@ -2020,6 +2066,11 @@ The editor stores Bliss metadata where supported, including creation date, editi
   host.track.name=target;host.track.path=savePath;name.textContent=host.track.name+'.TRK';await host.clearScores(savePath,host.track.name);host.track.raw=Array.from(bytes);core.markSaved();renderStatus();
   status.textContent=customLocation?'Saved to '+customLocation:'Saved '+host.track.name+'.TRK';status.style.color='#aee18a';return true;
  }
+ function finishTest(spawn:RaceSpawn){
+  if(closed)return;
+  syncMetadataClock();host.track.raw=Array.from(encodeBlissTrack(core.track).subarray(0,1802));
+  closed=true;cleanup();resolveDone?.({...spawn});
+ }
  async function finish(){
   if(closed)return;
   if(core.modified){
@@ -2027,11 +2078,11 @@ The editor stores Bliss metadata where supported, including creation date, editi
    if(choice==='cancel')return;
    if(choice==='save'&&!await saveTrack())return;
   }
-  closed=true;cleanup();resolveDone?.();
+  closed=true;cleanup();resolveDone?.(undefined);
  }
  const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);window.removeEventListener('pointerdown',capturePointerBinding,true);window.removeEventListener('wheel',captureWheelBinding,true);editor3D?.close();editor3D=undefined;setBlissEditorActive(false);overlay.remove();};
- let resolveDone:(()=>void)|undefined;
+ let resolveDone:((spawn:RaceSpawn|undefined)=>void)|undefined;
  for(const marker of Object.values(markerImages))marker.onload=()=>{if(!closed){renderPalette();renderMap();}};
  renderPalette();renderScenery();renderMap();renderStatus();updateArea();viewToggle.checked=false;viewKnob.style.transform='translateX(0)';view2D.style.color='#fff';view3D.style.color='#777';overlay.focus();requestAnimationFrame(()=>fitMap());
- await new Promise<void>(resolve=>{resolveDone=resolve;});cleanup();
+ const requestedSpawn=await new Promise<RaceSpawn|undefined>(resolve=>{resolveDone=resolve;});cleanup();return requestedSpawn;
 }
