@@ -117,13 +117,8 @@ export function createEnhancedTrackMenuPresentation(options:{
   }else{
    label('HIGH SCORE',239,118,7,'#aaa',700);label('No record yet',239,131,6,'#777');
   }
-  label('MOUSE',239,175,5,'#777',700);
-  const control=(key:string,action:string,y:number,w=17)=>{
-   rect(239,y-3.2,w,6.4,'#202020','#555',2);
-   label(key,239+w/2,y,4.2,'#ddd',650,'center');
-   label(action,239+w+4,y,4.4,'#aaa',500);
-  };
-  control('LMB','Orbit',181);control('RMB','Pan',188);control('WHEEL','Zoom',195,20);
+  label('MOUSE',239,178,4.5,'#777',700);
+  label('LMB Orbit   ·   RMB Pan   ·   Wheel Zoom',239,189,4.2,'#aaa',500);
 
   if(dropdownOpen)drawDropdown();
   ctx.restore();
