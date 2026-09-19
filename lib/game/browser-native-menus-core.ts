@@ -239,7 +239,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    const [{decodeBlissTrack},{createBlissEditor3DView}]=await Promise.all([import('./bliss-track.ts'),import('./bliss-editor-3d.ts')]);
    // Modern Track Select always owns the interactive 3D preview. Keep the
    // overview slightly high in frame so the control strip does not crowd it.
-   const overviewTarget=[15360,-2200,-15360] as [number,number,number],overviewDistance=42000,overviewAzimuth=0,overviewElevation=.78;
+   const overviewTarget=[15360,-3000,-15360] as [number,number,number],overviewDistance=42000,overviewAzimuth=0,overviewElevation=.78;
    const overviewCamera={
     position:[
      overviewTarget[0]+Math.sin(overviewAzimuth)*Math.cos(overviewElevation)*overviewDistance,
