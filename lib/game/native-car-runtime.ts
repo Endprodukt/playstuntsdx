@@ -6,7 +6,7 @@ import {createOriginalCarMenuModel} from './car-menu-model.ts';
 import {originalMenuSelectionFlash} from './menu-selection-flash.ts';
 import type {EngineTuning} from '../physics/engine.ts';
 import type {NativeMenuInput} from './native-dialog-runtime.ts';
-export interface NativeMenuCar extends EngineTuning {id:string;rawSimulation:string}
+export interface NativeMenuCar extends EngineTuning {id:string;rawSimulation:string;name?:string;description?:string}
 export interface NativeCarMenuHost {
  captureModel?:Parameters<typeof createOriginalCarMenuModel>[3];
  pixels:Uint8Array;font:Uint8Array;smallFont:Uint8Array;baseline:Uint8Array;
