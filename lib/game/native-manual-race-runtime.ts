@@ -39,12 +39,10 @@ function attachManualRaceRuntime(data:Parameters<typeof createNativeManualRaceSe
  let audio=createNativeAllocatedSound(()=>session.state.memory,d,0x39e1,data.soundDevice,engineOverrides);
  let engineOverrideWrites:number[][]=[];
  if(engineOverrides.size){
-  const beforeOverride=session.state.memory.slice();
   try{
-   engineOverrideWrites=[...engineOverrides.keys()].flatMap(handle=>audio.start(handle));
+   engineOverrideWrites=[...engineOverrides.keys()].flatMap(handle=>audio.patchEngineInstrument(handle));
   }catch(reason){
-   console.error('[Sound Mod] Engine override start failed; restoring original race audio.',reason);
-   session.state.memory.set(beforeOverride);
+   console.error('[Sound Mod] Engine patch failed; using original engine instruments.',reason);
    engineOverrides.clear();
    audio=createNativeAllocatedSound(()=>session.state.memory,d,0x39e1,data.soundDevice);
    engineOverrideWrites=[];
