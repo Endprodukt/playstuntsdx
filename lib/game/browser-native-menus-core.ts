@@ -162,7 +162,10 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     model.render(target,0,safePaint);
     if(!modelMemory)return null;
     modernShowroom??=createUpgradedCarMenu(palette,showroomMaterials.indices);
-    const width=Math.max(640,Math.round(canvas.width*.7)),height=Math.max(320,Math.round(canvas.height*.46));
+    // The original showroom projection is authored for the 320x200 Stunts
+    // viewport. Keep that 1.6:1 render aspect here; rendering it into a wider
+    // target stretches the car before the menu compositor ever sees it.
+    const width=960,height=600;
     const snapshot=document.createElement('canvas');snapshot.width=width;snapshot.height=height;
     const snapshotContext=snapshot.getContext('2d');if(!snapshotContext)return null;
     const memory=modelMemory;
