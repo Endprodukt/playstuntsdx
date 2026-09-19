@@ -39,6 +39,8 @@ export interface BrowserBlissEditorHost {
  readTrack?(path:string,name:string):Promise<Uint8Array>;
  analysisCars?:readonly {id:string;name:string}[];
  testCarId?:string;
+ initialViewMode?:'2d'|'3d';
+ onViewModeChange?(mode:'2d'|'3d'):void;
  presets?:readonly {terrain:number[]}[];
  setEditorMusicMuted?(muted:boolean):void;
 }
@@ -247,7 +249,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  let brush=4,terrainBrush=0,page=0,cellX=0,cellY=0,painting=false,activePaintAction:'paint'|'erase'|null=null,selecting=false,selectionAnchor:{x:number;y:number}|null=null,closed=false,zoom=1;
  let activeArea:EditorArea='grid',paletteCursor=0,lastPlaced:{x:number;y:number}|null=null;
- let viewMode:'2d'|'3d'='2d',editor3D:BlissEditor3DView|undefined,testSpawn:RaceSpawn|undefined,spawnTraceHash=-1,spawnTraces:ReturnType<typeof traceBlissPath>[]=[];
+ let viewMode:'2d'|'3d'=host.initialViewMode??'2d',editor3D:BlissEditor3DView|undefined,testSpawn:RaceSpawn|undefined,spawnTraceHash=-1,spawnTraces:ReturnType<typeof traceBlissPath>[]=[];
  let allowConflicts=false,showConflicts=true,showGrid=true,debugMode=false,affectTrack=true,affectTerrain=false,colouringMode=false;
  let selectionTool=false,pasteMode=false,manualHex='',manualHexDeadline=0,modalOpen=false,analysisCarIndex=-1,suppressMapCursor=false;
  let helpOverlay:HTMLDivElement|null=null;
@@ -896,7 +898,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   editor3D.resetView();editor3D.render();sync3DZoomLabel();
  }
   async function setViewMode(mode:'2d'|'3d'){
-  viewMode=mode;viewToggle.checked=mode==='3d';viewKnob.style.transform=mode==='3d'?'translateX(16px)':'translateX(0)';view2D.style.color=mode==='2d'?'#fff':'#777';view3D.style.color=mode==='3d'?'#fff':'#777';
+  viewMode=mode;host.onViewModeChange?.(mode);viewToggle.checked=mode==='3d';viewKnob.style.transform=mode==='3d'?'translateX(16px)':'translateX(0)';view2D.style.color=mode==='2d'?'#fff':'#777';view3D.style.color=mode==='3d'?'#fff':'#777';
   map.style.display=mode==='2d'?'block':'none';map3D.style.display=mode==='3d'?'block':'none';
   for(const control of [zoomOut,zoomReset,zoomIn])control.style.display='inline-block';
   zoomFit.style.display=mode==='2d'?'inline-block':'none';
@@ -2155,6 +2157,11 @@ The editor stores Bliss metadata where supported, including creation date, editi
   if(closed)return;
   syncMetadataClock();host.track.raw=Array.from(encodeBlissTrack(core.track).subarray(0,1802));
   const carId=testCar.value||host.testCarId||cars[0]?.id||'';
+  document.getElementById('playstunts-editor-test-loading')?.remove();
+  const loading=document.createElement('div');loading.id='playstunts-editor-test-loading';
+  loading.style.cssText='position:fixed;inset:0;z-index:2147482999;background:#090909;color:#ddd;display:grid;place-items:center;font:600 15px/1.2 system-ui,Segoe UI,sans-serif;';
+  const card=document.createElement('div');card.textContent='Loading test drive…';card.style.cssText='padding:14px 18px;border:1px solid #444;border-radius:6px;background:#151515;color:#ddd;';
+  loading.append(card);document.body.append(loading);
   closed=true;cleanup();resolveDone?.({spawn:{...spawn},carId});
  }
  async function finish(){
@@ -2169,6 +2176,6 @@ The editor stores Bliss metadata where supported, including creation date, editi
  const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);window.removeEventListener('pointerdown',capturePointerBinding,true);window.removeEventListener('wheel',captureWheelBinding,true);window.removeEventListener('pointermove',updateSpawnDrag,true);window.removeEventListener('pointerup',finishSpawnDrag,true);window.removeEventListener('wheel',rotateDraggingSpawn,true);dragGhost.remove();editor3D?.close();editor3D=undefined;setBlissEditorActive(false);overlay.remove();};
  let resolveDone:((request:BrowserBlissEditorTestRequest|undefined)=>void)|undefined;
  for(const marker of Object.values(markerImages))marker.onload=()=>{if(!closed){renderPalette();renderMap();}};
- renderPalette();renderScenery();renderMap();renderStatus();updateArea();viewToggle.checked=false;viewKnob.style.transform='translateX(0)';view2D.style.color='#fff';view3D.style.color='#777';overlay.focus();requestAnimationFrame(()=>fitMap());
+ renderPalette();renderScenery();renderMap();renderStatus();updateArea();overlay.focus();void setViewMode(viewMode);if(viewMode==='2d')requestAnimationFrame(()=>fitMap());
  const requestedTest=await new Promise<BrowserBlissEditorTestRequest|undefined>(resolve=>{resolveDone=resolve;});cleanup();return requestedTest;
 }
