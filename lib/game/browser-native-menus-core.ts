@@ -43,6 +43,7 @@ import {runNativeCarMenu,type NativeCarMenuHost} from './native-car-runtime.ts';
 import {runNativeOpponentMenu,type NativeOpponentHost} from './native-opponent-runtime.ts';
 import {enhancedMenuEnabled,interactiveTrackPreviewEnabled,modernTrackEditorEnabled,runNativeOptions,type NativeOptionsHost} from './native-options-runtime.ts';
 import {createEnhancedTrackMenuPresentation} from './enhanced-track-menu-presentation.ts';
+import {runModernTrackMenu,type ModernTrackMenuHost} from './modern-track-menu-runtime.ts';
 import {runNativeTrackMenu,type NativeTrackMenuHost} from './native-track-runtime.ts';
 import {runNativeEditor,type NativeEditorHost} from './native-editor-runtime.ts';
 import {createBrowserMenuInput} from './browser-menu-input.ts';
@@ -194,37 +195,67 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   }finally{input.setActive(true);await input.release();}
  };
  const selectTrack=async()=>{
-  show('track');focusBrowserGameCanvas(canvas);const menuHost:NativeTrackMenuHost={...trackHost,track,configuration,baseline,groundModels:ground.resources,panoramas,loadTrack:async({path,name})=>Array.from(await files.read(path,name,'.trk')),readScores:async(name,path)=>files.exists(path,name,'.hig')?Array.from(await files.read(path,name,'.hig')):null,editTrack:async()=>{await editTrack();show('track');}};
+  show('track');focusBrowserGameCanvas(canvas);
+  const menuHost:NativeTrackMenuHost={...trackHost,track,configuration,baseline,groundModels:ground.resources,panoramas,loadTrack:async({path,name})=>Array.from(await files.read(path,name,'.trk')),readScores:async(name,path)=>files.exists(path,name,'.hig')?Array.from(await files.read(path,name,'.hig')):null,editTrack:async()=>{await editTrack();show('track');}};
   if(!options.displayMode){
-   const [{decodeBlissTrack},{createBlissEditor3DView}]=await Promise.all([import('./bliss-track.ts'),import('./bliss-editor-3d.ts')]);
-   const baselineView=new DataView(baseline.buffer,baseline.byteOffset,baseline.byteLength),d=0x2d1a0,signed=(at:number)=>baselineView.getInt16(d+at,true);
-   const originalCamera={
-    position:[signed(0x8f6),signed(0x8f8),-signed(0x8fa)] as [number,number,number],
-    target:[signed(0x8fc),signed(0x8fe),-signed(0x900)] as [number,number,number],
-    fov:2*Math.atan(100/120)*180/Math.PI
-   };
    if(!enhancedMenuEnabled())return runNativeTrackMenu(menuHost);
-   const dialogs=createNativeDialogRuntime(menuHost);
-    const enhanced=createEnhancedTrackMenuPresentation({canvas,assets:options.assets,decodeTrack:decodeBlissTrack,createPreview:createBlissEditor3DView,originalCamera,previewEnabled:interactiveTrackPreviewEnabled(),file:dialogs.file});
-    let active=true,drag:'orbit'|'pan'|null=null,lastX=0,lastY=0;
-    const presentEnhanced=()=>{if(!active){paint();return;}enhanced.render();if(options.graphics)options.graphics.refresh=presentEnhanced;};
-    menuHost.present=presentEnhanced;
-    menuHost.setOverviewActive=(value)=>{active=value;enhanced.active(value);if(!value)paint();};
-    const pointerDown=(event:PointerEvent)=>{
-     if(!enhanced.inPreview(event)||(event.button!==0&&event.button!==2))return;
-     event.preventDefault();event.stopImmediatePropagation();drag=event.button===0?'orbit':'pan';lastX=event.clientX;lastY=event.clientY;canvas.setPointerCapture(event.pointerId);
-    };
-    const pointerMove=(event:PointerEvent)=>{
-     if(!drag)return;event.preventDefault();event.stopImmediatePropagation();const dx=event.clientX-lastX,dy=event.clientY-lastY;lastX=event.clientX;lastY=event.clientY;
-     if(drag==='orbit')enhanced.orbit(dx,dy);else enhanced.pan(dx,dy);
-    };
-    const pointerUp=(event:PointerEvent)=>{if(drag){event.preventDefault();event.stopImmediatePropagation();}drag=null;if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);};
-    const wheel=(event:WheelEvent)=>{if(!enhanced.inPreview(event))return;event.preventDefault();enhanced.dolly(event.deltaY,event.clientX,event.clientY);};
-    canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
-    pixels.fill(0);
-   try{return await runNativeTrackMenu(menuHost,false,enhanced);}finally{
+   const [{decodeBlissTrack},{createBlissEditor3DView}]=await Promise.all([import('./bliss-track.ts'),import('./bliss-editor-3d.ts')]);
+   const overviewCamera={
+    position:[15360,39000,-43000] as [number,number,number],
+    target:[15360,0,-15360] as [number,number,number],
+    fov:48
+   };
+   const enhanced=createEnhancedTrackMenuPresentation({canvas,assets:options.assets,decodeTrack:decodeBlissTrack,createPreview:createBlissEditor3DView,originalCamera:overviewCamera,previewEnabled:interactiveTrackPreviewEnabled()});
+   let active=true,drag:'orbit'|'pan'|null=null,lastX=0,lastY=0;
+   const presentEnhanced=()=>{if(!active){paint();return;}enhanced.render();if(options.graphics)options.graphics.refresh=presentEnhanced;};
+   menuHost.present=presentEnhanced;
+   menuHost.setOverviewActive=(value)=>{active=value;enhanced.active(value);if(!value)paint();};
+
+   const pointerDown=(event:PointerEvent)=>{
+    if(!enhanced.inPreview(event)||(event.button!==0&&event.button!==2))return;
+    event.preventDefault();event.stopImmediatePropagation();drag=event.button===0?'orbit':'pan';lastX=event.clientX;lastY=event.clientY;canvas.setPointerCapture(event.pointerId);
+   };
+   const pointerMove=(event:PointerEvent)=>{
+    if(!drag)return;event.preventDefault();event.stopImmediatePropagation();const dx=event.clientX-lastX,dy=event.clientY-lastY;lastX=event.clientX;lastY=event.clientY;
+    if(drag==='orbit')enhanced.orbit(dx,dy);else enhanced.pan(dx,dy);
+   };
+   const pointerUp=(event:PointerEvent)=>{if(drag){event.preventDefault();event.stopImmediatePropagation();}drag=null;if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);};
+   const wheel=(event:WheelEvent)=>{if(!enhanced.inPreview(event))return;event.preventDefault();enhanced.dolly(event.deltaY,event.clientX,event.clientY);};
+   canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
+
+   const pickTrackFile=()=>new Promise<File|null>(resolve=>{
+    const picker=document.createElement('input');picker.type='file';picker.accept='.trk,application/octet-stream';picker.style.display='none';
+    const finish=(file:File|null)=>{picker.remove();resolve(file);};
+    picker.addEventListener('change',()=>finish(picker.files?.[0]??null),{once:true});
+    picker.addEventListener('cancel',()=>finish(null),{once:true});
+    document.body.appendChild(picker);picker.click();
+   });
+   const modernHost:ModernTrackMenuHost={...menuHost,async importTrack(){
+    const selected=await pickTrackFile();if(!selected)return null;
+    const data=new Uint8Array(await selected.arrayBuffer());
+    if(data.length<1802||data.length>13802){window.alert(`Track files must contain 1802 to 13802 bytes. This file contains ${data.length}.`);return null;}
+    const stem=selected.name.replace(/\.trk$/i,'').trim().toUpperCase();
+    let name=stem;
+    if(!/^[A-Z0-9_-]{1,8}$/.test(name)){
+     const suggested=(stem.replace(/[^A-Z0-9_-]/g,'_').slice(0,8)||'TRACK');
+     const entered=window.prompt('Track name (1-8 letters, numbers, _ or -):',suggested);
+     if(entered===null)return null;name=entered.trim().toUpperCase();
+     if(!/^[A-Z0-9_-]{1,8}$/.test(name)){window.alert('Track name must be 1-8 letters, numbers, _ or -.');return null;}
+    }
+    const tauri=(window as typeof window&{__TAURI__?:{core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}}}).__TAURI__?.core;
+    if(tauri){
+     const exists=await tauri.invoke<boolean>('custom_track_exists',{name});
+     if(exists&&!window.confirm(`${name}.TRK already exists in Custom Tracks. Replace it?`))return null;
+     await tauri.invoke<string>('write_custom_track',{name,data:Array.from(data)});
+    }
+    const gameBytes=data.slice(0,1802);
+    await files.write('',name,'.trk',gameBytes);
+    return {name,path:'',raw:Array.from(gameBytes)};
+   }};
+   pixels.fill(0);
+   try{return await runModernTrackMenu(modernHost,enhanced);}finally{
     canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerup',pointerUp,true);canvas.removeEventListener('pointercancel',pointerUp,true);canvas.removeEventListener('wheel',wheel,true);
-    enhanced.close();if(options.graphics?.refresh===presentEnhanced)options.graphics.refresh=undefined;
+    if(options.graphics?.refresh===presentEnhanced)options.graphics.refresh=undefined;
    }
   }
   const display=await prepareBrowserNativeTrackDisplay({catalog:await loadBrowserOriginalResourceCatalog()},options.displayMode,options.hercules),{owner}=display;
