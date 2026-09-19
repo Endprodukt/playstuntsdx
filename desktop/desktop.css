@@ -103,3 +103,12 @@ body {
 .desktop-error {
   color: #ffb4b4;
 }
+
+
+/* Enhanced races may widen only the 3D view. The original 4:3 presentation
+   remains the baseline at FOV 0; the live FOV setting supplies the intermediate
+   aspect through --dx-race-aspect. */
+.desktop-game-shell canvas[data-enhanced-widescreen="true"] {
+  width: min(100vw, calc(100vh * var(--dx-race-aspect))) !important;
+  height: min(100vh, calc(100vw / var(--dx-race-aspect))) !important;
+}
