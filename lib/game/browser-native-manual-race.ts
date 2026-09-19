@@ -24,11 +24,12 @@ export async function runBrowserNativeManualRace(options:{context:AudioContext;d
  const aborted=()=>{if(signal.aborted)throw new DOMException('Native race closed','AbortError');};
  const progress=(stage:number)=>{const name=({2:'SDTITL.PVS',3:'TEDIT.PRE',4:'OPP1.PRE'} as Record<number,string>)[stage];if(!name||!data.catalog.exists(name))throw Error('Original disk-presence resource missing for stage '+stage);};
  let presentation:Awaited<ReturnType<Menus['allocatedRacePresentation']>>|undefined,audio:Awaited<ReturnType<typeof createBrowserRaceAudio>>|undefined;
+ let onSoundSettingsChanged:()=>void=()=>{};
  aborted();options.onStage?.(options.replay?'seeking':'loading');menus.setInputActive(true);const waiting=options.replay?data.base.slice():data.base;if(options.replay)new DataView(waiting.buffer).setUint16(0x2d1a0+0x8a10,150,true);menus.showRaceWaiting(waiting);
  try{
   let runtime=options.replay?await createNativeReplayRaceRuntime(data,options.menu,options.replay,{resetMouse:menus.resetRaceMouse,async key(){aborted();return menus.raceEntryKey();}},progress):await createNativeManualRaceRuntime(data,options.menu,{resetMouse:menus.resetRaceMouse},progress);aborted();
   let soundUpdateSerial=0;
-  const onSoundSettingsChanged=()=>{
+  onSoundSettingsChanged=()=>{
    const serial=++soundUpdateSerial;
    void loadConfiguredEngineSoundOverrides(deviceData).then(next=>{
     if(serial!==soundUpdateSerial)return;
