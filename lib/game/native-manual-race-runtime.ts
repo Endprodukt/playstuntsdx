@@ -37,6 +37,7 @@ function attachManualRaceRuntime(data:Parameters<typeof createNativeManualRaceSe
   if(memory[d+0x8fc8])attach(0x8fc9,0x86de);
  }
  const audio=createNativeAllocatedSound(()=>session.state.memory,d,0x39e1,data.soundDevice,engineOverrides);
+ const engineOverrideWrites=engineOverrides.size?[...engineOverrides.keys()].flatMap(handle=>audio.start(handle)):[];
  const renderer=createNativeOriginalRenderer(session.state.memory,prepared.raw,analyzeRoute(prepared.raw,data.records,data.vectors,data.samples,data.objects,undefined,{sample:false}),{allocatedResources:true,originalViewport:true,originalCameras:{objects:data.objects,planes:data.planes}});
  let captureGraphics=false;
  let graphicsSource:Uint8Array|undefined,graphicsLive:Uint8Array|undefined,graphicsMask:Uint8Array|undefined,graphicsRevision=0,graphicsKey='',hasPendingGraphics=false;
@@ -45,7 +46,7 @@ function attachManualRaceRuntime(data:Parameters<typeof createNativeManualRaceSe
  let rendering:Uint8Array|undefined,finished=false,released=false,display:NativeManualRaceDisplay|undefined,displayRendered=false;
  const nextGraphicsKey=(live:Uint8Array)=>{const view=renderer.view!,v=new DataView(live.buffer,live.byteOffset,live.byteLength);return [v.getUint16(d+0x8c26,true),live[d+0xa3c2],live[d+0x12f],live[d+0xa9f0],live[d+0x134],live[d+0x9ab6],live[d+0xaae6],live[d+0x90f8],live[d+0x8eab],live[d+0xa42a],live[d+0x8f13],live[d+0x8f14],live[d+0x8fbd],v.getUint16(d+0xa034,true),v.getUint16(d+0x73b2,true),v.getUint16(d+0xa7da,true),...view.position,...view.angles,...view.rectangle,...view.projection].join('/')};
  const controlReplay=createAllocatedReplayControl(()=>session.state.memory,()=>{if(!rendering)throw Error('Replay drawing requires the retained race framebuffer');return rendering;},d);
- return {...prepared,audio,
+ return {...prepared,initialWrites:[...prepared.initialWrites,...engineOverrideWrites],audio,
   enableGraphicsCapture(){captureGraphics=true;},
   graphicsFrame(){if(hasPendingGraphics){hasPendingGraphics=false;renderer.render(pendingGraphics,undefined,undefined,undefined,true,(memory,world)=>{rendering=memory;graphicsSource??=new Uint8Array(memory.length);graphicsLive??=new Uint8Array(pendingGraphics.length);graphicsSource.set(memory);graphicsLive.set(pendingGraphics);const key=nextGraphicsKey(pendingGraphics);if(key!==graphicsKey){graphicsKey=key;graphicsMask=undefined;graphicsRevision++;}drawNativeFullRedrawRaceLayers(memory,pendingGraphics,d,bp,world);});}if(!graphicsSource||!graphicsLive||!renderer.view)return;graphicsMask??=renderGraphicsMask(graphicsSource,graphicsLive,renderer.view.rectangle,renderer.view.fireballMask);return {...renderer.view,mask:graphicsMask,memory:graphicsLive,pixels:rendering!.subarray(0xa0000,0xa0000+64000),revision:graphicsRevision};},
   useDisplay(next:NativeManualRaceDisplay){if(rendering||display||finished)throw Error('A display must be attached before the first manual race frame');display=next;},
