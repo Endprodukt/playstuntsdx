@@ -365,32 +365,39 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const zoomOut=button('−',()=>{if(viewMode==='3d'){editor3D?.dolly(120,map3D.getBoundingClientRect().left+map3D.clientWidth/2,map3D.getBoundingClientRect().top+map3D.clientHeight/2);sync3DZoomLabel();}else setZoom(zoom-.25);}),zoomReset=button('100%',()=>{if(viewMode==='3d')void reset3DView();else setZoom(1);}),zoomIn=button('+',()=>{if(viewMode==='3d'){editor3D?.dolly(-120,map3D.getBoundingClientRect().left+map3D.clientWidth/2,map3D.getBoundingClientRect().top+map3D.clientHeight/2);sync3DZoomLabel();}else setZoom(zoom+.25);}),zoomFit=button('Fit',()=>fitMap());
  zoomOut.title='Zoom out';zoomIn.title='Zoom in';zoomReset.title='Actual size';zoomFit.title='Fit map to editor';
  for(const control of [zoomOut,zoomReset,zoomIn,zoomFit])control.style.padding='4px 8px';
- const spawnTool=document.createElement('button');spawnTool.type='button';spawnTool.draggable=true;spawnTool.title='Drag onto the map to choose a test start';spawnTool.innerHTML='<svg viewBox="0 0 20 24" width="14" height="17" aria-hidden="true"><circle cx="10" cy="4" r="3" fill="#e6b94a"/><path d="M7 8h6l2 6-2 1-1-4v11H9v-7H7v7H4V11l-1 4-2-1 2-6z" fill="#e6b94a"/></svg>';
+ const spawnTool=document.createElement('button');spawnTool.type='button';spawnTool.draggable=false;spawnTool.title='Drag onto the map to choose a test start';spawnTool.innerHTML='<svg viewBox="0 0 20 24" width="14" height="17" aria-hidden="true"><circle cx="10" cy="4" r="3" fill="#e6b94a"/><path d="M7 8h6l2 6-2 1-1-4v11H9v-7H7v7H4V11l-1 4-2-1 2-6z" fill="#e6b94a"/></svg>';
  spawnTool.style.cssText='border:1px solid #665a32;background:#262116;color:#eee;border-radius:4px;padding:3px 7px;cursor:grab;';
  const spawnLeft=button('↶',()=>{if(testSpawn){testSpawn.heading=normalizeRaceHeading(testSpawn.heading-32);renderMap();}});
  const spawnRight=button('↷',()=>{if(testSpawn){testSpawn.heading=normalizeRaceHeading(testSpawn.heading+32);renderMap();}});
  const testHere=button('Test from here',()=>{if(testSpawn)finishTest(testSpawn);});
  for(const control of [spawnLeft,spawnRight,testHere])control.style.display='none';
  const refreshSpawnControls=()=>{const show=!!testSpawn;spawnLeft.style.display=spawnRight.style.display=testHere.style.display=show?'inline-block':'none';};
- spawnTool.addEventListener('dragstart',event=>{event.dataTransfer?.setData('text/plain','playstunts-editor-spawn');if(event.dataTransfer)event.dataTransfer.effectAllowed='copy';});
+ let spawnDragging=false,spawnPointerId=-1;
+ const finishSpawnDrag=(event:PointerEvent)=>{
+  if(!spawnDragging||event.pointerId!==spawnPointerId)return;
+  spawnDragging=false;spawnTool.style.cursor='grab';spawnTool.releasePointerCapture?.(event.pointerId);
+  const target=viewMode==='3d'?map3D:map,rect=target.getBoundingClientRect();
+  if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)return;
+  if(viewMode==='2d'){
+   const px=(event.clientX-rect.left)/Math.max(1,rect.width),py=(event.clientY-rect.top)/Math.max(1,rect.height);
+   setSpawn(px*30720,(1-py)*30720);
+  }else if(editor3D){
+   const point=editor3D.worldAt(event.clientX,event.clientY);if(point)setSpawn(point.x,point.z);
+  }
+ };
+ spawnTool.addEventListener('pointerdown',event=>{
+  if(event.button!==0)return;
+  event.preventDefault();event.stopPropagation();spawnDragging=true;spawnPointerId=event.pointerId;spawnTool.style.cursor='grabbing';spawnTool.setPointerCapture?.(event.pointerId);
+ });
+ spawnTool.addEventListener('pointerup',finishSpawnDrag);
+ spawnTool.addEventListener('pointercancel',event=>{if(event.pointerId===spawnPointerId){spawnDragging=false;spawnTool.style.cursor='grab';}});
+ window.addEventListener('pointerup',finishSpawnDrag,true);
  zoomBar.append(viewSwitch,zoomOut,zoomReset,zoomIn,zoomFit,spawnTool,spawnLeft,spawnRight,testHere);
  const mapWrap=document.createElement('div');mapWrap.style.cssText='min-height:0;min-width:0;display:grid;place-items:center;overflow:auto;background:#050505;border-radius:4px;position:relative;';
  const map=document.createElement('canvas');map.width=BLISS_ORIGINAL_MAP_SIZE;map.height=BLISS_ORIGINAL_MAP_SIZE;map.style.cssText='grid-area:1/1;display:block;image-rendering:pixelated;width:480px;height:480px;max-width:none;max-height:none;cursor:crosshair;box-shadow:0 0 0 1px #333;flex:none;';
  const map3D=document.createElement('canvas');map3D.style.cssText='grid-area:1/1;display:none;width:100%;height:100%;min-width:0;min-height:320px;align-self:stretch;justify-self:stretch;cursor:crosshair;background:#111;';
  const setSpawn=(x:number,z:number)=>{testSpawn={x:Math.max(0,Math.min(30719,x)),z:Math.max(0,Math.min(30719,z)),heading:suggestedSpawnHeading(x,z)};refreshSpawnControls();renderMap();if(viewMode==='3d')editor3D?.setHover({x:Math.max(0,Math.min(29,Math.floor(testSpawn.x/1024))),y:Math.max(0,Math.min(29,29-Math.floor(testSpawn.z/1024)))});};
- const allowSpawnDrop=(target:HTMLCanvasElement)=>{
-  target.addEventListener('dragover',event=>{event.preventDefault();if(event.dataTransfer)event.dataTransfer.dropEffect='copy';});
-  target.addEventListener('drop',event=>{
-   event.preventDefault();
-   if(target===map){
-    const rect=map.getBoundingClientRect(),px=(event.clientX-rect.left)*map.width/Math.max(1,rect.width),py=(event.clientY-rect.top)*map.height/Math.max(1,rect.height);
-    setSpawn(px/BLISS_ORIGINAL_MAP_SIZE*30720,(1-py/BLISS_ORIGINAL_MAP_SIZE)*30720);
-   }else if(editor3D){
-    const point=editor3D.worldAt(event.clientX,event.clientY);if(point)setSpawn(point.x,point.z);
-   }
-  });
- };
- allowSpawnDrop(map);allowSpawnDrop(map3D);
+
  mapWrap.append(map,map3D);mapPanel.append(zoomBar,mapWrap);
 
  const toolsPanel=panel('');
@@ -2080,7 +2087,7 @@ The editor stores Bliss metadata where supported, including creation date, editi
   }
   closed=true;cleanup();resolveDone?.(undefined);
  }
- const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);window.removeEventListener('pointerdown',capturePointerBinding,true);window.removeEventListener('wheel',captureWheelBinding,true);editor3D?.close();editor3D=undefined;setBlissEditorActive(false);overlay.remove();};
+ const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);window.removeEventListener('pointerdown',capturePointerBinding,true);window.removeEventListener('wheel',captureWheelBinding,true);window.removeEventListener('pointerup',finishSpawnDrag,true);editor3D?.close();editor3D=undefined;setBlissEditorActive(false);overlay.remove();};
  let resolveDone:((spawn:RaceSpawn|undefined)=>void)|undefined;
  for(const marker of Object.values(markerImages))marker.onload=()=>{if(!closed){renderPalette();renderMap();}};
  renderPalette();renderScenery();renderMap();renderStatus();updateArea();viewToggle.checked=false;viewKnob.style.transform='translateX(0)';view2D.style.color='#fff';view3D.style.color='#777';overlay.focus();requestAnimationFrame(()=>fitMap());
