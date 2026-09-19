@@ -15,7 +15,7 @@ export function createEnhancedCarMenuPresentation(options:{
 }):ModernCarMenuPresentation{
  const {canvas}=options,ctx=canvas.getContext('2d')!;
  let cars:readonly NativeMenuCar[]=[],selected=0,dropdownOpen=false,dropdownStart=0,hover:ModernCarMenuAction={type:'none'};
- let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,closed=false,previewCanvas:HTMLCanvasElement|undefined,previewError=false,previewRender:((angle:number)=>void)|undefined,animation=0,lastAnimation=0,rotationStarted=performance.now();
+ let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,closed=false,previewCanvas:HTMLCanvasElement|undefined,previewError=false,previewRender:((angle:number)=>void)|undefined,animation=0,lastAnimation=0,currentAngle=0,lastTick=performance.now();
 
  const sx=()=>canvas.width/320,sy=()=>canvas.height/200;
  const rect=(x:number,y:number,w:number,h:number,fill:string,stroke='#3b3b3b',radius=5,lineWidth=1)=>{
@@ -139,7 +139,12 @@ export function createEnhancedCarMenuPresentation(options:{
   ctx.fillStyle='#0a0b0a';ctx.fillRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
   if(previewCanvas){
    ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
-   ctx.drawImage(previewCanvas,previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
+   const targetX=previewRect.x*sx(),targetY=previewRect.y*sy(),targetW=previewRect.w*sx(),targetH=previewRect.h*sy();
+   const sourceRatio=previewCanvas.width/previewCanvas.height,targetRatio=targetW/targetH;
+   let drawW=targetW,drawH=targetH,drawX=targetX,drawY=targetY;
+   if(sourceRatio>targetRatio){drawH=targetW/sourceRatio;drawY=targetY+(targetH-drawH)/2;}
+   else{drawW=targetH*sourceRatio;drawX=targetX+(targetW-drawW)/2;}
+   ctx.drawImage(previewCanvas,drawX,drawY,drawW,drawH);
   }else if(previewError)label('PREVIEW UNAVAILABLE',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,5,'#a77',600,'center');
   else label('LOADING CAR…',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,5,'#777',600,'center');
   ctx.restore();
@@ -162,10 +167,11 @@ export function createEnhancedCarMenuPresentation(options:{
 
  const animate=(now:number)=>{
   if(closed)return;
+  const elapsed=now-lastTick;lastTick=now;
+  currentAngle=(currentAngle+elapsed*1024/12000)%1024;
   if(previewRender&&now-lastAnimation>=33){
    lastAnimation=now;
-   const angle=Math.floor(((now-rotationStarted)*1024/12000))&1023;
-   try{previewRender(angle);render();}catch(reason){previewRender=undefined;previewError=true;console.error('[Modern Car Select] Rotation failed:',reason);render();}
+   try{previewRender(Math.floor(currentAngle)&1023);render();}catch(reason){previewRender=undefined;previewError=true;console.error('[Modern Car Select] Rotation failed:',reason);render();}
   }
   animation=requestAnimationFrame(animate);
  };
@@ -175,10 +181,10 @@ export function createEnhancedCarMenuPresentation(options:{
  return {
   setCars(next,nextSelected,open){cars=next;selected=Math.max(0,Math.min(Math.max(0,cars.length-1),nextSelected));dropdownOpen=open;updateDropdownStart();},
   async draw(car,transmission,paint){
-   current=car;currentTransmission=transmission;currentPaint=paint;previewCanvas=undefined;previewRender=undefined;previewError=false;rotationStarted=performance.now();render();
+   current=car;currentTransmission=transmission;currentPaint=paint;previewCanvas=undefined;previewRender=undefined;previewError=false;render();
    try{
     const preview=await options.preview(car,paint);
-    if(preview){previewCanvas=preview.canvas;previewRender=preview.render;paintCount=Math.max(1,preview.paintCount|0);preview.render(0);}
+    if(preview){previewCanvas=preview.canvas;previewRender=preview.render;paintCount=Math.max(1,preview.paintCount|0);preview.render(Math.floor(currentAngle)&1023);}
     else{previewError=true;paintCount=1;}
    }catch(reason){
     previewError=true;paintCount=1;console.error('[Modern Car Select] High-res preview failed:',reason);
