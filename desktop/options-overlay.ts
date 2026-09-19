@@ -1,6 +1,6 @@
 import type {Assets} from '../lib/game/types';
 import {ENGINE_SOUND_PRESETS,loadSoundModSettings,saveSoundModSettings,type EngineSoundPreset} from '../lib/game/sound-mod-settings';
-import {enhancedTexturesEnabled,setEnhancedTexturesEnabled} from '../lib/game/enhanced-textures';
+import {enhancedBackgroundEnabled,enhancedCockpitEnabled,setEnhancedBackgroundEnabled,setEnhancedCockpitEnabled} from '../lib/game/enhanced-textures';
 import {enhancedFovWidth,setEnhancedFovWidth} from '../lib/game/enhanced-view-settings';
 const fpsStorageKey='playstunts-dx-fps-visible';
 const graphicsStorageKey='playstunts-dx-enhanced-graphics';
@@ -116,11 +116,10 @@ export function installDesktopOptionsOverlay(assets?:Assets){
   button.setAttribute('aria-pressed',String(enabled));
  };
  const renderTextureState=()=>{
-  const button=section?.querySelector<HTMLButtonElement>('button[data-textures-toggle]');
-  if(!button)return;
-  const enabled=enhancedTexturesEnabled();
-  button.textContent=enabled?'On':'Off';
-  button.setAttribute('aria-pressed',String(enabled));
+  const background=section?.querySelector<HTMLButtonElement>('button[data-background-toggle]');
+  const cockpit=section?.querySelector<HTMLButtonElement>('button[data-cockpit-toggle]');
+  if(background){const enabled=enhancedBackgroundEnabled();background.textContent=enabled?'On':'Off';background.setAttribute('aria-pressed',String(enabled));}
+  if(cockpit){const enabled=enhancedCockpitEnabled();cockpit.textContent=enabled?'On':'Off';cockpit.setAttribute('aria-pressed',String(enabled));}
  };
  const renderFovState=()=>{
   const slider=section?.querySelector<HTMLInputElement>('input[data-fov-width]');
@@ -207,11 +206,17 @@ export function installDesktopOptionsOverlay(assets?:Assets){
   });
   graphicsRow.append(graphicsLabel,graphicsButton);
 
-  const texturesRow=document.createElement('div');texturesRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) 84px;gap:8px;align-items:center;margin-top:9px;';
-  const texturesLabel=document.createElement('div');texturesLabel.textContent='Enhanced Textures';texturesLabel.title='Uses editable high-resolution artwork where available while keeping the enhanced renderer itself active.';texturesLabel.style.cssText='font-size:12px;color:#ddd;';
-  const texturesButton=document.createElement('button');texturesButton.type='button';texturesButton.dataset.texturesToggle='1';texturesButton.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;text-align:center;';
-  texturesButton.addEventListener('click',()=>{setEnhancedTexturesEnabled(!enhancedTexturesEnabled());renderTextureState();});
-  texturesRow.append(texturesLabel,texturesButton);
+  const backgroundRow=document.createElement('div');backgroundRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) 84px;gap:8px;align-items:center;margin-top:9px;';
+  const backgroundLabel=document.createElement('div');backgroundLabel.textContent='High-Res Background';backgroundLabel.title='Uses enhanced panorama/background artwork where available.';backgroundLabel.style.cssText='font-size:12px;color:#ddd;';
+  const backgroundButton=document.createElement('button');backgroundButton.type='button';backgroundButton.dataset.backgroundToggle='1';backgroundButton.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;text-align:center;';
+  backgroundButton.addEventListener('click',()=>{setEnhancedBackgroundEnabled(!enhancedBackgroundEnabled());renderTextureState();});
+  backgroundRow.append(backgroundLabel,backgroundButton);
+
+  const cockpitRow=document.createElement('div');cockpitRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) 84px;gap:8px;align-items:center;margin-top:9px;';
+  const cockpitLabel=document.createElement('div');cockpitLabel.textContent='High-Res Cockpit';cockpitLabel.title='Uses editable high-resolution cockpit artwork without changing the enhanced 3D renderer or background.';cockpitLabel.style.cssText='font-size:12px;color:#ddd;';
+  const cockpitButton=document.createElement('button');cockpitButton.type='button';cockpitButton.dataset.cockpitToggle='1';cockpitButton.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;text-align:center;';
+  cockpitButton.addEventListener('click',()=>{setEnhancedCockpitEnabled(!enhancedCockpitEnabled());renderTextureState();});
+  cockpitRow.append(cockpitLabel,cockpitButton);
 
   const fovRow=document.createElement('div');fovRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) minmax(150px,1.5fr) 62px;gap:8px;align-items:center;margin-top:9px;';
   const fovLabel=document.createElement('div');fovLabel.textContent='Field of View';fovLabel.title='0% keeps the original 4:3 view. 100% expands the enhanced 3D renderer to the full current window width without changing vertical FOV.';fovLabel.style.cssText='font-size:12px;color:#ddd;';
@@ -229,7 +234,7 @@ export function installDesktopOptionsOverlay(assets?:Assets){
    renderFpsState();
   });
   fpsRow.append(fpsLabel,fps);
-  videoSection.append(videoHeading,graphicsRow,texturesRow,fovRow,fpsRow);
+  videoSection.append(videoHeading,graphicsRow,backgroundRow,cockpitRow,fovRow,fpsRow);
 
   const soundSection=document.createElement('div');soundSection.style.cssText='margin-top:12px;padding-top:10px;border-top:1px solid #333;';
   const soundHeading=document.createElement('div');soundHeading.textContent='Sound Mods';soundHeading.style.cssText='font-size:13px;font-weight:700;margin-bottom:8px;';
