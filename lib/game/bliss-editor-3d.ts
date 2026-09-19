@@ -284,7 +284,11 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return null;
   pointer.set((clientX-rect.left)/rect.width*2-1,-((clientY-rect.top)/rect.height*2-1));
   raycaster.setFromCamera(pointer,camera);
-  const hit=raycaster.intersectObject(pickPlane,false)[0];if(!hit)return null;
+  // Prefer the track visible under the pointer for the rough X/Z pick.
+  // The caller still performs the final placement against the 2D track data,
+  // so roofs/bridges only help identify the footprint and never define height.
+  const roadHit=raycaster.intersectObject(trackRoot,true)[0];
+  const hit=roadHit??raycaster.intersectObject(pickPlane,false)[0];if(!hit)return null;
   return {x:THREE.MathUtils.clamp(hit.point.x,0,30719),z:THREE.MathUtils.clamp(-hit.point.z,0,30719)};
  };
  const setHover=(cell:BlissEditor3DCell|null)=>{
