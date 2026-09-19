@@ -37,7 +37,7 @@ function attachManualRaceRuntime(data:Parameters<typeof createNativeManualRaceSe
   attach(0x8fc2,0x8016);
   if(memory[d+0x8fc8])attach(0x8fc9,0x86de);
  }
- const audio=createNativeAllocatedSound(()=>session.state.memory,d,0x39e1,data.soundDevice);
+ const audio=createNativeAllocatedSound(()=>session.state.memory,d,0x39e1,data.soundDevice,engineOverrides);
  const patchedVoiceInstrument=new Map<number,string>();
  const liveEnginePatchWrites=()=>{
   if(!engineOverrides.size)return [] as number[][];
