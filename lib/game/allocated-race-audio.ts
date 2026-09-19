@@ -47,7 +47,7 @@ export function createAllocatedRaceAudio(memory:()=>Uint8Array,d:number,driverSe
     const audio=stepEffectRuntime(next,resources);next={...next,...audio};writes.push(...audio.writes);
     view().setUint16(d+0x4e6a,word(0x4e6a)-1,true);
    }
-   const cars=stepCarAudioRecords({...next,car:next.cars[0]},resources,byte(0x4e05)!==0,byte(0x9f5a),stackMatches);
+   const cars=stepCarAudioRecords({...next,car:next.cars[0]},resources,byte(0x4e05)!==0,byte(0x9f5a),stackMatches,(handle)=>engineOverrides.get(handle));
    writeOriginalRaceAudioState(memory(),d,{...next,...cars});writes.push(...cars.writes);return writes;
   },
  };
