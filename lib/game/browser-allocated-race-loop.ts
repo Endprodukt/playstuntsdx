@@ -16,7 +16,7 @@ const wheelThrottlePressed=()=>{
 
 /** Browser boundary for the original manual outer loop. Replay loading can
  * replace the simulation while retaining the same browser audio output. */
-export async function runBrowserAllocatedRaceLoop(runtime:Runtime,menus:Pick<Menus,'replayMenu'|'saveReplay'>,presentation:Presentation,audio:Pick<Awaited<ReturnType<typeof createBrowserRaceAudio>>,'write'>,services:{signal:AbortSignal;showWaiting():void;loadReplay(runtime:Runtime,presentation:Presentation):Promise<{runtime:Runtime;presentation:Presentation}|void>;onFrame?:(frame:number,mode:number,clock:number,blocked:number)=>void}){
+export async function runBrowserAllocatedRaceLoop(runtime:Runtime,menus:Pick<Menus,'replayMenu'|'saveReplay'>,presentation:Presentation,audio:Pick<Awaited<ReturnType<typeof createBrowserRaceAudio>>,'write'>,services:{signal:AbortSignal;showWaiting():void;loadReplay(runtime:Runtime,presentation:Presentation):Promise<{runtime:Runtime;presentation:Presentation}|void>;onFrame?:(frame:number,mode:number,clock:number,blocked:number)=>void;editorTest?:boolean;confirmBackToEditor?():Promise<boolean>}){
  const d=0x2d1a0,memory=()=>runtime.session.state.memory;
  const aborted=()=>{if(services.signal.aborted)throw new DOMException('Native race closed','AbortError');};
  const pauseAudio=()=>audio.write(runtime.audio.produce()),selectMouse=()=>presentation.selectMouse(audio.write);
@@ -46,7 +46,13 @@ export async function runBrowserAllocatedRaceLoop(runtime:Runtime,menus:Pick<Men
   // The original transporter skip listens for joystick fire buttons. Expose a
   // fresh Wheel throttle press as that skip button only at this boundary. A
   // pedal still held from menu confirmation therefore cannot skip immediately.
-  const action=await runtime.session.finishIteration({...presentation,joystickButtons:()=>presentation.joystickButtons()|(wheelThrottlePress?0x20:0),pauseAudio,selectMouse,replayControls});
+  const action=await runtime.session.finishIteration({...presentation,joystickButtons:()=>presentation.joystickButtons()|(wheelThrottlePress?0x20:0),pauseAudio,selectMouse,replayControls,
+   interceptKey:services.editorTest?async key=>{
+    if((key&255)!==27)return;
+    const back=await services.confirmBackToEditor?.();
+    return back?'exit':'consume';
+   }:undefined,
+  });
   if(action==='exit')break;
  }
  aborted();
