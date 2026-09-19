@@ -446,6 +446,53 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   }
   return 0;
  };
+ const roadSnap3D=(clientX:number,clientY:number,fallback=0,alreadySnapped=false)=>{
+  if(!editor3D)return null;
+  const rect=map3D.getBoundingClientRect();
+  let best:{x:number;z:number;heading:number;distance:number}|undefined;
+  const consider=(x:number,z:number,heading:number)=>{
+   const y=spawnHeightAt(x,z),p=editor3D!.projectWorld(x,z,y);if(!p)return;
+   const sx=rect.left+p.x,sy=rect.top+p.y,distance=Math.hypot(clientX-sx,clientY-sy);
+   if(!best||distance<best.distance)best={x,z,heading,distance};
+  };
+  const addSegment=(ax:number,az:number,bx:number,bz:number)=>{
+   const dx=bx-ax,dz=bz-az,length=Math.hypot(dx,dz);if(!length)return;
+   const heading=normalizeRaceHeading(-Math.atan2(dx,dz)*512/Math.PI),samples=Math.max(2,Math.ceil(length/128));
+   for(let i=0;i<=samples;i++){const t=i/samples;consider(ax+dx*t,az+dz*t,heading);}
+  };
+  for(let yCell=0;yCell<30;yCell++)for(let xCell=0;xCell<30;xCell++){
+   const code=core.track.track[yCell*30+xCell]??0;if(code===253||code===254||code===255)continue;
+   const data=blissElementData[code],shape=blissTransformations.track[code];if(!data||!shape)continue;
+   let connections=data.ctype.map((value,index)=>value?index:-1).filter(index=>index>=0);
+   if(code>=105&&code<=108)connections=code===105?[1,2]:code===106?[2,3]:code===107?[0,1]:[0,3];
+   if(connections.length!==2)continue;
+   const x0=xCell*1024,x1=(xCell+shape.width)*1024,zNorth=(30-yCell)*1024,zSouth=(30-yCell-shape.height)*1024;
+   const edges=[{x:(x0+x1)/2,z:zNorth},{x:x1,z:(zNorth+zSouth)/2},{x:(x0+x1)/2,z:zSouth},{x:x0,z:(zNorth+zSouth)/2}];
+   const a=connections[0],b=connections[1];
+   if(((a-b+4)%4)===2){
+    if(data.id==='Highway'){
+     const ax=edges[a].x,az=edges[a].z,bx=edges[b].x,bz=edges[b].z,dx=bx-ax,dz=bz-az,length=Math.hypot(dx,dz);
+     if(length){const ox=-dz/length*240,oz=dx/length*240;addSegment(ax+ox,az+oz,bx+ox,bz+oz);addSegment(ax-ox,az-oz,bx-ox,bz-oz);}
+    }else addSegment(edges[a].x,edges[a].z,edges[b].x,edges[b].z);
+    continue;
+   }
+   let cx=0,cz=0;const key=[a,b].sort((l,r)=>l-r).join(',');
+   if(key==='0,1'){cx=x1;cz=zNorth;}else if(key==='1,2'){cx=x1;cz=zSouth;}else if(key==='2,3'){cx=x0;cz=zSouth;}else if(key==='0,3'){cx=x0;cz=zNorth;}else continue;
+   const p0=edges[a],p1=edges[b],start=Math.atan2(p0.z-cz,p0.x-cx),end0=Math.atan2(p1.z-cz,p1.x-cx);let delta=end0-start;
+   while(delta<=-Math.PI)delta+=Math.PI*2;while(delta>Math.PI)delta-=Math.PI*2;
+   if(Math.abs(delta)>Math.PI/2+.01)delta+=delta<0?Math.PI*2:-Math.PI*2;
+   const radius=shape.width===2?1536:512,samples=Math.max(24,shape.width*24);
+   for(let i=0;i<=samples;i++){
+    const t=i/samples,angle=start+delta*t,px=cx+Math.cos(angle)*radius,pz=cz+Math.sin(angle)*radius;
+    const tangent=angle+(delta>=0?Math.PI/2:-Math.PI/2),heading=normalizeRaceHeading(-Math.atan2(Math.cos(tangent),Math.sin(tangent))*512/Math.PI);
+    consider(px,pz,heading);
+   }
+  }
+  const threshold=alreadySnapped?52:34;
+  if(!best||best.distance>threshold)return null;
+  const routed=roadSnap(best.x,best.z,fallback,true);
+  return {...routed,x:best.x,z:best.z,heading:routed.snapped?routed.heading:best.heading,snapped:true};
+ };
  const mapPanel=panel('30 × 30 track');
  mapPanel.style.display='grid';mapPanel.style.gridTemplateRows='auto auto minmax(0,1fr)';mapPanel.style.placeItems='stretch';
  const zoomBar=document.createElement('div');zoomBar.style.cssText='display:flex;justify-content:center;align-items:center;gap:5px;margin:-2px 0 8px;flex-wrap:wrap;';
@@ -510,13 +557,13 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   const target=viewMode==='3d'?map3D:map,rect=target.getBoundingClientRect();
   let gx=event.clientX,gy=event.clientY,candidate:RaceSpawn|undefined,snapped=false;
   if(event.clientX>=rect.left&&event.clientX<=rect.right&&event.clientY>=rect.top&&event.clientY<=rect.bottom){
-   let point:{x:number;z:number}|null=null;
+   let point:{x:number;z:number}|null=null,result:ReturnType<typeof roadSnap>|null=null;
    if(viewMode==='2d'){
     const px=(event.clientX-rect.left)/Math.max(1,rect.width),py=(event.clientY-rect.top)/Math.max(1,rect.height);
-    point={x:px*30720,z:(1-py)*30720};
-   }else if(editor3D)point=editor3D.worldAt(event.clientX,event.clientY);
-   if(point){
-    const wasSnapped=dragSnapped,result=roadSnap(point.x,point.z,testSpawn?.heading??0,dragSnapped);snapped=result.snapped;
+    point={x:px*30720,z:(1-py)*30720};result=roadSnap(point.x,point.z,testSpawn?.heading??0,dragSnapped);
+   }else if(editor3D)result=roadSnap3D(event.clientX,event.clientY,testSpawn?.heading??0,dragSnapped);
+   if(result){
+    const wasSnapped=dragSnapped;snapped=result.snapped;
     if(snapped&&!wasSnapped)dragHeadingOffset=0;
     dragSnapped=snapped;
     const roadY=spawnHeightAt(result.x,result.z);
