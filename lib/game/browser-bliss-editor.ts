@@ -366,7 +366,15 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   for(let yCell=0;yCell<30;yCell++)for(let xCell=0;xCell<30;xCell++){
    const code=core.track.track[yCell*30+xCell]??0;if(code===253||code===254||code===255)continue;
    const data=blissElementData[code],shape=blissTransformations.track[code];if(!data||!shape)continue;
-   const connections=data.ctype.map((value,index)=>value?index:-1).filter(index=>index>=0);if(connections.length!==2)continue;
+   let connections=data.ctype.map((value,index)=>value?index:-1).filter(index=>index>=0);
+   // Elevated corners 105..108 are the raised variants of the four normal
+   // 2x2 large corners. Bliss route metadata can omit/misclassify their local
+   // connector pair during editor-only tracing, so restore the geometric pair
+   // explicitly from their rotation.
+   if(code>=105&&code<=108){
+    connections=code===105?[0,1]:code===106?[1,2]:code===107?[2,3]:[0,3];
+   }
+   if(connections.length!==2)continue;
    const x0=xCell*1024,x1=(xCell+shape.width)*1024,zNorth=(30-yCell)*1024,zSouth=(30-yCell-shape.height)*1024;
    const edges=[{x:(x0+x1)/2,z:zNorth},{x:x1,z:(zNorth+zSouth)/2},{x:(x0+x1)/2,z:zSouth},{x:x0,z:(zNorth+zSouth)/2}];
    const a=connections[0],b=connections[1];
