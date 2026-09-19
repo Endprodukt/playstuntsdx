@@ -17,6 +17,8 @@ import type {Assets} from './types.ts';
 import type {BlissEditor3DView} from './bliss-editor-3d.ts';
 import {normalizeRaceHeading,type RaceSpawn} from './race-spawn.ts';
 
+export interface BrowserBlissEditorTestRequest {spawn:RaceSpawn;carId:string}
+
 export interface BrowserBlissEditorHost {
  canvas:HTMLCanvasElement;
  assets:Assets;
@@ -35,6 +37,7 @@ export interface BrowserBlissEditorHost {
  enumerateTracks?():Promise<string[]>;
  readTrack?(path:string,name:string):Promise<Uint8Array>;
  analysisCars?:readonly {id:string;name:string}[];
+ testCarId?:string;
  presets?:readonly {terrain:number[]}[];
  setEditorMusicMuted?(muted:boolean):void;
 }
@@ -381,6 +384,12 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  spawnTool.style.cssText='border:1px solid #665a32;background:#262116;color:#eee;border-radius:4px;padding:3px 7px;cursor:grab;';
  const spawnLeft=button('↶',()=>{if(testSpawn){testSpawn.heading=normalizeRaceHeading(testSpawn.heading-32);renderMap();}});
  const spawnRight=button('↷',()=>{if(testSpawn){testSpawn.heading=normalizeRaceHeading(testSpawn.heading+32);renderMap();}});
+ const cars=[...(host.analysisCars??[])].sort((a,b)=>a.name.localeCompare(b.name));
+ const testCar=document.createElement('select');testCar.title='Car used by Test from here';testCar.setAttribute('aria-label','Test car');
+ testCar.style.cssText='border:1px solid #555;background:#202020;color:#eee;border-radius:4px;padding:4px 7px;font:11px/1.1 system-ui,Segoe UI,sans-serif;max-width:150px;';
+ for(const car of cars){const option=document.createElement('option');option.value=car.id;option.textContent=car.name||car.id;testCar.append(option);}
+ if(cars.length){const requested=host.testCarId??cars[0].id;if(cars.some(car=>car.id===requested))testCar.value=requested;}
+ const testCarLabel=document.createElement('label');testCarLabel.style.cssText='display:inline-flex;align-items:center;gap:4px;color:#aaa;font-size:10px;';testCarLabel.append(document.createTextNode('Test car'),testCar);
  const testHere=button('Test from here',()=>{if(testSpawn)finishTest(testSpawn);});
  for(const control of [spawnLeft,spawnRight,testHere])control.style.display='none';
  const refreshSpawnControls=()=>{const show=!!testSpawn;spawnLeft.style.display=spawnRight.style.display=testHere.style.display=show?'inline-block':'none';};
@@ -428,7 +437,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  spawnTool.addEventListener('pointercancel',event=>{if(event.pointerId===spawnPointerId){spawnDragging=false;dragCandidate=undefined;dragSnapped=false;dragGhost.style.display='none';spawnTool.style.cursor='grab';}});
  window.addEventListener('pointermove',updateSpawnDrag,true);
  window.addEventListener('pointerup',finishSpawnDrag,true);
- zoomBar.append(viewSwitch,zoomOut,zoomReset,zoomIn,zoomFit,spawnTool,spawnLeft,spawnRight,testHere);
+ zoomBar.append(viewSwitch,zoomOut,zoomReset,zoomIn,zoomFit,testCarLabel,spawnTool,spawnLeft,spawnRight,testHere);
  const mapWrap=document.createElement('div');mapWrap.style.cssText='min-height:0;min-width:0;display:grid;place-items:center;overflow:auto;background:#050505;border-radius:4px;position:relative;';
  const map=document.createElement('canvas');map.width=BLISS_ORIGINAL_MAP_SIZE;map.height=BLISS_ORIGINAL_MAP_SIZE;map.style.cssText='grid-area:1/1;display:block;image-rendering:pixelated;width:480px;height:480px;max-width:none;max-height:none;cursor:crosshair;box-shadow:0 0 0 1px #333;flex:none;';
  const map3D=document.createElement('canvas');map3D.style.cssText='grid-area:1/1;display:none;width:100%;height:100%;min-width:0;min-height:320px;align-self:stretch;justify-self:stretch;cursor:crosshair;background:#111;';
@@ -2113,7 +2122,8 @@ The editor stores Bliss metadata where supported, including creation date, editi
  function finishTest(spawn:RaceSpawn){
   if(closed)return;
   syncMetadataClock();host.track.raw=Array.from(encodeBlissTrack(core.track).subarray(0,1802));
-  closed=true;cleanup();resolveDone?.({...spawn});
+  const carId=testCar.value||host.testCarId||cars[0]?.id||'';
+  closed=true;cleanup();resolveDone?.({spawn:{...spawn},carId});
  }
  async function finish(){
   if(closed)return;
@@ -2125,8 +2135,8 @@ The editor stores Bliss metadata where supported, including creation date, editi
   closed=true;cleanup();resolveDone?.(undefined);
  }
  const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);window.removeEventListener('pointerdown',capturePointerBinding,true);window.removeEventListener('wheel',captureWheelBinding,true);window.removeEventListener('pointermove',updateSpawnDrag,true);window.removeEventListener('pointerup',finishSpawnDrag,true);dragGhost.remove();editor3D?.close();editor3D=undefined;setBlissEditorActive(false);overlay.remove();};
- let resolveDone:((spawn:RaceSpawn|undefined)=>void)|undefined;
+ let resolveDone:((request:BrowserBlissEditorTestRequest|undefined)=>void)|undefined;
  for(const marker of Object.values(markerImages))marker.onload=()=>{if(!closed){renderPalette();renderMap();}};
  renderPalette();renderScenery();renderMap();renderStatus();updateArea();viewToggle.checked=false;viewKnob.style.transform='translateX(0)';view2D.style.color='#fff';view3D.style.color='#777';overlay.focus();requestAnimationFrame(()=>fitMap());
- const requestedSpawn=await new Promise<RaceSpawn|undefined>(resolve=>{resolveDone=resolve;});cleanup();return requestedSpawn;
+ const requestedTest=await new Promise<BrowserBlissEditorTestRequest|undefined>(resolve=>{resolveDone=resolve;});cleanup();return requestedTest;
 }
