@@ -216,20 +216,31 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
      return {id:added.id};
     }
    };
+   let rotating=false,lastRotateX=0;
    const pointerDown=(event:PointerEvent)=>{
-    if(event.button!==0)return;const action=modern.actionAt(event);if(action.type==='none')return;
+    if(event.button!==0)return;
+    if(modern.inPreview(event)){
+     event.preventDefault();event.stopImmediatePropagation();rotating=true;lastRotateX=event.clientX;modern.beginRotate();canvas.setPointerCapture(event.pointerId);return;
+    }
+    const action=modern.actionAt(event);if(action.type==='none')return;
     event.preventDefault();event.stopImmediatePropagation();actions.push(action);
    };
-   const pointerMove=(event:PointerEvent)=>modern.hoverAt(event);
-   const pointerLeave=()=>modern.clearHover();
+   const pointerMove=(event:PointerEvent)=>{
+    if(rotating){event.preventDefault();event.stopImmediatePropagation();const dx=event.clientX-lastRotateX;lastRotateX=event.clientX;modern.rotateBy(dx);return;}
+    modern.hoverAt(event);
+   };
+   const pointerUp=(event:PointerEvent)=>{
+    if(!rotating)return;event.preventDefault();event.stopImmediatePropagation();rotating=false;modern.endRotate();if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);modern.hoverAt(event);
+   };
+   const pointerLeave=()=>{if(!rotating)modern.clearHover();};
    const wheel=(event:WheelEvent)=>{
     const action=modern.wheelAction(event.deltaY);
     if(action){event.preventDefault();event.stopImmediatePropagation();actions.push(action);return;}
     if(modern.scrollDropdown(event.deltaY)){event.preventDefault();event.stopImmediatePropagation();}
    };
-   canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerleave',pointerLeave,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
+   canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('pointerleave',pointerLeave,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
    try{return await runModernCarMenu(modernHost,modern);}finally{
-    canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerleave',pointerLeave,true);canvas.removeEventListener('wheel',wheel,true);
+    canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerup',pointerUp,true);canvas.removeEventListener('pointercancel',pointerUp,true);canvas.removeEventListener('pointerleave',pointerLeave,true);canvas.removeEventListener('wheel',wheel,true);
     modernShowroom?.close();modernShowroom=undefined;
    }
   }
