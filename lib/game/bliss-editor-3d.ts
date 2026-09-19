@@ -223,7 +223,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
      const grass=modelFactory(high,0,true);grass.position.set(...underlay.position);terrainRoot.add(grass);
     }
    }
-   const element=blissElementData[sourceId],road=!!element&&element.ctype.some(value=>value!==0),building=!road&&/(tennis|station|barn|office|windmill|ship|diner)/i.test(element?.id??'');
+   const element=blissElementData[sourceId],road=!!element&&(element.ctype.some(value=>value!==0)||(sourceId>=105&&sourceId<=108)),building=!road&&/(tennis|station|barn|office|windmill|ship|diner)/i.test(element?.id??'');
    const root=road?trackRoot:building?buildingsRoot:itemsRoot;
    const parts=[descriptor,...(descriptor.overlay?[(trackRenderModels as Record<string,typeof descriptor>)[String(descriptor.overlay)]]:[])].filter(Boolean);
    for(const part of parts){
