@@ -161,20 +161,26 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
 
  const clearRoot=(root:THREE.Group)=>{while(root.children.length){const child=root.children[root.children.length-1];root.remove(child);disposeObject(child);}};
  const flatTerrain=(source:BlissTrack)=>{
-  const vertices:number[]=[];
+  const grass:number[]=[],water:number[]=[];
+  const cell=(target:number[],x:number,y:number,h:number)=>{
+   const row=29-y,x0=x*1024,x1=x0+1024,z0=row*1024,z1=z0+1024;
+   target.push(x0,h,z0,x1,h,z0,x1,h,z1,x0,h,z0,x1,h,z1,x0,h,z1);
+  };
   for(let y=0;y<30;y++)for(let x=0;x<30;x++){
    const terrain=source.terrain[y*30+x];
-   // Water transition tiles (2..5) only draw the shoreline part of the cell;
-   // the original renderer relies on the flat grass below for the dry portion.
-   // Full water (1) must remain open so the water surface stays visible.
-   if(terrain!==0&&(terrain<2||terrain>5))continue;
-   const row=29-y,x0=x*1024,x1=x0+1024,z0=row*1024,z1=z0+1024,h=-1;
-   vertices.push(x0,h,z0,x1,h,z0,x1,h,z1,x0,h,z0,x1,h,z1,x0,h,z1);
+   if(terrain===0||terrain>=2&&terrain<=5)cell(grass,x,y,-1);
+   // Every water cell gets a continuous blue floor. Shore models for 2..5
+   // cover the dry portion above it, preventing holes between water triangles.
+   if(terrain>=1&&terrain<=5)cell(water,x,y,-2);
   }
-  if(!vertices.length)return;
-  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));geometry.computeVertexNormals();
-  const mesh=new THREE.Mesh(geometry,new THREE.MeshBasicMaterial({color:0x466f35,side:THREE.DoubleSide,toneMapped:false}));
-  mesh.renderOrder=-.5;terrainRoot.add(mesh);
+  const add=(vertices:number[],colour:number,order:number)=>{
+   if(!vertices.length)return;
+   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));geometry.computeVertexNormals();
+   const mesh=new THREE.Mesh(geometry,new THREE.MeshBasicMaterial({color:colour,side:THREE.DoubleSide,toneMapped:false}));
+   mesh.renderOrder=order;terrainRoot.add(mesh);
+  };
+  add(water,0x0080d0,-.6);
+  add(grass,0x466f35,-.5);
  };
  const applyLayers=()=>{
   base.visible=layerState.ground;terrainRoot.visible=layerState.terrain;trackRoot.visible=layerState.track;buildingsRoot.visible=layerState.buildings;itemsRoot.visible=layerState.items;
