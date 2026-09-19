@@ -11,7 +11,7 @@ export interface NativeTrackMenuHost extends NativeDialogHost {
  track:NativeMenuTrack;configuration:number[];counter():number;
  readScores(name:string,path:string):Promise<ReadonlyArray<number>|null>;
  loadTrack(selection:{path:string;name:string}):Promise<number[]>;
- editTrack(track:NativeMenuTrack):Promise<void>;
+ editTrack(track:NativeMenuTrack):Promise<void|'drive'>;
  captureOverviewBackdrop?:(pixels:Uint8Array,layout:{horizon:number;height:number})=>void;
  setOverviewActive?:(active:boolean)=>void;
 }
@@ -24,8 +24,8 @@ export const originalTrackMenuBounds=Array.from({length:3},(_,i)=>({left:16+i*96
 /** Source38ac..3d5b. Editor and file storage are native caller-owned services. */
 export async function runNativeTrackMenu(host:NativeTrackMenuHost,editImmediately=false,display?:NativeTrackMenuPresentation){
  const dialogs=display??createNativeDialogRuntime(host);let rebuild=true,selected=0,previous=-1,phase=0,color=0,idle=0,expired=0,time=host.counter(),background=host.pixels.slice(),retained:ReturnType<NativeTrackMenuPresentation['capture']>|undefined;
- const edit=async()=>{await host.editTrack(host.track);host.configuration.splice(13,9,...Array.from({length:9},(_,i)=>host.track.name.charCodeAt(i)||0));};
- if(editImmediately)await edit();
+ const edit=async()=>{const result=await host.editTrack(host.track);host.configuration.splice(13,9,...Array.from({length:9},(_,i)=>host.track.name.charCodeAt(i)||0));return result;};
+ if(editImmediately&&await edit()==='drive')return 'drive' as const;
  try{for(;;){
   if(rebuild){
    retained?.close();
@@ -48,7 +48,7 @@ export async function runNativeTrackMenu(host:NativeTrackMenuHost,editImmediatel
    finally{host.setOverviewActive?.(true);}
    if(selection){const raw=await host.loadTrack(selection);if(raw.length!==1802)throw Error('Original track requires1802 bytes');host.track.raw=raw;host.track.name=selection.name;host.track.path=selection.path;host.configuration.splice(13,9,...Array.from({length:9},(_,i)=>selection.name.charCodeAt(i)||0));rebuild=true;}
    else previous=-1;
-  }else if(result.action==='edit'){await edit();rebuild=true;}
+  }else if(result.action==='edit'){if(await edit()==='drive')return 'drive' as const;rebuild=true;}
  }
  }finally{retained?.close();}
 }
