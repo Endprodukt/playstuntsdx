@@ -2,7 +2,7 @@ import {interactNativeFileDialog} from './native-file-dialog-interaction.ts';
 import {interactNativeOriginalDialog} from './native-dialog-interaction.ts';
 import {drawOriginalDialog} from './dialog-raster.ts';
 import {drawOriginalFileDialog} from './file-dialog-raster.ts';
-export interface NativeMenuInput {key:number;x:number;y:number;mouseActive:boolean;buttons:number;wheelDelta?:number}
+export interface NativeMenuInput {key:number;keyboardKey?:number;x:number;y:number;mouseActive:boolean;buttons:number;wheelDelta?:number}
 export interface NativeDialogHost {
  pixels:Uint8Array;font:Uint8Array;resources:Record<string,ReadonlyArray<number>>;
  present():void;
