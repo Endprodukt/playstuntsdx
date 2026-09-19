@@ -24,7 +24,6 @@ export const ENGINE_SOUND_PRESETS:readonly {id:EngineSoundPreset;label:string;so
 ];
 
 export interface SoundModSettings{
- enabled:boolean;
  defaultPreset:EngineSoundPreset;
  perCar:Record<string,EngineSoundPreset>;
 }
@@ -32,7 +31,7 @@ export interface SoundModSettings{
 export const SOUND_MOD_SETTINGS_KEY='playstunts-dx-sound-mod-settings-v1';
 
 export function loadSoundModSettings():SoundModSettings{
- const fallback:SoundModSettings={enabled:false,defaultPreset:'original',perCar:{}};
+ const fallback:SoundModSettings={defaultPreset:'original',perCar:{}};
  try{
   const parsed=JSON.parse(localStorage.getItem(SOUND_MOD_SETTINGS_KEY)??'null') as Partial<SoundModSettings>|null;
   if(!parsed)return fallback;
@@ -40,7 +39,6 @@ export function loadSoundModSettings():SoundModSettings{
   const perCar:Record<string,EngineSoundPreset>={};
   if(parsed.perCar&&typeof parsed.perCar==='object')for(const [car,preset] of Object.entries(parsed.perCar))if(valid.has(preset as EngineSoundPreset))perCar[car.toUpperCase()]=preset as EngineSoundPreset;
   return {
-   enabled:parsed.enabled===true,
    defaultPreset:valid.has(parsed.defaultPreset as EngineSoundPreset)?parsed.defaultPreset as EngineSoundPreset:'original',
    perCar,
   };
@@ -53,7 +51,6 @@ export function saveSoundModSettings(settings:SoundModSettings){
 }
 
 export function engineSoundForCar(car:string,settings=loadSoundModSettings()):EngineSoundPreset{
- if(!settings.enabled)return 'original';
  return settings.perCar[car.toUpperCase()]??settings.defaultPreset;
 }
 
