@@ -376,7 +376,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    const p0=edges[a],p1=edges[b],start=Math.atan2(p0.z-cz,p0.x-cx),end0=Math.atan2(p1.z-cz,p1.x-cx);let delta=end0-start;
    while(delta<=-Math.PI)delta+=Math.PI*2;while(delta>Math.PI)delta-=Math.PI*2;
    if(Math.abs(delta)>Math.PI/2+.01)delta+=delta<0?Math.PI*2:-Math.PI*2;
-   const radius=Math.hypot(p0.x-cx,p0.z-cz),samples=Math.max(16,shape.width*16);
+   const radius=shape.width===2?1536:512,samples=Math.max(16,shape.width*16);
    for(let i=0;i<samples;i++){
     const t0=i/samples,t1=(i+1)/samples,q0={x:cx+Math.cos(start+delta*t0)*radius,z:cz+Math.sin(start+delta*t0)*radius},q1={x:cx+Math.cos(start+delta*t1)*radius,z:cz+Math.sin(start+delta*t1)*radius};
     considerSegment(q0.x,q0.z,q1.x,q1.z);
@@ -461,7 +461,13 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    }
   }else dragSnapped=false;
   dragCandidate=candidate;dragGhost.style.left=gx+'px';dragGhost.style.top=gy+'px';
-  rotateDragGhost(candidate?.heading??0);
+  if(viewMode==='3d'&&candidate&&editor3D){
+   const a=editor3D.projectWorld(candidate.x,candidate.z,candidate.y??0);
+   const angle=candidate.heading*Math.PI/512,fx=-Math.sin(angle),fz=Math.cos(angle);
+   const b=editor3D.projectWorld(candidate.x+fx*512,candidate.z+fz*512,candidate.y??0);
+   if(a&&b)dragGhostGraphic.style.transform='rotate('+(Math.atan2(b.x-a.x,-(b.y-a.y))*180/Math.PI)+'deg)';
+   else rotateDragGhost(candidate.heading);
+  }else rotateDragGhost(candidate?.heading??0);
   dragGhost.style.filter=snapped?'drop-shadow(0 0 5px #8fd85f)':'drop-shadow(0 2px 2px #000)';
  };
  const finishSpawnDrag=(event:PointerEvent)=>{
@@ -774,10 +780,12 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    context.beginPath();context.arc(0,2,4,0,Math.PI*2);context.fill();context.restore();
   }
   if(viewMode==='3d'&&testSpawn&&editor3D){
-   const projected=editor3D.projectWorld(testSpawn.x,testSpawn.z,120);
+   const markerY=(testSpawn.y??0)+120,projected=editor3D.projectWorld(testSpawn.x,testSpawn.z,markerY);
+   const angle=testSpawn.heading*Math.PI/512,fx=-Math.sin(angle),fz=Math.cos(angle);
+   const forward=editor3D.projectWorld(testSpawn.x+fx*512,testSpawn.z+fz*512,markerY);
    if(projected){
     spawn3DMarker.style.display='block';spawn3DMarker.style.left=projected.x+'px';spawn3DMarker.style.top=projected.y+'px';
-    spawn3DMarker.style.rotate=(-testSpawn.heading*360/1024)+'deg';
+    spawn3DMarker.style.rotate=forward?(Math.atan2(forward.x-projected.x,-(forward.y-projected.y))*180/Math.PI)+'deg':'0deg';
    }else spawn3DMarker.style.display='none';
   }else spawn3DMarker.style.display='none';
  };
