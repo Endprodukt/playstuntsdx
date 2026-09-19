@@ -168,12 +168,10 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   };
   for(let y=0;y<30;y++)for(let x=0;x<30;x++){
    const terrain=source.terrain[y*30+x];
-   if(terrain===0)cell(grass,x,y,-1);
-   // Hill/shore transition models do not cover their whole tile. The regular
-   // Track Select preview relies on the global ground plane behind those gaps.
-   // Recreate that local support here so Terrain remains visually complete even
-   // when the user hides the global Ground layer in the in-game map.
-   if(terrain>=7&&terrain<=10)cell(grass,x,y,-1);
+   // Any non-water terrain can contain transparent/gapped geometry and the
+   // regular preview relies on the global grass plane showing through it.
+   // Recreate that support per cell so hiding Ground never creates black holes.
+   if(terrain===0||terrain>=6)cell(grass,x,y,-1);
    if(terrain>=1&&terrain<=5)cell(water,x,y,-2);
   }
   const add=(vertices:number[],colour:number,order:number)=>{
