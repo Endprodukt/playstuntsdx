@@ -9,6 +9,7 @@ import {createBrowserPcSpeakerRaceAudio} from './browser-pc-speaker-race-audio.t
 import {createBrowserTandyRaceAudio} from './browser-tandy-race-audio.ts';
 import {runBrowserAllocatedRaceLoop} from './browser-allocated-race-loop.ts';
 import {loadConfiguredEngineSoundOverrides} from './browser-engine-sound-mod.ts';
+import {SOUND_MOD_SETTINGS_KEY} from './sound-mod-settings.ts';
 import type {createBrowserNativeMenus} from './browser-native-menus.ts';
 import type {NativeDemoData,NativeDemoMenuState} from './native-demo-runtime.ts';
 type Menus=Awaited<ReturnType<typeof createBrowserNativeMenus>>;
@@ -24,7 +25,7 @@ export async function runBrowserNativeManualRace(options:{context:AudioContext;d
  const aborted=()=>{if(signal.aborted)throw new DOMException('Native race closed','AbortError');};
  const progress=(stage:number)=>{const name=({2:'SDTITL.PVS',3:'TEDIT.PRE',4:'OPP1.PRE'} as Record<number,string>)[stage];if(!name||!data.catalog.exists(name))throw Error('Original disk-presence resource missing for stage '+stage);};
  let presentation:Awaited<ReturnType<Menus['allocatedRacePresentation']>>|undefined,audio:Awaited<ReturnType<typeof createBrowserRaceAudio>>|undefined;
- let onSoundSettingsChanged:()=>void=()=>{};
+ let onSoundSettingsChanged:()=>void=()=>{},soundSettingsTimer=0;
  aborted();options.onStage?.(options.replay?'seeking':'loading');menus.setInputActive(true);const waiting=options.replay?data.base.slice():data.base;if(options.replay)new DataView(waiting.buffer).setUint16(0x2d1a0+0x8a10,150,true);menus.showRaceWaiting(waiting);
  try{
   let runtime=options.replay?await createNativeReplayRaceRuntime(data,options.menu,options.replay,{resetMouse:menus.resetRaceMouse,async key(){aborted();return menus.raceEntryKey();}},progress):await createNativeManualRaceRuntime(data,options.menu,{resetMouse:menus.resetRaceMouse},progress);aborted();
@@ -41,6 +42,12 @@ export async function runBrowserNativeManualRace(options:{context:AudioContext;d
    }).catch(reason=>console.error('[Sound Mod] Live settings update failed',reason));
   };
   window.addEventListener('playstunts-dx-sound-mod-settings-changed',onSoundSettingsChanged);
+  let lastSoundSettings=localStorage.getItem(SOUND_MOD_SETTINGS_KEY)??'';
+  soundSettingsTimer=window.setInterval(()=>{
+   const current=localStorage.getItem(SOUND_MOD_SETTINGS_KEY)??'';
+   if(current===lastSoundSettings)return;
+   lastSoundSettings=current;onSoundSettingsChanged();
+  },100);
   audio=data.soundDevice?.kind==='mt32'?(rolandAudio=createBrowserMt32RaceAudio(context,options.mt32Output!,[],()=>runtime.tick(presentation!.devices))):data.soundDevice?.kind==='tandy'?(pcAudio=createBrowserTandyRaceAudio(context,runtime.initialWrites,()=>runtime.tick(presentation!.devices))):data.soundDevice?.kind==='pc-speaker'?(pcAudio=createBrowserPcSpeakerRaceAudio(context,runtime.initialWrites,()=>runtime.tick(presentation!.devices))):await createBrowserRaceAudio(context,runtime.initialWrites,()=>runtime.tick(presentation!.devices));aborted();
   rolandAudio?.prepare(runtime.initialWrites);
   const pump=()=>{aborted();audio!.pump();},showWaiting=()=>presentation?presentation.waiting():menus.showRaceWaiting(runtime.session.state.memory);
@@ -63,5 +70,5 @@ export async function runBrowserNativeManualRace(options:{context:AudioContext;d
    const previous=presentation;presentation=await preparePresentation();previous.close();rolandAudio?.resume();
   }
   return runtime.releaseMenuState();
- }finally{window.removeEventListener('playstunts-dx-sound-mod-settings-changed',onSoundSettingsChanged);presentation?.close();audio?.close();options.stopMusic();menus.setInputActive(false);}
+ }finally{window.removeEventListener('playstunts-dx-sound-mod-settings-changed',onSoundSettingsChanged);if(soundSettingsTimer)window.clearInterval(soundSettingsTimer);presentation?.close();audio?.close();options.stopMusic();menus.setInputActive(false);}
 }
