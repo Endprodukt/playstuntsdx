@@ -372,7 +372,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    // connector pair during editor-only tracing, so restore the geometric pair
    // explicitly from their rotation.
    if(code>=105&&code<=108){
-    connections=code===105?[0,1]:code===106?[1,2]:code===107?[2,3]:[0,3];
+    connections=code===105?[1,2]:code===106?[2,3]:code===107?[0,1]:[0,3];
    }
    if(connections.length!==2)continue;
    const x0=xCell*1024,x1=(xCell+shape.width)*1024,zNorth=(30-yCell)*1024,zSouth=(30-yCell-shape.height)*1024;
@@ -402,8 +402,9 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  const roadSnap=(x:number,z:number,fallback=0,alreadySnapped=false)=>{
   const routed=snapToBlissRoad(x,z,editorSnapTraces(),fallback,alreadySnapped);
-  if(routed.snapped)return routed;
   const local=localRoadSnap(x,z,fallback,alreadySnapped);
+  if(routed.snapped&&local.snapped)return local.distance<routed.distance?local:routed;
+  if(routed.snapped)return routed;
   if(local.snapped)return local;
   let best:{x:number;z:number;heading:number;distance:number}|undefined;
   for(let y=0;y<30;y++)for(let xCell=0;xCell<30;xCell++){
@@ -423,6 +424,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   // Height is track-data driven, never picked from visible 3D geometry.
   // Roofed pieces such as tunnels remain on the road deck beneath the roof.
   if(/Tunnel|Pipe|Loop/i.test(name))return 0;
+  if(viewMode==='3d'&&editor3D){
+   const exact=editor3D.roadHeightAt(x,z);
+   if(exact!==null&&Number.isFinite(exact))return exact;
+  }
   if(terrain===6||/Elevated road|Solid elev\. road|Elevated span|Elevated corner|Span over road/i.test(name))return 450;
   if(/Bridge ramp|Elevated ramp|Solid ramp/i.test(name)){
    const road=localRoadSnap(x,z,0,true);
@@ -528,7 +533,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  };
  const finishSpawnDrag=(event:PointerEvent)=>{
   if(!spawnDragging||event.pointerId!==spawnPointerId)return;
-  updateSpawnDrag(event);spawnDragging=false;spawnTool.style.cursor='grab';spawnTool.releasePointerCapture?.(event.pointerId);dragGhost.style.display='none';
+  spawnDragging=false;spawnTool.style.cursor='grab';spawnTool.releasePointerCapture?.(event.pointerId);dragGhost.style.display='none';
   if(dragCandidate)setSpawn(dragCandidate.x,dragCandidate.z,dragCandidate.heading,dragCandidate.y);
   dragCandidate=undefined;dragSnapped=false;dragHeadingOffset=0;
  };
