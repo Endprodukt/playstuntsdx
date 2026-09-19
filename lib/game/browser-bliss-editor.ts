@@ -36,6 +36,7 @@ export interface BrowserBlissEditorHost {
  readTrack?(path:string,name:string):Promise<Uint8Array>;
  analysisCars?:readonly {id:string;name:string}[];
  presets?:readonly {terrain:number[]}[];
+ setEditorMusicMuted?(muted:boolean):void;
 }
 
 type EditorArea='grid'|'palette';
@@ -248,6 +249,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  let helpOverlay:HTMLDivElement|null=null;
  let borderColour=0xF800,backgroundColour=0xFFE0;
  const shortcutHelpStorageKey='playstunts-bliss-shortcuts-visible';
+ const editorMusicStorageKey='playstunts-bliss-editor-music-enabled';
  const bindingStorageKey='playstunts-bliss-editor-bindings-v1';
  let editorBindings:Record<string,string|null>={...EDITOR_BINDING_DEFAULTS};
  let rebindingAction:string|null=null;
@@ -255,6 +257,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  type TrackShotFormat='png'|'jpeg'|'bmp';
  type BlissEditorSettings={trackShotFormat:TrackShotFormat;jpegQuality:number;trackShotGrid:boolean;trackShotAnnotations:boolean;trackShotCarMarkers:boolean;sceneryPercentMode:boolean};
  let showShortcutReference=true;
+ let editorMusicEnabled=localStorage.getItem(editorMusicStorageKey)!=='0';
  let editorSettings:BlissEditorSettings={trackShotFormat:'png',jpegQuality:.92,trackShotGrid:true,trackShotAnnotations:true,trackShotCarMarkers:true,sceneryPercentMode:false};
  try{
   showShortcutReference=localStorage.getItem(shortcutHelpStorageKey)!=='0';
@@ -277,8 +280,14 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  const top=document.createElement('div');top.style.cssText='display:flex;align-items:center;gap:8px;min-width:0;';
  const title=document.createElement('strong');title.textContent='PlayStunts DX — Bliss Track Editor';title.style.cssText='font-size:14px;color:#fff;margin-right:auto;';
  const name=document.createElement('span');name.textContent=host.track.name+'.TRK';name.style.cssText='color:#aaa;font-size:12px;';
- const status=document.createElement('span');status.style.cssText='color:#c8c8c8;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:48vw;';
- top.append(title,name,status);
+ const status=document.createElement('span');status.style.cssText='color:#c8c8c8;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw;';
+ const musicWrap=document.createElement('label');musicWrap.style.cssText='display:flex;align-items:center;gap:6px;margin-left:8px;color:#aaa;font-size:11px;white-space:nowrap;cursor:pointer;';
+ const musicLabel=document.createElement('span');musicLabel.textContent='Music';
+ const musicToggle=document.createElement('input');musicToggle.type='checkbox';musicToggle.checked=editorMusicEnabled;musicToggle.style.cssText='accent-color:#9ead52;cursor:pointer;';
+ musicToggle.addEventListener('change',()=>{editorMusicEnabled=musicToggle.checked;try{localStorage.setItem(editorMusicStorageKey,editorMusicEnabled?'1':'0');}catch{}host.setEditorMusicMuted?.(!editorMusicEnabled);});
+ musicWrap.append(musicLabel,musicToggle);
+ top.append(title,name,status,musicWrap);
+ host.setEditorMusicMuted?.(!editorMusicEnabled);
 
  const main=document.createElement('div');main.style.cssText='display:grid;grid-template-columns:minmax(360px,460px) minmax(0,1fr) minmax(220px,280px);gap:10px;min-height:0;';
  const palettePanel=panel('Track pieces');
@@ -1920,7 +1929,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   }
   closed=true;cleanup();resolveDone?.();
  }
- const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);window.removeEventListener('pointerdown',capturePointerBinding,true);window.removeEventListener('wheel',captureWheelBinding,true);editor3D?.close();editor3D=undefined;setBlissEditorActive(false);overlay.remove();};
+ const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);window.removeEventListener('pointerdown',capturePointerBinding,true);window.removeEventListener('wheel',captureWheelBinding,true);editor3D?.close();editor3D=undefined;host.setEditorMusicMuted?.(false);setBlissEditorActive(false);overlay.remove();};
  let resolveDone:(()=>void)|undefined;
  for(const marker of Object.values(markerImages))marker.onload=()=>{if(!closed){renderPalette();renderMap();}};
  renderPalette();renderScenery();renderMap();renderStatus();updateArea();viewToggle.checked=false;viewKnob.style.transform='translateX(0)';view2D.style.color='#fff';view3D.style.color='#777';overlay.focus();requestAnimationFrame(()=>fitMap());
