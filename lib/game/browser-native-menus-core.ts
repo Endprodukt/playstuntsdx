@@ -290,9 +290,9 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   pixels.set(saved);present();
  }};
  const selectMain=async()=>{
-  show('main');if(!options.displayMode)return runNativeMainMenuSelection({counter:input.counter,input:input.read,redraw:()=>{outline=undefined;present();},selectScreen:()=>{},outline:(selection,color)=>{outline=[selection,color];present();}});
+  show('main');if(!options.displayMode)return runNativeMainMenuSelection({counter:input.counter,input:input.read,release:input.release,redraw:()=>{outline=undefined;present();},selectScreen:()=>{},outline:(selection,color)=>{outline=[selection,color];present();}});
   const display=await prepareBrowserNativeMainMenu({catalog:await loadBrowserOriginalResourceCatalog()},options.displayMode,options.hercules),nativePresent=()=>{pixels.set(display.pixels());paint(display.palette,display);};
-  return runNativeMainMenuSelection({counter:input.counter,input:input.read,redraw(){display.redraw();nativePresent();},selectScreen(){},outline(selection,color){display.outline(selection,color);nativePresent();}});
+  return runNativeMainMenuSelection({counter:input.counter,input:input.read,release:input.release,redraw(){display.redraw();nativePresent();},selectScreen(){},outline(selection,color){display.outline(selection,color);nativePresent();}});
  };
  const selectOptions=async()=>{
   show('options');focusBrowserGameCanvas(canvas);if(!options.displayMode)return runNativeOptions(settings);
