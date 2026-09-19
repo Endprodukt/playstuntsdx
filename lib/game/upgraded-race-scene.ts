@@ -354,7 +354,8 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    // move the far horizon; only its stabilized pitch determines the framing.
    const effectiveBackgroundHeight=chase||cameraMode===3?0:backgroundHeightCamera===sourceCamera?backgroundHeight:shown.camera.position[1];
    const background=backdrop.render(backgroundView.angles,effectiveBackgroundHeight,displayAspect,camera.fov,frame.projection,live[d+0x134]);
-   const enhancedBackgroundDrawn=enhancedTexturesEnabled()&&(enhancedBackground?.draw(context,{width:canvas.width,height:canvas.height,heading:backgroundView.angles[2],horizon:background.panoramaHorizon??enhancedPanoramaHorizon(background.pixels,background.ground,background.width),rotation:backgroundView.rotation,sky:paletteCss[background.sky],ground:paletteCss[background.ground]})??false);
+   const enhancedBackgroundHeading=(backgroundView.angles[2]+Math.round((background.width-320)/2))&1023;
+   const enhancedBackgroundDrawn=enhancedTexturesEnabled()&&(enhancedBackground?.draw(context,{width:canvas.width,height:canvas.height,aspect:displayAspect,heading:enhancedBackgroundHeading,horizon:background.panoramaHorizon??enhancedPanoramaHorizon(background.pixels,background.ground,background.width),rotation:backgroundView.rotation,sky:paletteCss[background.sky],ground:paletteCss[background.ground]})??false);
    if(!enhancedBackgroundDrawn){
     for(let i=0;i<64000;i++)skyPixels[i]=opaquePalette[background.pixels[i]];
     skyContext.putImageData(skyImage,0,0);
@@ -379,7 +380,7 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
     context.drawImage(overlay,0,0,320,200,overlayX,0,overlayWidth,canvas.height);
     if(cameraMode===0){
      const cockpitState=chaseCar?runtime.session.state.opponent.car:runtime.session.state.player.driving.car;
-     enhancedCockpit.draw(context,overlayWidth,canvas.height,{car:carIds[chaseCar],pixels:overlaySource,steering:cockpitState.grip.steeringAngle,knobX:cockpitState.engine.knobX,knobY:cockpitState.engine.knobY},overlayX);
+     enhancedCockpit.draw(context,overlayWidth,canvas.height,{car:carIds[chaseCar],pixels:overlaySource,steering:cockpitState.grip.steeringAngle,knobX:cockpitState.engine.knobX,knobY:cockpitState.engine.knobY,showGear:!!(cockpitState.engine.shifting||cockpitState.engine.shiftTimer)},overlayX);
     }
    }else if(runtime.session.replaying){
     // Keep original replay controls at their corrected 4:3 size while the
