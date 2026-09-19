@@ -16,6 +16,7 @@ export interface ModernCarMenuPresentation{
  hoverAt(event:{clientX:number;clientY:number}):void;
  clearHover():void;
  scrollDropdown(delta:number):boolean;
+ wheelAction(delta:number):ModernCarMenuAction|undefined;
  render():void;
  close():void;
 }
