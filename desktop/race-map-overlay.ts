@@ -139,17 +139,20 @@ export function installDesktopRaceMap(assets:Assets){
  }
 
  function drawPaths(ctx:CanvasRenderingContext2D,width:number){
-  if(!settings.layers.paths||!cachedPaths.length)return;
-  const cell=width/30;ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
+  if(!settings.layers.paths||!cachedPaths.length||!preview)return;
+  const scale=width/900;ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
   cachedPaths.forEach((trace,index)=>{
    if(trace.steps.length<2)return;
-   ctx.beginPath();
-   trace.steps.forEach((step,stepIndex)=>{
-    const x=(step.x+.5)*cell,y=(step.y+.5)*cell;
-    if(stepIndex===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+   ctx.beginPath();let started=false;
+   trace.steps.forEach(step=>{
+    const projected=preview!.projectWorld((step.x+.5)*1024,(29-step.y+.5)*1024);
+    if(!projected)return;
+    if(!started){ctx.moveTo(projected.x*scale,projected.y*scale);started=true;}
+    else ctx.lineTo(projected.x*scale,projected.y*scale);
    });
+   if(!started)return;
    ctx.strokeStyle=index===0?'rgba(78,232,247,.88)':'rgba(78,232,247,.22)';
-   ctx.lineWidth=index===0?Math.max(2.5,cell*.11):Math.max(1.2,cell*.045);ctx.stroke();
+   ctx.lineWidth=index===0?Math.max(2.5,width/900*3.3):Math.max(1.2,width/900*1.5);ctx.stroke();
   });
   ctx.restore();
  }
@@ -168,9 +171,11 @@ export function installDesktopRaceMap(assets:Assets){
   ctx.fillStyle='#080b08';ctx.fillRect(0,0,width,height);
   ctx.drawImage(map3d,0,0,width,height);
   drawPaths(ctx,width);
-  const px=Math.max(0,Math.min(width,frame.x/30720*width));
-  const py=Math.max(0,Math.min(height,(1-frame.z/30720)*height));
-  drawArrow(ctx,px,py,frame.heading,width/900);
+  const projected=preview.projectWorld(frame.x,frame.z);
+  if(projected){
+   const scale=width/900;
+   drawArrow(ctx,projected.x*scale,projected.y*scale,frame.heading,scale);
+  }
  }
 
  const syncVisibility=()=>{
