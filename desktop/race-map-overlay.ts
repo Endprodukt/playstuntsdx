@@ -1,5 +1,8 @@
 import {analyzeBlissRoute,traceBlissPath} from '../lib/game/bliss-route';
 import {decodeBlissTrack,type BlissTrack} from '../lib/game/bliss-track';
+import {blissParentElement} from '../lib/game/bliss-edit';
+import {blissTransformations} from '../lib/game/bliss-transformations';
+import {blissElementData} from '../lib/game/bliss-element-data';
 import {createBlissEditor3DView,type BlissEditor3DView} from '../lib/game/bliss-editor-3d';
 import {RACE_MAP_CLEAR_EVENT,RACE_MAP_FRAME_EVENT,type RaceMapFrame} from '../lib/game/race-map-state';
 import {normalizeRaceHeading,requestRaceTeleport,type RaceSpawn} from '../lib/game/race-spawn';
@@ -47,6 +50,26 @@ function trackSignature(track:ReadonlyArray<number>){
  let hash=2166136261;
  for(let i=0;i<Math.min(track.length,1802);i++)hash=Math.imul((hash^track[i])>>>0,16777619)>>>0;
  return hash>>>0;
+}
+
+function spawnHeightFromTrack(track:BlissTrack,x:number,z:number){
+ const xCell=Math.max(0,Math.min(29,Math.floor(x/1024))),worldRow=Math.max(0,Math.min(29,Math.floor(z/1024))),yCell=29-worldRow;
+ const parent=blissParentElement(track,xCell,yCell,blissTransformations),code=parent.code,data=blissElementData[code],name=data?.id??'';
+ const terrain=track.terrain[yCell*30+xCell]??0;
+ if(/Tunnel|Pipe|Loop/i.test(name))return 0;
+ if(terrain===6||/Elevated road|Solid elev\. road|Elevated span|Elevated corner|Span over road/i.test(name))return 450;
+ if(/Bridge ramp|Elevated ramp|Solid ramp/i.test(name)){
+  const shape=blissTransformations.track[code],connections=data?.ctype.map((value,index)=>value?index:-1).filter(index=>index>=0)??[];
+  if(!shape||connections.length!==2)return 225;
+  const x0=parent.x*1024,x1=(parent.x+shape.width)*1024,zNorth=(30-parent.y)*1024,zSouth=(30-parent.y-shape.height)*1024;
+  const edges=[{x:(x0+x1)/2,z:zNorth},{x:x1,z:(zNorth+zSouth)/2},{x:(x0+x1)/2,z:zSouth},{x:x0,z:(zNorth+zSouth)/2}];
+  const p0=edges[connections[0]],p1=edges[connections[1]],dx=p1.x-p0.x,dz=p1.z-p0.z,l2=dx*dx+dz*dz;
+  const t=l2?Math.max(0,Math.min(1,((x-p0.x)*dx+(z-p0.z)*dz)/l2)):.5;
+  const alt0=Math.abs(data.cisalt[connections[0]])>0,alt1=Math.abs(data.cisalt[connections[1]])>0;
+  if(alt0!==alt1)return (alt0?1-t:t)*450;
+  return 225;
+ }
+ return 0;
 }
 
 function drawArrow(ctx:CanvasRenderingContext2D,x:number,y:number,heading:number,scale:number){
@@ -103,7 +126,7 @@ export function installDesktopRaceMap(assets:Assets){
    const point=preview.worldAt(hidden.left+rx*hidden.width,hidden.top+ry*hidden.height);
    if(point){
     const result=snapToBlissRoad(point.x,point.z,cachedPaths,frame.heading,dragSnapped);dragSnapped=result.snapped;
-    candidate={x:result.x,y:preview.roadHeightAt(result.x,result.z)??0,z:result.z,heading:normalizeRaceHeading(result.heading+dragHeadingOffset)};snapped=result.snapped;
+    candidate={x:result.x,y:cachedTrack?spawnHeightFromTrack(cachedTrack,result.x,result.z):0,z:result.z,heading:normalizeRaceHeading(result.heading+dragHeadingOffset)};snapped=result.snapped;
     if(snapped){
      const projected=preview.projectWorld(result.x,result.z,candidate.y??0);
      if(projected){gx=bounds.left+projected.x/Math.max(1,map3d.clientWidth)*bounds.width;gy=bounds.top+projected.y/Math.max(1,map3d.clientHeight)*bounds.height;}
