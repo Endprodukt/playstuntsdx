@@ -146,7 +146,7 @@ export function createEnhancedCockpitOverlay(){
  };
 
  return {
-  draw(context:CanvasRenderingContext2D,width:number,height:number,state:DrawState){
+  draw(context:CanvasRenderingContext2D,width:number,height:number,state:DrawState,offsetX=0){
    if(!enabled||closed)return false;
    const assets=ensure(state.car);if(!assets)return false;
    const {layout,panel,images}=assets,sx=width/320,sy=height/200;
@@ -157,11 +157,11 @@ export function createEnhancedCockpitOverlay(){
      const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;assets.replaySnapshot={canvas,context:canvas.getContext('2d')!};
     }
     replaySnapshot=assets.replaySnapshot.canvas;
-    assets.replaySnapshot.context.setTransform(1,0,0,1,0,0);assets.replaySnapshot.context.clearRect(0,0,width,height);assets.replaySnapshot.context.drawImage(context.canvas,0,0,width,height);
+    assets.replaySnapshot.context.setTransform(1,0,0,1,0,0);assets.replaySnapshot.context.clearRect(0,0,width,height);assets.replaySnapshot.context.drawImage(context.canvas,offsetX,0,width,height,0,0,width,height);
    }
    const draw=(source:CanvasImageSource,enhanced:boolean,x:number,y:number,w:number,h:number)=>{
     context.imageSmoothingEnabled=enhanced;
-    context.drawImage(source,x*sx,y*sy,w*sx,h*sy);
+    context.drawImage(source,offsetX+x*sx,y*sy,w*sx,h*sy);
    };
    const drawFile=(file:string,x:number,y:number,w:number,h:number)=>{const entry=images.get(file);if(entry)draw(entry.image,entry.enhanced,x,y,w,h);};
    const masked=(artFile:string,maskFile:string)=>{
@@ -220,7 +220,7 @@ export function createEnhancedCockpitOverlay(){
     context.imageSmoothingEnabled=false;
     for(const rect of activeReplay.rects){
      const x=rect.x*sx,y=rect.y*sy,w=rect.width*sx,h=rect.height*sy;
-     context.drawImage(replaySnapshot,x,y,w,h,x,y,w,h);
+     context.drawImage(replaySnapshot,x,y,w,h,offsetX+x,y,w,h);
     }
    }
    return true;
