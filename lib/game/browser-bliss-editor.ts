@@ -16,6 +16,7 @@ import {BLISS_PLAYER_CARD_ICON,BLISS_OPPONENT_CARD_ICON} from './bliss-card-icon
 import type {Assets} from './types.ts';
 import type {BlissEditor3DView} from './bliss-editor-3d.ts';
 import {normalizeRaceHeading,type RaceSpawn} from './race-spawn.ts';
+import {snapToBlissRoad} from './bliss-road-snap.ts';
 
 export interface BrowserBlissEditorTestRequest {spawn:RaceSpawn;carId:string}
 
@@ -346,22 +347,9 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   return spawnTraces;
  };
  const roadSnap=(x:number,z:number,fallback=0,alreadySnapped=false)=>{
+  const routed=snapToBlissRoad(x,z,editorSnapTraces(),fallback,alreadySnapped);
+  if(routed.snapped)return routed;
   let best:{x:number;z:number;heading:number;distance:number}|undefined;
-  for(const trace of editorSnapTraces()){
-   const points=trace.steps.map(step=>({x:(step.x+step.width*.5)*1024,z:(29-step.y-(step.height-1)*.5+.5)*1024}));
-   if(points.length===1){
-    const distance=Math.hypot(x-points[0].x,z-points[0].z);
-    if(!best||distance<best.distance)best={...points[0],heading:normalizeRaceHeading(fallback),distance};
-   }
-   for(let i=0;i+1<points.length;i++){
-    const a=points[i],b=points[i+1],dx=b.x-a.x,dz=b.z-a.z,length2=dx*dx+dz*dz;if(!length2)continue;
-    const t=Math.max(0,Math.min(1,((x-a.x)*dx+(z-a.z)*dz)/length2)),px=a.x+dx*t,pz=a.z+dz*t,distance=Math.hypot(x-px,z-pz);
-    if(!best||distance<best.distance)best={x:px,z:pz,heading:normalizeRaceHeading(-Math.atan2(dx,dz)*512/Math.PI),distance};
-   }
-  }
-  // While editing, the route can be temporarily incomplete. Fall back to any
-  // actual drivable track tile so snapping still works before the circuit is
-  // fully valid.
   for(let y=0;y<30;y++)for(let xCell=0;xCell<30;xCell++){
    const code=core.track.track[y*30+xCell]??0,data=blissElementData[code];
    if(!data||!data.ctype.some(Boolean))continue;
@@ -369,7 +357,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    if(!best||distance<best.distance)best={x:px,z:pz,heading:normalizeRaceHeading(fallback),distance};
   }
   const threshold=alreadySnapped?950:620;
-  return best&&best.distance<=threshold?{x:best.x,z:best.z,heading:best.heading,snapped:true}:{x,z,heading:normalizeRaceHeading(fallback),snapped:false};
+  return best&&best.distance<=threshold?{...best,snapped:true}:{x,z,heading:normalizeRaceHeading(fallback),distance:best?.distance??Infinity,snapped:false};
  };
  const suggestedSpawnHeading=(x:number,z:number)=>roadSnap(x,z,0,false).heading;
  const mapPanel=panel('30 × 30 track');
@@ -406,7 +394,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  dragGhost.style.cssText='position:fixed;display:none;z-index:2147483646;pointer-events:none;width:30px;height:38px;transform:translate(-50%,-85%);filter:drop-shadow(0 2px 2px #000);';
  dragGhost.innerHTML='<svg viewBox="0 0 30 38" width="30" height="38"><path d="M15 1v13m0-13-5 6m5-6 5 6" fill="none" stroke="#ffca3a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15" cy="18" r="4" fill="#ffca3a"/><path d="M11 23h8l3 8-3 1-2-5v10h-4v-7h-3v7H6V27l-2 5-3-1 3-8z" fill="#ffca3a"/></svg>';
  document.body.appendChild(dragGhost);
- let spawnDragging=false,spawnPointerId=-1,dragSnapped=false,dragCandidate:RaceSpawn|undefined;
+ let spawnDragging=false,spawnPointerId=-1,dragSnapped=false,dragHeadingOffset=0,dragCandidate:RaceSpawn|undefined;
  const updateSpawnDrag=(event:PointerEvent)=>{
   if(!spawnDragging||event.pointerId!==spawnPointerId)return;
   dragGhost.style.display='block';
@@ -420,7 +408,7 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    }else if(editor3D)point=editor3D.worldAt(event.clientX,event.clientY);
    if(point){
     const result=roadSnap(point.x,point.z,testSpawn?.heading??0,dragSnapped);dragSnapped=result.snapped;snapped=result.snapped;
-    candidate={x:result.x,z:result.z,heading:result.heading};
+    candidate={x:result.x,z:result.z,heading:normalizeRaceHeading(result.heading+dragHeadingOffset)};
     if(snapped){
      if(viewMode==='2d'){gx=rect.left+result.x/30720*rect.width;gy=rect.top+(1-result.z/30720)*rect.height;}
      else if(editor3D){const p=editor3D.projectWorld(result.x,result.z);if(p){gx=rect.left+p.x;gy=rect.top+p.y;}}
@@ -428,24 +416,46 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    }
   }else dragSnapped=false;
   dragCandidate=candidate;dragGhost.style.left=gx+'px';dragGhost.style.top=gy+'px';
+  dragGhost.style.rotate=((candidate?.heading??0)*-360/1024)+'deg';
   dragGhost.style.filter=snapped?'drop-shadow(0 0 5px #8fd85f)':'drop-shadow(0 2px 2px #000)';
  };
  const finishSpawnDrag=(event:PointerEvent)=>{
   if(!spawnDragging||event.pointerId!==spawnPointerId)return;
   updateSpawnDrag(event);spawnDragging=false;spawnTool.style.cursor='grab';spawnTool.releasePointerCapture?.(event.pointerId);dragGhost.style.display='none';
   if(dragCandidate)setSpawn(dragCandidate.x,dragCandidate.z,dragCandidate.heading);
-  dragCandidate=undefined;dragSnapped=false;
+  dragCandidate=undefined;dragSnapped=false;dragHeadingOffset=0;
  };
  spawnTool.addEventListener('pointerdown',event=>{
   if(event.button!==0)return;
   event.preventDefault();event.stopPropagation();spawnDragging=true;spawnPointerId=event.pointerId;spawnTool.style.cursor='grabbing';spawnTool.setPointerCapture?.(event.pointerId);
-  dragCandidate=undefined;dragSnapped=false;updateSpawnDrag(event);
+  dragCandidate=undefined;dragSnapped=false;dragHeadingOffset=0;updateSpawnDrag(event);
  });
  spawnTool.addEventListener('pointermove',updateSpawnDrag);
  spawnTool.addEventListener('pointerup',finishSpawnDrag);
  spawnTool.addEventListener('pointercancel',event=>{if(event.pointerId===spawnPointerId){spawnDragging=false;dragCandidate=undefined;dragSnapped=false;dragGhost.style.display='none';spawnTool.style.cursor='grab';}});
+ const rotateDraggingSpawn=(event:WheelEvent)=>{
+  if(!spawnDragging)return;
+  event.preventDefault();event.stopImmediatePropagation();
+  const step=event.deltaY>0?32:-32;dragHeadingOffset=normalizeRaceHeading(dragHeadingOffset+step);
+  if(dragCandidate)dragCandidate.heading=normalizeRaceHeading(dragCandidate.heading+step);
+  dragGhost.style.rotate=((dragCandidate?.heading??dragHeadingOffset)*-360/1024)+'deg';
+ };
+ const rotatePlacedSpawn=(event:WheelEvent)=>{
+  if(!testSpawn)return false;
+  const target=viewMode==='3d'?map3D:map,rect=target.getBoundingClientRect();
+  let mx=0,my=0;
+  if(viewMode==='2d'){
+   mx=rect.left+testSpawn.x/30720*rect.width;my=rect.top+(1-testSpawn.z/30720)*rect.height;
+  }else if(editor3D){
+   const p=editor3D.projectWorld(testSpawn.x,testSpawn.z,120);if(!p)return false;mx=rect.left+p.x;my=rect.top+p.y;
+  }else return false;
+  if(Math.hypot(event.clientX-mx,event.clientY-my)>34)return false;
+  event.preventDefault();event.stopImmediatePropagation();
+  testSpawn.heading=normalizeRaceHeading(testSpawn.heading+(event.deltaY>0?32:-32));renderMap();return true;
+ };
  window.addEventListener('pointermove',updateSpawnDrag,true);
  window.addEventListener('pointerup',finishSpawnDrag,true);
+ window.addEventListener('wheel',rotateDraggingSpawn,{capture:true,passive:false});
  zoomBar.append(viewSwitch,zoomOut,zoomReset,zoomIn,zoomFit,testCarLabel,spawnTool,spawnLeft,spawnRight,testHere);
  const mapWrap=document.createElement('div');mapWrap.style.cssText='min-height:0;min-width:0;display:grid;place-items:center;overflow:auto;background:#050505;border-radius:4px;position:relative;';
  const spawn3DMarker=document.createElement('div');
@@ -1036,6 +1046,9 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
  });
  const end3DDrag=(event:PointerEvent)=>{if(view3DPaint)core.endStroke();view3DPaint=null;view3DLastPaintCell='';view3DDrag=null;if(map3D.hasPointerCapture(event.pointerId))map3D.releasePointerCapture(event.pointerId);};
  map3D.addEventListener('pointerup',end3DDrag);map3D.addEventListener('pointercancel',end3DDrag);map3D.addEventListener('contextmenu',event=>event.preventDefault());
+ const markerWheel=(event:WheelEvent)=>{if(spawnDragging)return;if(rotatePlacedSpawn(event))return;};
+ map.addEventListener('wheel',markerWheel,{capture:true,passive:false});
+ map3D.addEventListener('wheel',markerWheel,{capture:true,passive:false});
  map3D.addEventListener('wheel',event=>{
   if(viewMode!=='3d'||!editor3D)return;
   const binding=wheelBinding(event),plainBinding=event.ctrlKey?[event.deltaY<0?'WheelUp':'WheelDown'].join(''):binding;
@@ -2153,7 +2166,7 @@ The editor stores Bliss metadata where supported, including creation date, editi
   }
   closed=true;cleanup();resolveDone?.(undefined);
  }
- const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);window.removeEventListener('pointerdown',capturePointerBinding,true);window.removeEventListener('wheel',captureWheelBinding,true);window.removeEventListener('pointermove',updateSpawnDrag,true);window.removeEventListener('pointerup',finishSpawnDrag,true);dragGhost.remove();editor3D?.close();editor3D=undefined;setBlissEditorActive(false);overlay.remove();};
+ const cleanup=()=>{core.endStroke();manualHexDeadline=0;helpOverlay?.remove();helpOverlay=null;window.removeEventListener('keydown',keyDown,true);window.removeEventListener('pointerdown',capturePointerBinding,true);window.removeEventListener('wheel',captureWheelBinding,true);window.removeEventListener('pointermove',updateSpawnDrag,true);window.removeEventListener('pointerup',finishSpawnDrag,true);window.removeEventListener('wheel',rotateDraggingSpawn,true);dragGhost.remove();editor3D?.close();editor3D=undefined;setBlissEditorActive(false);overlay.remove();};
  let resolveDone:((request:BrowserBlissEditorTestRequest|undefined)=>void)|undefined;
  for(const marker of Object.values(markerImages))marker.onload=()=>{if(!closed){renderPalette();renderMap();}};
  renderPalette();renderScenery();renderMap();renderStatus();updateArea();viewToggle.checked=false;viewKnob.style.transform='translateX(0)';view2D.style.color='#fff';view3D.style.color='#777';overlay.focus();requestAnimationFrame(()=>fitMap());
