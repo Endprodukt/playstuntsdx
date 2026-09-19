@@ -71,32 +71,58 @@ export function createEnhancedCarMenuPresentation(options:{
  const drawInfo=()=>{
   if(!current)return;
   rect(infoRect.x,infoRect.y,infoRect.w,infoRect.h,'#111','#3b3b3b',6);
-  label('CAR INFO',239,56,8,'#aaa',700);
-  fittedLabel(current.name??current.id,239,69,67,6.2,'#eee',650);
-  label('GEARS',239,83,4.5,'#777',600);label(String(current.gears),292,83,5.5,'#ddd',600,'right');
-  label('MAX RPM',239,94,4.5,'#777',600);label(String(current.maxRPM),305,94,5.5,'#ddd',600,'right');
-  label('MASS',239,105,4.5,'#777',600);label(String(current.mass)+' kg',305,105,5.5,'#ddd',600,'right');
-  label('IDLE RPM',239,116,4.5,'#777',600);label(String(current.idleRPM),305,116,5.5,'#ddd',600,'right');
-  label('PAINT',239,127,4.5,'#777',600);label(String(currentPaint+1),305,127,5.5,'#ddd',600,'right');
+  const left=239,right=305;
+  label('CAR INFO',left,56,8,'#aaa',700);
+  fittedLabel(current.name??current.id,left,69,right-left,6.2,'#eee',650);
+  const rows=[
+   ['GEARS',String(current.gears)],
+   ['MAX RPM',String(current.maxRPM)],
+   ['MASS',String(current.mass)+' kg'],
+   ['IDLE RPM',String(current.idleRPM)],
+   ['PAINT',String(currentPaint+1)],
+  ] as const;
+  rows.forEach(([key,value],index)=>{
+   const y=84+index*10.5;
+   label(key,left,y,4.5,'#777',600);
+   label(value,right,y,5.5,'#ddd',600,'right');
+  });
  };
  const drawGraph=()=>{
   if(!current)return;
   rect(graphRect.x,graphRect.y,graphRect.w,graphRect.h,'#111','#3b3b3b',5);
-  label('ACCELERATION',graphRect.x+6,graphRect.y+8,5,'#aaa',700);
+  label('ACCELERATION',graphRect.x+6,graphRect.y+7,5,'#aaa',700);
   const simulation=Uint8Array.from(current.rawSimulation.match(/../g)??[],value=>Number.parseInt(value,16));
   if(!simulation.length)return;
   const graph=originalCarAccelerationGraph(current,simulation).points;
-  const gx=graphRect.x+17,gy=graphRect.y+16,gw=graphRect.w-23,gh=graphRect.h-22;
-  ctx.save();ctx.strokeStyle='#555';ctx.lineWidth=Math.max(1,Math.min(sx(),sy()));
-  ctx.beginPath();ctx.moveTo(gx*sx(),(gy+gh)*sy());ctx.lineTo((gx+gw)*sx(),(gy+gh)*sy());ctx.moveTo(gx*sx(),gy*sy());ctx.lineTo(gx*sx(),(gy+gh)*sy());ctx.stroke();
+  const gx=graphRect.x+18,gy=graphRect.y+14,gw=graphRect.w-24,gh=graphRect.h-20;
+
+  ctx.save();
+  ctx.lineWidth=Math.max(.5,.55*Math.min(sx(),sy()));
+  for(let i=0;i<=8;i++){
+   const x=(gx+gw*i/8)*sx();
+   ctx.strokeStyle=i%4===0?'#565656':'#333';
+   ctx.beginPath();ctx.moveTo(x,gy*sy());ctx.lineTo(x,(gy+gh)*sy());ctx.stroke();
+  }
+  for(let i=0;i<=6;i++){
+   const y=(gy+gh*i/6)*sy();
+   ctx.strokeStyle=i%2===0?'#565656':'#333';
+   ctx.beginPath();ctx.moveTo(gx*sx(),y);ctx.lineTo((gx+gw)*sx(),y);ctx.stroke();
+  }
+
+  ctx.strokeStyle='#8b8b8b';ctx.lineWidth=Math.max(1,Math.min(sx(),sy()));
+  ctx.beginPath();ctx.rect(gx*sx(),gy*sy(),gw*sx(),gh*sy());ctx.stroke();
+
   ctx.strokeStyle='#d8d66d';ctx.lineWidth=Math.max(1.2,1.2*Math.min(sx(),sy()));ctx.beginPath();
   graph.forEach((point,index)=>{
    const nx=Math.max(0,Math.min(1,(point.x-28)/38)),ny=Math.max(0,Math.min(1,(181-point.y)/64));
    const px=(gx+nx*gw)*sx(),py=(gy+gh-ny*gh)*sy();
    if(index===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
   });ctx.stroke();ctx.restore();
-  label('0',gx-3,gy+gh+4,3.6,'#777',500,'center');label('40',gx+gw,gy+gh+4,3.6,'#777',500,'center');
-  label('150',gx-5,gy+1,3.5,'#777',500,'right');
+
+  for(const [text,value] of [['0',0],['20',.5],['40',1]] as const)
+   label(text,gx+gw*value,gy+gh+4,3.6,'#8a8a8a',500,'center');
+  for(const [text,value] of [['150',0],['100',1/3],['50',2/3],['0',1]] as const)
+   label(text,gx-3,gy+gh*value,3.5,'#8a8a8a',500,'right');
  };
  const drawDescription=()=>{
   if(!current)return;
