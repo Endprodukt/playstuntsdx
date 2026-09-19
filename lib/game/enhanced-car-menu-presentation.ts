@@ -17,7 +17,7 @@ export function createEnhancedCarMenuPresentation(options:{
  bank:(id:string)=>Promise<Uint8Array>;
 }):ModernCarMenuPresentation{
  const {canvas}=options,ctx=canvas.getContext('2d')!;
- const dummy=new Uint8Array(65536),showroom=createUpgradedCarMenu(options.palette,options.materialIndices);
+ const dummy=new Uint8Array(65536);let showroom:ReturnType<typeof createUpgradedCarMenu>|undefined,previewError='';
  let cars:readonly NativeMenuCar[]=[],selected=0,dropdownOpen=false,dropdownStart=0,hover:ModernCarMenuAction={type:'none'};
  let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,renderer:ReturnType<typeof createOriginalCarMenuModel>|undefined;
  let modelMemory:Uint8Array|undefined,signature='',closed=false,frame=0,started=performance.now();
@@ -65,13 +65,21 @@ export function createEnhancedCarMenuPresentation(options:{
   rect(7,44,220,153,'#111','#3b3b3b',6);
   ctx.save();ctx.beginPath();ctx.roundRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy(),4*Math.min(sx(),sy()));ctx.clip();
   ctx.fillStyle='#0a0b0a';ctx.fillRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
-  if(renderer&&modelMemory){
-   const angle=Math.floor(((performance.now()-started)*0.018))&65535;
-   renderer.render(dummy,angle,currentPaint);
-   const rendered=showroom.draw(modelMemory,Math.max(2,Math.round(previewRect.w*sx()*2)),Math.max(2,Math.round(previewRect.h*sy()*2)));
-   ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
-   const insetX=4*sx(),insetY=2*sy();
-   ctx.drawImage(rendered,previewRect.x*sx()-insetX,previewRect.y*sy()-insetY,previewRect.w*sx()+insetX*2,previewRect.h*sy()+insetY*2);
+  if(previewError)label('PREVIEW UNAVAILABLE',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,6,'#a77',600,'center');
+  else if(renderer&&modelMemory){
+   try{
+    const angle=Math.floor(((performance.now()-started)*0.018))&65535;
+    renderer.render(dummy,angle,currentPaint);
+    showroom??=createUpgradedCarMenu(options.palette,options.materialIndices);
+    const rendered=showroom.draw(modelMemory,Math.max(2,Math.round(previewRect.w*sx()*2)),Math.max(2,Math.round(previewRect.h*sy()*2)));
+    ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+    const insetX=4*sx(),insetY=2*sy();
+    ctx.drawImage(rendered,previewRect.x*sx()-insetX,previewRect.y*sy()-insetY,previewRect.w*sx()+insetX*2,previewRect.h*sy()+insetY*2);
+   }catch(reason){
+    previewError=reason instanceof Error?reason.message:String(reason);
+    console.error('[Modern Car Select] Preview failed:',reason);
+    showroom?.close();showroom=undefined;
+   }
   }else label('LOADING CAR…',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,7,'#777',600,'center');
   ctx.restore();
  };
@@ -99,12 +107,19 @@ export function createEnhancedCarMenuPresentation(options:{
    current=car;currentTransmission=transmission;currentPaint=paint;
    const nextSignature=car.id;
    if(signature!==nextSignature){
-    signature=nextSignature;renderer=undefined;modelMemory=undefined;
-    const bank=await options.bank(car.id);
-    renderer=createOriginalCarMenuModel(options.baseline,bank,options.stopArt,(memory)=>{modelMemory=memory;});
-    paintCount=Math.max(1,renderer.paintCount|0);
-    renderer.render(dummy,0,Math.min(paint,paintCount-1));
-   }
+    signature=nextSignature;renderer=undefined;modelMemory=undefined;previewError='';showroom?.close();showroom=undefined;
+    try{
+     const bank=await options.bank(car.id);
+     renderer=createOriginalCarMenuModel(options.baseline,bank,options.stopArt,(memory)=>{modelMemory=memory;});
+     paintCount=Math.max(1,renderer.paintCount|0);
+     currentPaint=Math.max(0,Math.min(paint,paintCount-1));
+     renderer.render(dummy,0,currentPaint);
+    }catch(reason){
+     previewError=reason instanceof Error?reason.message:String(reason);
+     console.error('[Modern Car Select] Model setup failed for',car.id,reason);
+     paintCount=1;
+    }
+   }else currentPaint=Math.max(0,Math.min(paint,paintCount-1));
    render();return {paintCount};
   },
   actionAt(event){
@@ -131,6 +146,6 @@ export function createEnhancedCarMenuPresentation(options:{
    const maxStart=Math.max(0,cars.length-dropdownRows);dropdownStart=Math.max(0,Math.min(maxStart,dropdownStart+(delta>0?1:-1)));render();return true;
   },
   render,
-  close(){closed=true;cancelAnimationFrame(frame);showroom.close();renderer=undefined;modelMemory=undefined;}
+  close(){closed=true;cancelAnimationFrame(frame);showroom?.close();showroom=undefined;renderer=undefined;modelMemory=undefined;}
  };
 }
