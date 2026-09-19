@@ -350,9 +350,46 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
   }catch{}
   return spawnTraces;
  };
+ const localRoadSnap=(x:number,z:number,fallback=0,alreadySnapped=false)=>{
+  let best:{x:number;z:number;heading:number;distance:number}|undefined;
+  const headingDistance=(a:number,b:number)=>Math.abs((((a-b)+512)&1023)-512);
+  const chooseHeading=(forward:number)=>{
+   const reverse=normalizeRaceHeading(forward+512),base=normalizeRaceHeading(fallback);
+   return headingDistance(forward,base)<=headingDistance(reverse,base)?normalizeRaceHeading(forward):reverse;
+  };
+  const considerSegment=(ax:number,az:number,bx:number,bz:number)=>{
+   const dx=bx-ax,dz=bz-az,length2=dx*dx+dz*dz;if(!length2)return;
+   const t=Math.max(0,Math.min(1,((x-ax)*dx+(z-az)*dz)/length2)),px=ax+dx*t,pz=az+dz*t,distance=Math.hypot(x-px,z-pz);
+   const forward=normalizeRaceHeading(-Math.atan2(dx,dz)*512/Math.PI),candidate={x:px,z:pz,heading:chooseHeading(forward),distance};
+   if(!best||distance<best.distance)best=candidate;
+  };
+  for(let yCell=0;yCell<30;yCell++)for(let xCell=0;xCell<30;xCell++){
+   const code=core.track.track[yCell*30+xCell]??0;if(code===253||code===254||code===255)continue;
+   const data=blissElementData[code],shape=blissTransformations.track[code];if(!data||!shape)continue;
+   const connections=data.ctype.map((value,index)=>value?index:-1).filter(index=>index>=0);if(connections.length!==2)continue;
+   const x0=xCell*1024,x1=(xCell+shape.width)*1024,zNorth=(30-yCell)*1024,zSouth=(30-yCell-shape.height)*1024;
+   const edges=[{x:(x0+x1)/2,z:zNorth},{x:x1,z:(zNorth+zSouth)/2},{x:(x0+x1)/2,z:zSouth},{x:x0,z:(zNorth+zSouth)/2}];
+   const a=connections[0],b=connections[1];
+   if(((a-b+4)%4)===2){considerSegment(edges[a].x,edges[a].z,edges[b].x,edges[b].z);continue;}
+   let cx=0,cz=0;const key=[a,b].sort((l,r)=>l-r).join(',');
+   if(key==='0,1'){cx=x1;cz=zNorth;}else if(key==='1,2'){cx=x1;cz=zSouth;}else if(key==='2,3'){cx=x0;cz=zSouth;}else if(key==='0,3'){cx=x0;cz=zNorth;}else continue;
+   const p0=edges[a],p1=edges[b],start=Math.atan2(p0.z-cz,p0.x-cx),end0=Math.atan2(p1.z-cz,p1.x-cx);let delta=end0-start;
+   while(delta<=-Math.PI)delta+=Math.PI*2;while(delta>Math.PI)delta-=Math.PI*2;
+   if(Math.abs(delta)>Math.PI/2+.01)delta+=delta<0?Math.PI*2:-Math.PI*2;
+   const radius=Math.hypot(p0.x-cx,p0.z-cz),samples=Math.max(16,shape.width*16);
+   for(let i=0;i<samples;i++){
+    const t0=i/samples,t1=(i+1)/samples,q0={x:cx+Math.cos(start+delta*t0)*radius,z:cz+Math.sin(start+delta*t0)*radius},q1={x:cx+Math.cos(start+delta*t1)*radius,z:cz+Math.sin(start+delta*t1)*radius};
+    considerSegment(q0.x,q0.z,q1.x,q1.z);
+   }
+  }
+  const threshold=alreadySnapped?950:620;
+  return best&&best.distance<=threshold?{...best,snapped:true}:{x,z,heading:normalizeRaceHeading(fallback),distance:best?.distance??Infinity,snapped:false};
+ };
  const roadSnap=(x:number,z:number,fallback=0,alreadySnapped=false)=>{
   const routed=snapToBlissRoad(x,z,editorSnapTraces(),fallback,alreadySnapped);
   if(routed.snapped)return routed;
+  const local=localRoadSnap(x,z,fallback,alreadySnapped);
+  if(local.snapped)return local;
   let best:{x:number;z:number;heading:number;distance:number}|undefined;
   for(let y=0;y<30;y++)for(let xCell=0;xCell<30;xCell++){
    const code=core.track.track[y*30+xCell]??0,data=blissElementData[code];
