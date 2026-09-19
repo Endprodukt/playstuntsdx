@@ -358,10 +358,10 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    const code=core.track.track[y*30+xCell]??0,data=blissElementData[code];
    if(!data||!data.ctype.some(Boolean))continue;
    const px=(xCell+.5)*1024,pz=(29-y+.5)*1024,distance=Math.hypot(x-px,z-pz);
-   if(!best||distance<best.distance)best={x:px,z:pz,heading:normalizeRaceHeading(fallback),distance};
+   if(!best||distance<best.distance)best={x:px,z:pz,heading:routed.heading,distance};
   }
   const threshold=alreadySnapped?950:620;
-  return best&&best.distance<=threshold?{...best,snapped:true}:{x,z,heading:normalizeRaceHeading(fallback),distance:best?.distance??Infinity,snapped:false};
+  return best&&best.distance<=threshold?{...best,snapped:true}:{x,z,heading:routed.heading,distance:best?.distance??Infinity,snapped:false};
  };
  const suggestedSpawnHeading=(x:number,z:number)=>roadSnap(x,z,0,false).heading;
  const mapPanel=panel('30 × 30 track');
