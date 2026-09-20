@@ -39,6 +39,7 @@ import type {TrackGeometry} from '../physics/track-contact.ts';
 import type {Vector} from '../physics/math.ts';
 import {initializePlayerRace} from '../physics/initialize-player-race.ts';
 import {normalizeRaceHeading,type RaceSpawn} from './race-spawn.ts';
+import {setDesktopForceFeedbackReplayActive} from './desktop-force-feedback.ts';
 
 type Analysis=Parameters<typeof analyzeRoute>;
 export interface NativeRaceData {
@@ -109,6 +110,8 @@ export function createNativeRaceSession(data:NativeRaceData,options:{transporter
  const opponentTrack=originalRaceTrackGeometry(memory,d,opponentSimulation,prepared.start,{raw,objects,planes:data.planes,walls:data.walls});
  const start={x:v.getInt16(d+0xa3e2+prepared.start.column*2,true),z:v.getInt16(d+0xa796+prepared.start.row*2,true),angle:prepared.start.angle};
  let recording:Uint8Array|undefined=options.replayInputs?memory.slice():undefined,recordedFrames=options.replayInputs?.length??0;
+ const syncReplayForceFeedback=()=>setDesktopForceFeedbackReplayActive(!!recording);
+ syncReplayForceFeedback();
  const resources=(m:Uint8Array,sp=0xff00,incomingSI=0):Parameters<typeof stepRecordedTwoCarRace> extends [unknown,...infer R]?R:never=>{
   const v=new DataView(m.buffer),graph=playerRouteMemory(prepared.graph,address=>m[address],d,d/16,recordedPlayerRouteStackFrame(sp));
   return [{caller:{stackSegment:d/16,entryStackPointer:sp,incomingSI},produceAudio:options.produceAudio,tuning,wheels,track,trackside:prepared.trackside,navigation:[graph,raw,prepared.route,records,points,objects,start]},{tuning:opponentData.tuning,wheels:opponentWheels,track:opponentTrack,path,lookup:(entry,point)=>lookup(m,entry,point),speedProfile:m[d+0x9362],startX:start.x,startZ:start.z,startAngle:start.angle,flags:m[d+0x8018],timeAdjustment:v.getUint16(d+0xa034,true)}];
@@ -239,6 +242,7 @@ export function createNativeRaceSession(data:NativeRaceData,options:{transporter
      if(!recording){
       recordedFrames=new DataView(state.memory.buffer,state.memory.byteOffset,state.memory.byteLength).getUint16(d+0x8fd8,true);
       recording=state.memory.slice();
+      syncReplayForceFeedback();
      }
      await host.replayControls();
     },
@@ -277,6 +281,7 @@ export function createNativeRaceSession(data:NativeRaceData,options:{transporter
    const continued=await continueNativeReplay({...host,memory:()=>memory,initialize(mode){memory=initialize(memory,mode);}},d,restart);
    state=readRecordedTwoCarRace(memory,d);
    if(continued){recording=undefined;recordedFrames=0;}
+   syncReplayForceFeedback();
    return continued;
   },
   async replayMenu(host:Omit<NativeReplayMenuHost,'memory'|'initialize'|'continueDriving'>):Promise<void>{
@@ -310,12 +315,13 @@ export function createNativeRaceSession(data:NativeRaceData,options:{transporter
    },d,direction);}finally{replaySeeking=false;}
    return state;
   },
-  reset(){recording=options.replayInputs?initial.slice():undefined;recordedFrames=options.replayInputs?.length??0;state=readRecordedTwoCarRace(initial.slice(),d);return state;},
+  reset(){recording=options.replayInputs?initial.slice():undefined;recordedFrames=options.replayInputs?.length??0;state=readRecordedTwoCarRace(initial.slice(),d);syncReplayForceFeedback();return state;},
   seek(target:number){
    if(!recording){
     recordedFrames=new DataView(state.memory.buffer,state.memory.byteOffset,state.memory.byteLength).getUint16(d+0x8fd8,true);
     const entry=state.memory.slice();new DataView(entry.buffer).setUint16(d+0x8fd8,recordedFrames,true);
     recording=enterManualRace(entry,d);
+    syncReplayForceFeedback();
    }
    if(!Number.isInteger(target)||target<0||target>recordedFrames)throw Error('Replay position is outside the recorded drive');
    const m=recording.slice();m[d+0x9aca]=1;m[d+0xa3c2]=2;
