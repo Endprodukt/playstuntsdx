@@ -231,7 +231,9 @@ function resampleAndSend(immediate = false) {
 export function setDesktopForceFeedbackReplayActive(active: boolean) {
   if (replayActive === active) return;
   replayActive = active;
-  if (active) clearForceFeedbackTelemetry();
+  // Replay physics still produces valid-looking telemetry. Drop it on both
+  // transitions so neither replay nor Continue Driving can leak stale forces.
+  clearForceFeedbackTelemetry();
   resampleAndSend(true);
 }
 
