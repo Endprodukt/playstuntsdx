@@ -3,7 +3,7 @@ import {landmarkContact} from './landmark-contact.ts';
 import {carsOverlap} from './car-overlap.ts';
 import {roadsidePosts} from './roadside-posts.ts';
 /** Track-aware simulation; only reconstructed geometry is accepted. */
-import { stepEngine, type EngineState, type EngineTuning } from './engine.ts';
+import { analogSteeringAngle,stepEngine, type EngineState, type EngineTuning } from './engine.ts';
 import { stepSteering } from './steering.ts';
 import { stepGrip, type GripState, type GripTuning } from './grip.ts';
 import { updateForceFeedbackContact } from './force-feedback.ts';
@@ -31,7 +31,8 @@ export function stepTrack(
   const retainContactScratch=(words:[number,number])=>{if(before.contactEntryRegisters)contactScratch=[...words,...before.contactEntryRegisters];};
   let engine = stepEngine(before.engine, tuning, input, 20,undefined,retainContactScratch);
   const engineRoadSpeed = engine.roadSpeed;
-  const steeringAngle = stepSteering(
+  const directSteering=analogSteeringAngle(input);
+  const steeringAngle = directSteering ?? stepSteering(
     before.grip.steeringAngle,
     engine.roadSpeed,
     ((input >> 2) & 3) as 0 | 1 | 2 | 3,
