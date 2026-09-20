@@ -32,7 +32,7 @@ export interface BlissEditor3DView {
  close():void;
 }
 
-export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,options:{initialCamera?:{position:[number,number,number];target:[number,number,number];fov?:number};transparentBackground?:boolean;showGround?:boolean;showAnnotations?:boolean;layers?:Partial<BlissEditor3DLayers>}={}):BlissEditor3DView{
+export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,options:{initialCamera?:{position:[number,number,number];target:[number,number,number];fov?:number};transparentBackground?:boolean;showGround?:boolean;showAnnotations?:boolean;layers?:Partial<BlissEditor3DLayers>;terrainSupportWhenGroundHidden?:boolean}={}):BlissEditor3DView{
  const transparentBackground=!!options.transparentBackground;
  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:transparentBackground,logarithmicDepthBuffer:true,powerPreference:'high-performance'});
  renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
@@ -198,9 +198,10 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
  };
  const applyLayers=()=>{
   base.visible=layerState.ground;groundRoot.visible=layerState.ground;
-  // Hill support belongs to Ground when shown, and remains behind Terrain when
-  // Ground is hidden so slope overhangs do not turn into transparent holes.
-  groundSupportRoot.visible=layerState.ground||layerState.terrain;
+  // By default hill support remains behind Terrain when Ground is hidden.
+  // The race map can disable that behaviour so a Terrain-only view contains
+  // only the hill geometry instead of exposing support-cell corners.
+  groundSupportRoot.visible=layerState.ground||(layerState.terrain&&options.terrainSupportWhenGroundHidden!==false);
   terrainRoot.visible=layerState.terrain;trackRoot.visible=layerState.track;buildingsRoot.visible=layerState.buildings;itemsRoot.visible=layerState.items;
  };
  const rebuild=(source:BlissTrack)=>{
