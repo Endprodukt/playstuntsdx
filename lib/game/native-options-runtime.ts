@@ -4,6 +4,7 @@ import {originalOptionsFlow} from './options-menu-flow.ts';
 import {originalOptionAction,type OriginalOptionSettings} from './options-actions.ts';
 import {enhancedTexturesEnabled,setEnhancedTexturesEnabled} from './enhanced-textures.ts';
 import {desktopInputDevice,setDesktopInputDevice,type DesktopInputDevice} from './desktop-wheel-input.ts';
+import {ENHANCED_RENDER_SCALES,enhancedRenderScale,setEnhancedRenderScale} from './enhanced-resolution-settings.ts';
 
 type DesktopSoundDevice='off'|'pc-speaker'|'tandy'|'adlib'|'sound-blaster'|'mt32';
 type TauriGlobal={core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}};
@@ -25,6 +26,14 @@ const bytes=(text:string)=>Array.from(text,character=>character.charCodeAt(0)).c
 const soundDialog=bytes('PLAYSTUNTS DX SOUND]'+soundDevices.map(device=>`[${device.label}]`).join(''));
 const missingMt32Dialog=bytes('ROLAND MT-32 ROMS NOT FOUND]PUT THE CONTROL AND PCM ROMS]IN THE MT32 FOLDER][OK]');
 const exitGameDialog=bytes('EXIT GAME?][NO][YES]');
+const resolutionLabel=(scale:number)=>scale===1?'ORIGINAL':`${scale}X`;
+const resolutionDialog=bytes('INTERNAL RESOLUTION]'+ENHANCED_RENDER_SCALES.map(scale=>`[${resolutionLabel(scale)} (${320*scale}X${200*scale})]`).join(''));
+async function selectDesktopRenderScale(value:number){
+ const scale=setEnhancedRenderScale(value),tauri=(window as typeof window&{__TAURI__?:TauriGlobal}).__TAURI__;
+ if(!tauri?.core)return;
+ try{await tauri.core.invoke<void>('native_config_set',{section:'Display',key:'InternalResolutionScale',value:String(scale)});}
+ catch(reason){console.warn('[Options] internal resolution save failed:',reason);}
+}
 
 export function enhancedMenuEnabled(){return enabledSetting(enhancedMenuKey,true);}
 export function modernTrackEditorEnabled(){return enabledSetting(trackEditorKey,true);}
@@ -58,14 +67,15 @@ function selectDesktopSound(device:DesktopSoundDevice){
  window.setTimeout(()=>window.location.reload(),0);
 }
 function choice(text:string){return [91,...Array.from(text,character=>character.charCodeAt(0)),93];}
-function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,textures:boolean,enhancedMenu:boolean,modernTrackEditor:boolean,sound:DesktopSoundDevice,audioUpdate:boolean){
+function optionsWithDxChoices(original:ReadonlyArray<number>,enhanced:boolean,renderScale:number,textures:boolean,enhancedMenu:boolean,modernTrackEditor:boolean,sound:DesktopSoundDevice,audioUpdate:boolean){
  const result:number[]=[];let originalChoice=0;
  for(let i=0;i<original.length;i++){
   const value=original[i]&255;
   if(value===91){
    if(originalChoice===3)result.push(...choice(`SOUND DEVICE: ${desktopSoundLabel(sound)}`));
    if(originalChoice===5){
-    result.push(...choice(`ENHANCED GRAPHICS: ${enhanced?'ON':'OFF'}`));
+    result.push(...choice(`DX GRAPHICS: ${enhanced?'ON':'OFF'}`));
+    result.push(...choice(`INTERNAL RESOLUTION: ${resolutionLabel(renderScale)}`));
     result.push(...choice(`ENHANCED TEXTURES: ${textures?'ON':'OFF'}`));
     result.push(...choice(`MENUS: ${enhancedMenu?'MODERN':'VANILLA'}`));
     result.push(...choice(`TRACK EDITOR: ${modernTrackEditor?'MODERN':'VANILLA'}`));
@@ -111,9 +121,12 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
    const toggle=desktopEnhancedGraphicsButton(),sound=desktopSoundDevice();
    if(!toggle||!sound)result=await dialogs.dialog('emop',2,0,4);
    else{
-    const enhanced=desktopEnhancedGraphicsEnabled(toggle),textures=enhancedTexturesEnabled(),enhancedMenu=enhancedMenuEnabled(),modernTrackEditor=modernTrackEditorEnabled(),audioUpdate=enabledSetting(audioUpdateKey,true);
-    host.resources.edxo=optionsWithDxChoices(host.resources.emop,enhanced,textures,enhancedMenu,modernTrackEditor,sound,audioUpdate);
-    const selected=await dialogs.dialog('edxo',2,0,4);
+    const enhanced=desktopEnhancedGraphicsEnabled(toggle),renderScale=enhancedRenderScale(),textures=enhancedTexturesEnabled(),enhancedMenu=enhancedMenuEnabled(),modernTrackEditor=modernTrackEditorEnabled(),audioUpdate=enabledSetting(audioUpdateKey,true);
+    host.resources.edxo=optionsWithDxChoices(host.resources.emop,enhanced,renderScale,textures,enhancedMenu,modernTrackEditor,sound,audioUpdate);
+    // Internal resolution only affects the DX renderer. Keep the entry visible
+    // for discoverability, but make it unavailable while DX Graphics is off.
+    const disabled=Array(14).fill(0);if(!enhanced)disabled[7]=1;
+    const selected=await dialogs.dialog('edxo',2,0,4,disabled);
     if(selected===3){
      host.resources.edxs=soundDialog;
      const current=soundDevices.findIndex(device=>device.id===sound);
@@ -135,20 +148,26 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
      await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
      result=-2;
     }else if(selected===7){
-     setEnhancedTexturesEnabled(!textures);
+     host.resources.edxq=resolutionDialog;
+     const current=ENHANCED_RENDER_SCALES.indexOf(renderScale as (typeof ENHANCED_RENDER_SCALES)[number]);
+     const resolutionSelection=await dialogs.dialog('edxq',2,current<0?0:current,1);
+     if(resolutionSelection>=0&&resolutionSelection<ENHANCED_RENDER_SCALES.length)await selectDesktopRenderScale(ENHANCED_RENDER_SCALES[resolutionSelection]!);
      result=-2;
     }else if(selected===8){
-     window.localStorage.setItem(enhancedMenuKey,String(!enhancedMenu));
+     setEnhancedTexturesEnabled(!textures);
      result=-2;
     }else if(selected===9){
-     window.localStorage.setItem(trackEditorKey,String(!modernTrackEditor));
+     window.localStorage.setItem(enhancedMenuKey,String(!enhancedMenu));
      result=-2;
     }else if(selected===10){
+     window.localStorage.setItem(trackEditorKey,String(!modernTrackEditor));
+     result=-2;
+    }else if(selected===11){
      window.localStorage.setItem(audioUpdateKey,String(!audioUpdate));
      window.setTimeout(()=>window.location.reload(),120);
      result=-2;
-    }else if(selected===11)result=5;
-    else if(selected===12)result=6;
+    }else if(selected===12)result=5;
+    else if(selected===13)result=6;
     else result=selected;
    }
   }

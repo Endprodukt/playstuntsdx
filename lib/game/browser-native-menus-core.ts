@@ -187,17 +187,20 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     // The original showroom projection is authored for the 320x200 Stunts
     // viewport. Keep that 1.6:1 render aspect here; rendering it into a wider
     // target stretches the car before the menu compositor ever sees it.
-    // Match the physical width of the modern preview as closely as possible.
-    // The showroom itself must stay 320:200, but choosing a 1:1-ish source
-    // width avoids an extra soft resample when compositing into the menu.
-    const internal=enhancedRenderResolution(),width=Math.max(320,Math.round(internal.width*218/320)),height=Math.round(width*200/320);
-    const snapshot=document.createElement('canvas');snapshot.width=width;snapshot.height=height;
+    // Use the same full 320x200-based internal resolution as the race renderer.
+    // The menu crops/composites this render afterwards; it must not lower the
+    // 3D resolution merely because the preview rectangle itself is smaller.
+    const snapshot=document.createElement('canvas');
+    const initial=enhancedRenderResolution();snapshot.width=initial.width;snapshot.height=initial.height;
     const snapshotContext=snapshot.getContext('2d');if(!snapshotContext)return null;
     const memory=modelMemory;
     const renderAngle=(angle:number,pitch=0,zoom=1)=>{
+     const internal=enhancedRenderResolution();
+     if(snapshot.width!==internal.width)snapshot.width=internal.width;
+     if(snapshot.height!==internal.height)snapshot.height=internal.height;
      new DataView(memory.buffer,memory.byteOffset,memory.byteLength).setInt16(0x2d1a0+0xb00e,angle&1023,true);
-     const rendered=modernShowroom!.draw(memory,width,height,{pitch,zoom});
-     snapshotContext.clearRect(0,0,width,height);snapshotContext.drawImage(rendered,0,0);
+     const rendered=modernShowroom!.draw(memory,internal.width,internal.height,{pitch,zoom});
+     snapshotContext.clearRect(0,0,snapshot.width,snapshot.height);snapshotContext.drawImage(rendered,0,0);
     };
     renderAngle(0);
     return {canvas:snapshot,paintCount,render:renderAngle};

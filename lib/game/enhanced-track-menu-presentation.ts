@@ -4,6 +4,7 @@ import type {BlissTrack} from './bliss-track.ts';
 import type {NativeMenuTrack} from './native-track-runtime.ts';
 import type {BlissEditor3DView} from './bliss-editor-3d.ts';
 import type {ModernTrackMenuAction,ModernTrackMenuPresentation} from './modern-track-menu-runtime.ts';
+import {enhancedRenderResolution} from './enhanced-resolution-settings.ts';
 
 type PreviewFactory=(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,options:{initialCamera:{position:[number,number,number];target:[number,number,number];fov:number};transparentBackground:boolean;showGround:boolean})=>BlissEditor3DView;
 
@@ -34,7 +35,9 @@ export function createEnhancedTrackMenuPresentation(options:{
  previewEnabled:boolean;
 }):EnhancedTrackMenuPresentation{
  const {canvas}=options,ctx=canvas.getContext('2d')!;
- const previewCanvas=document.createElement('canvas');previewCanvas.width=1280;previewCanvas.height=800;
+ const previewCanvas=document.createElement('canvas');
+ const syncPreviewResolution=()=>{const internal=enhancedRenderResolution();if(previewCanvas.width!==internal.width)previewCanvas.width=internal.width;if(previewCanvas.height!==internal.height)previewCanvas.height=internal.height;};
+ syncPreviewResolution();
  let preview:BlissEditor3DView|undefined,signature='',track:NativeMenuTrack|undefined,score:ReadonlyArray<number>|null=null,enabled=true;
  let tracks:string[]=[],selectedTrack=0,dropdownOpen=false,dropdownStart=0,hoverAction:ModernTrackMenuAction={type:'none'};
 
@@ -49,6 +52,7 @@ export function createEnhancedTrackMenuPresentation(options:{
  const fit=(value:string,max=23)=>value.length<=max?value:value.slice(0,Math.max(1,max-1))+'…';
  const trackSignature=(value:NativeMenuTrack)=>value.name+'/'+value.raw.length+'/'+value.raw.slice(0,1802).reduce((hash,byte,index)=>(Math.imul(hash^byte,16777619)+index)>>>0,2166136261);
  const ensurePreview=()=>{
+  syncPreviewResolution();
   if(!track)throw Error('Modern track menu requires an active track');
   const next=trackSignature(track);
   if(preview&&signature===next)return preview;
