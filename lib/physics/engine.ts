@@ -24,7 +24,7 @@ export function encodeAnalogDrivingInput(input:number,pedals:AnalogPedalInput,st
  return low+(angle+ANALOG_STEERING_OFFSET)*ANALOG_STEERING_BASE;
 }
 export function analogSteeringAngle(input:number){
- const encoded=Math.floor(input/ANALOG_STEERING_BASE);
+ const encoded=Math.trunc(input/ANALOG_STEERING_BASE);
  return encoded?Math.max(-240,Math.min(240,encoded-ANALOG_STEERING_OFFSET)):undefined;
 }
 function analogPedals(input:number):AnalogPedalInput|undefined{
