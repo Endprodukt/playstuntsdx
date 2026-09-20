@@ -6,7 +6,7 @@ import {distantCloudPlacement,upgradedWorldDetail} from './upgraded-world-visibi
 import {backgroundCamera,createNativeBackground} from './native-background';
 import * as THREE from 'three';
 import type {Assets} from './types';
-import {createTrackModelFactory} from './track-model';
+import {createTrackModelFactory,PERSPECTIVE_TRACK_LINE_WIDTH} from './track-model';
 import {createCarModel} from './car-model';
 import {applyUpgradedCarMaterials,addUpgradedCarStudyLights} from './upgraded-car-materials';
 import {createUpgradedCarWheelMotion} from './upgraded-car-wheels';
@@ -59,9 +59,9 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
  const sceneryWorldCenter=new THREE.Vector3(15360,0,-15360);
  const ground=createUpgradedRaceGround();world.add(ground);
       const sourceMaterials={...trackMaterials,...readOriginalMaterialPatterns(runtime.session.state.memory)};
-      // One native raster pixel maps to four pixels on this 4x presentation.
-      // Keep every source line primitive at that screen-space weight.
-      const trackModel=createTrackModelFactory(sourceMaterials,4);
+      // Authored cables and other line primitives have physical diameter so
+      // their projected width follows perspective and no longer depends on 4x.
+      const trackModel=createTrackModelFactory(sourceMaterials,PERSPECTIVE_TRACK_LINE_WIDTH);
       const visibilityPlacements:{model:THREE.Group;key:string;detail?:number;tile?:number;terrain?:number;underlay?:boolean;castsShadow?:boolean;shadow?:RetroSceneryCaster;keepInWorld?:boolean;origin:number[];paint:number;visible:boolean[]}[]=[];
 
       for (let z = 0; z < 30; z++)
