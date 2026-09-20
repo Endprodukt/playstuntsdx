@@ -164,11 +164,30 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
  };
 
  const clearRoot=(root:THREE.Group)=>{while(root.children.length){const child=root.children[root.children.length-1];root.remove(child);disposeObject(child);}};
+ const simplifiedTerrainGeometries=new WeakSet<THREE.BufferGeometry>();
  const simplifyTerrainModel=(model:THREE.Object3D)=>{
   if(!simplifyTerrain)return model;
   model.traverse(node=>{
-   if(node instanceof THREE.Mesh)node.material=new THREE.MeshBasicMaterial({color:0x7fdf7b,side:THREE.DoubleSide,toneMapped:false});
-   if(node.userData.originalTrackLine||node.userData.originalEdgeVisibility)node.visible=false;
+   if(node.userData.originalTrackLine||node.userData.originalEdgeVisibility){node.visible=false;return;}
+   if(!(node instanceof THREE.Mesh)||simplifiedTerrainGeometries.has(node.geometry))return;
+   const geometry=node.geometry,terrain=geometry.getAttribute('originalTerrainSurface'),position=geometry.getAttribute('position') as THREE.BufferAttribute|undefined;
+   if(!terrain||!position||position.count<3){simplifiedTerrainGeometries.add(geometry);return;}
+   let kept=0;
+   for(let i=0;i+2<position.count;i+=3)if(terrain.getX(i)>.5&&terrain.getX(i+1)>.5&&terrain.getX(i+2)>.5)kept++;
+   // Map previews need only the actual grass/slope surface. The original hill
+   // shapes also contain darker side/skirt polygons; from an overview angle
+   // those read as the row of triangular teeth around every elevation.
+   // Degenerate only those non-surface triangles so the source material,
+   // stipple/discard mask and genuine terrain geometry remain untouched.
+   if(kept){
+    for(let i=0;i+2<position.count;i+=3){
+     if(terrain.getX(i)>.5&&terrain.getX(i+1)>.5&&terrain.getX(i+2)>.5)continue;
+     const x=position.getX(i),y=position.getY(i),z=position.getZ(i);
+     position.setXYZ(i+1,x,y,z);position.setXYZ(i+2,x,y,z);
+    }
+    position.needsUpdate=true;
+   }
+   simplifiedTerrainGeometries.add(geometry);
   });
   return model;
  };
