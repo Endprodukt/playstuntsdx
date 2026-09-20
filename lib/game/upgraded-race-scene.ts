@@ -188,7 +188,9 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
  let appliedGraphicsRevision=-1,appliedOverlaySourceCamera='',appliedReplayPanelSignature=-1,orderedScene=false,worldVisibilityKey='',sceneryRevision=0,lastChaseLevel:EnhancedChaseCameraLevel=0,truckChanged=false,transporterBoundsKnown=false,lastSourceCamera='',backgroundHeightCamera='',backgroundHeight=0,tvPitchCamera='',tvPitch=0,lastBackgroundSourceFrame=-1;
  return {
   draw(canvas:HTMLCanvasElement){
-   if(renderer.getContext().isContextLost())throw Error('Graphics context lost');
+   // Three.js can recover a temporarily lost WebGL context. Do not turn a
+   // recoverable GPU/context event into a permanent race-level graphics failure.
+   if(renderer.getContext().isContextLost())return false;
    const frame=runtime.graphicsFrame();if(!frame)return false;
    const live=frame.memory,v=new DataView(live.buffer,live.byteOffset,live.byteLength);
    const graphicsChanged=frame.revision!==appliedGraphicsRevision;
