@@ -260,7 +260,7 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    // the 3D renderer gains real pixels at the sides.
    const nativeWidth=Math.round(canvas.height*320/200),wideWidth=Math.max(nativeWidth,Math.round(nativeWidth*wideFactor));
    if(canvas.width!==wideWidth)canvas.width=wideWidth;
-   canvas.dataset.enhancedWidescreen=wideFactor>1.001?'true':'false';canvas.style.setProperty('--dx-race-aspect',String(displayAspect));
+   canvas.dataset.enhancedWidescreen=wideFactor>1.001?'true':'false';canvas.dataset.originalInput43=runtime.session.replaying?'true':'false';canvas.style.setProperty('--dx-race-aspect',String(displayAspect));
    const chaseFy=chase?100/Math.tan(chase.fov*Math.PI/360):fy,chaseFx=chase?chaseFy*1.2:fx;
    camera.projectionMatrix.makePerspective(-cx/chaseFx*wideFactor,(320-cx)/chaseFx*wideFactor,cy/chaseFy,-(200-cy)/chaseFy,1,200000);
    camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
@@ -407,6 +407,6 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    lastChaseLevel=chaseLevel;fpsFrames++;if(now-fpsAt>=1000){canvas.dataset.upgradedFps=String(Math.round(fpsFrames*1000/(now-fpsAt)));fpsFrames=0;fpsAt=now;}
    return true;
   },
-  close(){const active=document.querySelector<HTMLCanvasElement>('canvas[data-enhanced-widescreen]');if(active){active.removeAttribute('data-enhanced-widescreen');active.style.removeProperty('--dx-race-aspect');const normalWidth=Math.round(active.height*320/200);if(active.width!==normalWidth)active.width=normalWidth;}enhancedCockpit.close();enhancedBackground?.close();crashEffects.close();retroLighting.dispose();orderedRaster.dispose();const geometries=new Set<THREE.BufferGeometry>(),materials=new Set<THREE.Material>();scene.traverse(node=>{if(node instanceof THREE.Mesh||node instanceof THREE.LineSegments){geometries.add(node.geometry);for(const material of Array.isArray(node.material)?node.material:[node.material])materials.add(material);}});geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());renderer.dispose();renderer.forceContextLoss();}
+  close(){const active=document.querySelector<HTMLCanvasElement>('canvas[data-enhanced-widescreen]');if(active){active.removeAttribute('data-enhanced-widescreen');active.removeAttribute('data-original-input43');active.style.removeProperty('--dx-race-aspect');const normalWidth=Math.round(active.height*320/200);if(active.width!==normalWidth)active.width=normalWidth;}enhancedCockpit.close();enhancedBackground?.close();crashEffects.close();retroLighting.dispose();orderedRaster.dispose();const geometries=new Set<THREE.BufferGeometry>(),materials=new Set<THREE.Material>();scene.traverse(node=>{if(node instanceof THREE.Mesh||node instanceof THREE.LineSegments){geometries.add(node.geometry);for(const material of Array.isArray(node.material)?node.material:[node.material])materials.add(material);}});geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());renderer.dispose();renderer.forceContextLoss();}
  };
 }
