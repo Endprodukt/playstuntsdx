@@ -52,6 +52,7 @@ import {runModernTrackMenu,type ModernTrackMenuAction,type ModernTrackMenuHost} 
 import {runNativeTrackMenu,type NativeTrackMenuHost} from './native-track-runtime.ts';
 import {runNativeEditor,type NativeEditorHost} from './native-editor-runtime.ts';
 import {createBrowserMenuInput} from './browser-menu-input.ts';
+import {raceGraphicsTransition} from './race-graphics-transition.ts';
 import {createNativeFileStore,openNativeFilePersistence,nativeFileKey} from './native-file-store.ts';
 import {createNativeEditorFileWrites} from './native-editor-file-writes.ts';
 import {editNativeSaveName} from './native-save-name.ts';
@@ -108,6 +109,11 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  const {canvas,music}=options,nativeCanvasWidth=canvas.width,nativeCanvasHeight=canvas.height,context=canvas.getContext('2d')!,surface=document.createElement('canvas');surface.width=320;surface.height=200;
  const resetRaceCanvas=()=>{canvas.removeAttribute('data-enhanced-widescreen');canvas.style.removeProperty('--dx-race-aspect');if(canvas.width!==nativeCanvasWidth)canvas.width=nativeCanvasWidth;if(canvas.height!==nativeCanvasHeight)canvas.height=nativeCanvasHeight;};
  const drawing=surface.getContext('2d')!,image=drawing.createImageData(320,200),pixels=new Uint8Array(65536),input=createBrowserMenuInput(canvas,{joystickEnabled:()=>activeRace?!!activeRace.session.state.memory[0x2d1a0+0x4602]:drivingSettings.joystick,drivingBindings:()=>activeRace?activeRace.session.state.memory.subarray(0x2d1a0+0x430a,0x2d1a0+0x4314):[57,28,71,72,73,77,81,80,79,75],onPoll:()=>{if(options.signal?.aborted)throw new DOMException('Native menu closed','AbortError');return racePoll?.();}}),palette=materials.palette;
+ const readReplayInput=async(memory:()=>Uint8Array,delta?:number|(()=>number))=>{
+  const key=await input.readMemory(memory,0x2d1a0,delta),m=memory(),view=new DataView(m.buffer,m.byteOffset,m.byteLength),at=0x2d1a0+0x9ad4;
+  view.setUint16(at,view.getUint16(at,true)|input.replayActivationButtons(),true);
+  return key;
+ };
  const configuration=options.configuration??[67,79,85,78,0,1,0,255,0,0,0,0,0,68,69,70,65,85,76,84,0,0,1,0];
  const track=options.track??{name:'DEFAULT',path:'',raw:[...options.assets.tracks.find(t=>t.name==='DEFAULT')!.raw]};
  let entryPolls=0,selectedReplay:{bytes:Uint8Array;name:string;path:string}|undefined,pendingRaceSpawn:RaceSpawn|undefined,editorViewMode:'2d'|'3d'='2d',editor3DCamera:import('./bliss-editor-3d.ts').BlissEditor3DCameraState|undefined;
@@ -480,12 +486,19 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    const graphics=options.graphics;if(graphics){runtime.enableGraphicsCapture();graphics.resetPerformance?.();}
    const presentWorld=()=>{
     publishRaceMapFrame(runtime.raw,runtime.session.state.memory);
-    if(graphics&&!graphics.enabled)resetRaceCanvas();
-    display();if(!graphics)return;graphics.refresh=presentWorld;
-    if(!graphics.enabled)return;
-    if(failed)return;
-    if(!upgraded){if(!loading){loading=true;graphics.notice?.('Loading upgraded driving graphics…');void import('./upgraded-race-scene').then(({createUpgradedRaceScene})=>{if(closed)return;upgraded=createUpgradedRaceScene(options.assets,baseline,runtime,()=>graphics.chaseCamera??0,()=>graphics.selectOriginalCamera?.());graphics.refresh?.();}).catch(()=>{failed=true;graphics.notice?.('Upgraded graphics are unavailable. Original graphics remain active.');});}return;}
-    try{const shown=upgraded.draw(canvas);if(shown)graphics.performanceFrame?.(performance.now());graphics.notice?.(shown?'Upgraded driving graphics · experimental':'Original graphics for this scene');}catch{failed=true;upgraded.close();upgraded=undefined;display();graphics.notice?.('Upgraded graphics are unavailable. Original graphics remain active.');}
+    if(!graphics){display();return;}
+    if(!graphics.enabled)resetRaceCanvas();
+    graphics.refresh=presentWorld;
+    const transition=raceGraphicsTransition(graphics.enabled,!!upgraded,failed);
+    if(transition==='original'){display();return;}
+    // Keep the last presented frame while a requested DX scene is prepared.
+    // Painting the native world here exposes a one-frame original-graphics flash.
+    if(transition==='hold'){
+     if(!loading){loading=true;graphics.notice?.('Loading upgraded driving graphics…');void import('./upgraded-race-scene').then(({createUpgradedRaceScene})=>{if(closed)return;upgraded=createUpgradedRaceScene(options.assets,baseline,runtime,()=>graphics.chaseCamera??0,()=>graphics.selectOriginalCamera?.());graphics.refresh?.();}).catch(()=>{failed=true;graphics.notice?.('Upgraded graphics are unavailable. Original graphics remain active.');graphics.refresh?.();});}
+     return;
+    }
+    const scene=upgraded;if(!scene)return;
+    try{const shown=scene.draw(canvas);if(shown)graphics.performanceFrame?.(performance.now());graphics.notice?.(shown?'Upgraded driving graphics · experimental':'Preparing upgraded driving graphics…');}catch{failed=true;scene.close();upgraded=undefined;display();graphics.notice?.('Upgraded graphics are unavailable. Original graphics remain active.');}
    };
    const gameText=await json<TextResources>('race-dialog-text');
    const onTeleport=(event:Event)=>{const spawn=(event as CustomEvent<RaceSpawn>).detail;if(!spawn)return;runtime.session.teleportPlayer(spawn);graphics?.refresh?.();};
@@ -548,7 +561,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
 
    focusBrowserGameCanvas(canvas);
    const waiting=()=>{if(!alternate){drawOriginalRaceWaiting(pixels,font,host.resources.ewai,memory(),0x2d1a0);show('race');present();}else{const owner=alternate.owner,m=owner.memory(),v=new DataView(m.buffer),live=memory(),source=new DataView(live.buffer),at={cga:0x8ff0,tandy:0x9030,ega:0x8e6c}[owner.mode];v.setInt16(owner.d+at,source.getInt16(0x2d1a0+0x8a10,true),true);restoreOriginalDisplayWindow(m,owner.d,owner.mode);drawOriginalRaceWaitingDisplay(m,owner.d,owner.mode,owner.drawing,host.resources.ewai,0xe800);live[0x2d1a0+0x131]=0;display();}canvas.style.cursor='none';};
-   return {control,present:presentWorld,presentWorld,dialog,opponent,waiting,saveName,saveDialog:saveDialogs.dialog,file:setupDialogs.file,setupDialog:async(resource:string,mode:number,selected:number,border:number)=>{pixels.set(runtime.pixels);return setupDialogs.dialog(resource,mode,selected,border);},read:()=>input.readMemory(memory,0x2d1a0,()=>originalElapsedInputTicks(memory(),0x2d1a0)),input:(delta:number)=>input.readMemory(memory,0x2d1a0,delta),ctrlHeld:input.ctrlHeld,waitTicks:input.waitTicks,
+   return {control,present:presentWorld,presentWorld,dialog,opponent,waiting,saveName,saveDialog:saveDialogs.dialog,file:setupDialogs.file,setupDialog:async(resource:string,mode:number,selected:number,border:number)=>{pixels.set(runtime.pixels);return setupDialogs.dialog(resource,mode,selected,border);},read:()=>readReplayInput(memory,()=>originalElapsedInputTicks(memory(),0x2d1a0)),input:(delta:number)=>readReplayInput(memory,delta),ctrlHeld:input.ctrlHeld,waitTicks:input.waitTicks,
     changeGraphics:(writeAudio:(writes:number[][])=>void)=>selectAllocatedGraphicsLevel({memory,audio:operation=>writeAudio(runtime.dialogAudio(operation)),dialog:async(...args)=>{pixels.set(runtime.pixels);return setupDialogs.dialog(...args);},hideCursor(){canvas.style.cursor='none';}},0x2d1a0),
     selectMouse:(writeAudio:(writes:number[][])=>void)=>selectAllocatedMouseControl({memory,audio:operation=>writeAudio(runtime.dialogAudio(operation)),dialog:async(...args)=>{pixels.set(runtime.pixels);return setupDialogs.dialog(...args);},hideCursor(){canvas.style.cursor='none';}},0x2d1a0),
     hideCursor(){canvas.style.cursor='none';},
@@ -564,7 +577,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    const display=()=>{pixels.set(background.subarray(0,Math.min(background.length,pixels.length)));show('replay');present();};
    const control=createNativeReplayBar({memory,pixels:()=>background,font:replayFont,art,present:display},0x2d1a0);
    focusBrowserGameCanvas(canvas);
-   return {control,present:display,read:()=>input.readMemory(memory,0x2d1a0),input:(delta:number)=>input.readMemory(memory,0x2d1a0,delta),ctrlHeld:input.ctrlHeld,waitTicks:input.waitTicks};
+   return {control,present:display,read:()=>readReplayInput(memory),input:(delta:number)=>readReplayInput(memory,delta),ctrlHeld:input.ctrlHeld,waitTicks:input.waitTicks};
   },
   resetRaceMouse:input.resetMouse,
   async showTrackValidationError(error:number){

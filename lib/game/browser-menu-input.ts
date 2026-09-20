@@ -4,6 +4,7 @@ import {PC_PIT_INPUT_HZ,ORIGINAL_PIT_DIVISOR,ORIGINAL_GAME_TIMER_DIVIDER} from '
 import {originalJoystickSteering} from './joystick-steering.ts';
 import {originalDrivingKeyControls} from './driving-key-controls.ts';
 import {originalKeyboardScanWord} from './keyboard-scan-word.ts';
+import {replayKeyboardHoldButtons} from './replay-keyboard-hold.ts';
 import {desktopInputDevice,getDesktopWheelInput} from './desktop-wheel-input.ts';
 import {stopDesktopForceFeedback} from './desktop-force-feedback.ts';
 import {
@@ -29,6 +30,7 @@ export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joysti
  // The original IRQ9 handler shares a scan bit between aliases and retains
  // only the latest unread key (DS:43d6 is two bytes in the supplied game).
  const scanHeld=(scan:number)=>active&&(held.has(scan)||desktopControlButtonScanHeld(scan)||Array.from(mappedHeld.values()).some(scans=>scans.includes(scan)));
+ const replayActivationButtons=()=>replayKeyboardHoldButtons(scanHeld(57),scanHeld(28));
  const takePhysicalKey=()=>{const key=pendingKey;pendingKey=0;return key;};
  const takeTextKey=()=>{const key=pendingTextKey;pendingTextKey=0;return key;};
  const takeMappedKey=()=>{
@@ -78,7 +80,8 @@ export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joysti
  const clear=()=>{blockedButtons|=buttons;controlHeld=false;buttons=0;pendingKey=0;pendingTextKey=0;pendingWheel=0;held.clear();mappedHeld.clear();pointerEdges.length=0;releaseCapture();};
  const visibility=()=>{if(page?.hidden)clear();};
  page?.addEventListener('visibilitychange',visibility);
- element.addEventListener('keydown',keyboard);element.addEventListener('keyup',keyup);element.addEventListener('blur',clear);element.addEventListener('pointerdown',down);element.addEventListener('pointermove',pointer);element.addEventListener('pointerup',pointer);element.addEventListener('pointercancel',leave);element.addEventListener('lostpointercapture',leave);element.addEventListener('pointerleave',leave);element.addEventListener('wheel',wheel,{passive:true});element.addEventListener('contextmenu',contextMenu);window.addEventListener('blur',clear);
+ page?.addEventListener('fullscreenchange',clear);
+ element.addEventListener('keydown',keyboard);element.addEventListener('keyup',keyup);element.addEventListener('blur',clear);element.addEventListener('pointerdown',down);element.addEventListener('pointermove',pointer);element.addEventListener('pointerup',pointer);element.addEventListener('pointercancel',leave);element.addEventListener('lostpointercapture',leave);element.addEventListener('pointerleave',leave);element.addEventListener('wheel',wheel,{passive:true});element.addEventListener('contextmenu',contextMenu);window.addEventListener('blur',clear);window.addEventListener('keyup',keyup,true);
  const gamepad=()=>{
   const wheelSelected=desktopInputDevice()==='wheel';
   if(!active||disposed||(!wheelSelected&&options.joystickEnabled&&!options.joystickEnabled()))return {mask:0,direction:0,axis:0};
@@ -105,7 +108,7 @@ export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joysti
  };
  const read=async(deltaOverride?:number|(()=>number))=>{await wait();return readImmediate(deltaOverride);};
  return {
-  read,readImmediate,counter,elapsedSinceInputPoll:()=>counter()-lastPoll,nextFrame:wait,ctrlHeld:()=>active&&(controlHeld||scanHeld(29)),takeKey:takeMappedKey,
+  read,readImmediate,counter,elapsedSinceInputPoll:()=>counter()-lastPoll,nextFrame:wait,ctrlHeld:()=>active&&(controlHeld||scanHeld(29)),takeKey:takeMappedKey,replayActivationButtons,
   keyDown:(scan:number)=>Number(scanHeld(scan&255)),
   mouse:()=>({x,y,buttons:active?buttons:0}),
   joystickButtons:()=>gamepad().mask&48,
@@ -125,6 +128,6 @@ export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joysti
   async keyboard(){await wait();const ticks=counter();return {key:takeTextKey(),input:ticks>>>0,game:Math.floor(ticks/ORIGINAL_GAME_TIMER_DIVIDER)>>>0};},
   async gameCounter(){await wait();return Math.floor(counter()/ORIGINAL_GAME_TIMER_DIVIDER)>>>0;},
   async release(){for(;;){if(gamepad().mask&48){await wait();continue;}const sample=await read();if(!sample.key&&!(sample.mouseActive&&sample.buttons&3))return;}},
-  close(){if(disposed)return;const ownedCursor=active;disposed=true;active=false;clear();page?.removeEventListener('visibilitychange',visibility);cancelAnimationFrame(request);rejectWait?.(new DOMException('Native menu closed','AbortError'));element.removeEventListener('keydown',keyboard);element.removeEventListener('keyup',keyup);element.removeEventListener('blur',clear);element.removeEventListener('pointerdown',down);element.removeEventListener('pointermove',pointer);element.removeEventListener('pointerup',pointer);element.removeEventListener('pointercancel',leave);element.removeEventListener('lostpointercapture',leave);element.removeEventListener('pointerleave',leave);element.removeEventListener('wheel',wheel);element.removeEventListener('contextmenu',contextMenu);window.removeEventListener('blur',clear);if(ownedCursor)element.style.cursor='';},
+  close(){if(disposed)return;const ownedCursor=active;disposed=true;active=false;clear();page?.removeEventListener('visibilitychange',visibility);page?.removeEventListener('fullscreenchange',clear);cancelAnimationFrame(request);rejectWait?.(new DOMException('Native menu closed','AbortError'));element.removeEventListener('keydown',keyboard);element.removeEventListener('keyup',keyup);element.removeEventListener('blur',clear);element.removeEventListener('pointerdown',down);element.removeEventListener('pointermove',pointer);element.removeEventListener('pointerup',pointer);element.removeEventListener('pointercancel',leave);element.removeEventListener('lostpointercapture',leave);element.removeEventListener('pointerleave',leave);element.removeEventListener('wheel',wheel);element.removeEventListener('contextmenu',contextMenu);window.removeEventListener('blur',clear);window.removeEventListener('keyup',keyup,true);if(ownedCursor)element.style.cursor='';},
  };
 }
