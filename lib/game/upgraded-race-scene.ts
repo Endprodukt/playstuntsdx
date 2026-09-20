@@ -268,6 +268,14 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    camera.aspect=displayAspect;camera.fov=chase?.fov??2*Math.atan(100/fy)*180/Math.PI;
    canvas.dataset.enhancedCamera=chase?`chase-${chaseLevel}`:requestedChaseLevel?'chase-pending':'original';
 
+   // Keep panorama and clouds on one shared infinitely-distant elevation
+   // reference. Chase and TV cameras must not drag the sky vertically over
+   // jumps, bridges or camera-site elevation changes.
+   if(!chase&&cameraMode!==3&&capturedSourceCamera===sourceCamera&&(backgroundHeightCamera!==sourceCamera||backgroundSeek)){
+    backgroundHeightCamera=sourceCamera;backgroundHeight=shown.camera.position[1];
+   }
+   const backgroundElevationReference=chase||cameraMode===3?0:backgroundHeightCamera===sourceCamera?backgroundHeight:shown.camera.position[1];
+
    cars.forEach((models,i)=>models.forEach((model,detail)=>{if(!model)return;const state=i?runtime.session.state.opponent.car:runtime.session.state.player.driving.car,pose=shown.cars[i];
     setUpgradedCarPresentationPose(model,pose.position,pose.rotation,carGrounding[i]);
     if(graphicsChanged||chaseChanged)model.visible=detail===(live[d+0x134]>=2&&models[1]?1:0)&&originalCarVisible(chase?2:cameraMode,!!cameraTarget,state.grip.crash,!!i,!!live[d+0x8fc8]);
@@ -303,7 +311,7 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
     if(index<cloudTypes.length&&!cloudTypesByDescriptor.has(descriptor))cloudTypesByDescriptor.set(descriptor,cloudTypes[index]!);
     let model=clouds.get(key);if(!model){model=createEnhancedCloudModel(readUpgradedShape(live,descriptor),cloudTypesByDescriptor.get(descriptor));clouds.set(key,model);world.add(model);}
     const cloudCamera=chase?[position[0],position[1],-position[2]] as Vector:shown.camera.position;
-    const cloud=distantCloudPlacement(v.getInt16(d+0x622+index*2,true)+v.getInt16(d+0x73da,true),cloudCamera);
+    const cloud=distantCloudPlacement(v.getInt16(d+0x622+index*2,true)+v.getInt16(d+0x73da,true),cloudCamera,backgroundElevationReference);
     model.visible=true;model.position.set(...cloud.position);model.rotation.set(0,cloud.heading,0);model.scale.setScalar(cloud.scale);
    }
    // Upgraded mode retains the full world, with camera-frustum culling.
@@ -353,21 +361,11 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    const context=canvas.getContext('2d')!,backgroundAngles=chase?backgroundCamera(position,target,displayUp).angles:[...displayCameraRotation] as Vector;
    if(chase)backgroundAngles[1]=chase.backgroundPitch;
    else if(cameraMode===3&&tvPitchCamera===sourceCamera)backgroundAngles[1]=tvPitch;
-   // Preserve the native horizon height when a following camera is selected,
-   // then hold that reference while the car crosses bumps, slopes and raised
-   // track pieces. A large replay seek refreshes the reference at its new frame.
-   // Trackside cameras are already fixed in world space and now share the held
-   // display pitch above. Presentation-only chase rigs use their stable pitch.
-   if(!chase&&cameraMode!==3&&capturedSourceCamera===sourceCamera&&(backgroundHeightCamera!==sourceCamera||backgroundSeek)){
-    backgroundHeightCamera=sourceCamera;backgroundHeight=shown.camera.position[1];
-   }
+   // The reference was established before clouds were positioned so both
+   // layers use exactly the same vertical frame for this presentation.
    lastBackgroundSourceFrame=sourceFrame;
    const backgroundView=upgradedBackgroundView(backgroundAngles);
-   // The panorama represents scenery at effectively infinite distance. A TV
-   // cut may select a site at another elevation, but that translation must not
-   // move the far horizon; only its stabilized pitch determines the framing.
-   const effectiveBackgroundHeight=chase||cameraMode===3?0:backgroundHeightCamera===sourceCamera?backgroundHeight:shown.camera.position[1];
-   const background=backdrop.render(backgroundView.angles,effectiveBackgroundHeight,displayAspect,camera.fov,frame.projection,live[d+0x134]);
+   const background=backdrop.render(backgroundView.angles,backgroundElevationReference,displayAspect,camera.fov,frame.projection,live[d+0x134]);
    const enhancedBackgroundHeading=(backgroundView.angles[2]+Math.round((background.width-320)/2))&1023;
    const enhancedBackgroundDrawn=enhancedBackgroundEnabled()&&(enhancedBackground?.draw(context,{width:canvas.width,height:canvas.height,aspect:displayAspect,heading:enhancedBackgroundHeading,horizon:background.panoramaHorizon??enhancedPanoramaHorizon(background.pixels,background.ground,background.width),rotation:backgroundView.rotation,sky:paletteCss[background.sky],ground:paletteCss[background.ground]})??false);
    if(!enhancedBackgroundDrawn){

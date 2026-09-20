@@ -51,6 +51,9 @@ export interface NativeRaceResultsPresentation {
  * original components. Retained caller state and file/RNG services are
  * explicit; this function does not invent stack bytes or race results. */
 export async function runNativeRaceResults(host:NativeRaceResultsHost,state:NativeRaceResultsState,display?:NativeRaceResultsPresentation){
+ // FONTN ships with cyan as its resource default; original results select
+ // black before the first opponent evaluation text is drawn.
+ state.smallFontColor=0;
  const {outcome,evaluationAvailable}=display?display.panel():drawOriginalRaceResultPanel(host.pixels,host.font,host.resources,state.panel);
  host.playResultMusic?.(originalResultMusic(outcome));
  const evaluation=evaluationAvailable?await host.evaluation(state.panel.opponentSelected):undefined;
