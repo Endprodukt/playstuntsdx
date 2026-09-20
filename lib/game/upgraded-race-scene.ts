@@ -28,6 +28,7 @@ import {upgradedTrackSeamShape} from './upgraded-track-seams';
 import {createEnhancedAlpineBackground,createEnhancedPanoramaBackground,enhancedPanoramaHorizon} from './enhanced-alpine-background';
 import {upgradedCarCastsShadow,upgradedHasActiveCrashFragments} from './upgraded-crash-presentation';
 import {createUpgradedRaceGround} from './upgraded-race-ground';
+import {createEnhancedCloudModel,type EnhancedCloudType} from './enhanced-cloud-model';
 import {type Vector} from '../physics/math';
 import trackMaterials from '../../public/game/track-materials.json';
 import trackRenderModels from '../../public/game/track-render-models.json';
@@ -149,7 +150,9 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
  const motion=createLiveGraphicsMotion(),chaseCamera=createEnhancedChaseCamera({raw:track,objects:cameraTrackObjects as TrackObject[],planes:cameraCollisionPlanes as CollisionPlane[]});let fpsAt=performance.now(),fpsFrames=0;
  const crashEffects=createEnhancedCrashEffects({assets,memory:m,materials:sourceMaterials,carIds,paints:carPaints,world,scene});
  const enhancedCockpit=createEnhancedCockpitOverlay();
- const clouds=new Map<string,THREE.Group>();
+ const clouds=new Map<string,THREE.Object3D>();
+ const cloudTypesByDescriptor=new Map<number,EnhancedCloudType>();
+ const cloudTypes=['A','B','C'] as const;
  const truck=createStartTruckModel(resources,assets.shapes.GAME2.truk,sourceMaterials);world.add(truck.group);
  const signs=createUpgradedTrackSigns(runtime.session.state.memory,sourceMaterials);world.add(signs.group);
  const sceneryCasters:RetroSceneryCaster[]=[...visibilityPlacements.filter(placement=>placement.castsShadow).map(placement=>placement.shadow??placement.model),signs.group,truck.group];
@@ -295,7 +298,10 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    clouds.forEach(model=>{model.visible=false;});
    if(level===0)for(let index=0;index<8;index++){
     const descriptor=v.getUint16(d+0x632+index*2,true),key=descriptor+'/'+index;
-    let model=clouds.get(key);if(!model){model=trackModel(readUpgradedShape(live,descriptor),0);clouds.set(key,model);world.add(model);}
+    // The first three source records establish Stunts' three cloud types;
+    // later sky positions reuse those descriptors.
+    if(index<cloudTypes.length&&!cloudTypesByDescriptor.has(descriptor))cloudTypesByDescriptor.set(descriptor,cloudTypes[index]!);
+    let model=clouds.get(key);if(!model){model=createEnhancedCloudModel(readUpgradedShape(live,descriptor),cloudTypesByDescriptor.get(descriptor));clouds.set(key,model);world.add(model);}
     const cloudCamera=chase?[position[0],position[1],-position[2]] as Vector:shown.camera.position;
     const cloud=distantCloudPlacement(v.getInt16(d+0x622+index*2,true)+v.getInt16(d+0x73da,true),cloudCamera);
     model.visible=true;model.position.set(...cloud.position);model.rotation.set(0,cloud.heading,0);model.scale.setScalar(cloud.scale);
