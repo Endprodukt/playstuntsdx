@@ -132,7 +132,16 @@ export function installDesktopOptionsOverlay(assets?:Assets){
  };
  const renderResolutionState=()=>{
   const select=section?.querySelector<HTMLSelectElement>('select[data-render-scale]');
-  if(select)select.value=String(enhancedRenderScale());
+  const row=section?.querySelector<HTMLElement>('[data-render-scale-row]');
+  const enabled=graphicsEnabled();
+  if(select){
+   select.value=String(enhancedRenderScale());
+   select.disabled=!enabled;
+   select.style.opacity=enabled?'1':'0.45';
+   select.style.cursor=enabled?'pointer':'not-allowed';
+   select.title=enabled?'Internal render resolution used by DX Graphics.':'Enable DX Graphics to change the internal resolution.';
+  }
+  if(row)row.style.opacity=enabled?'1':'0.55';
  };
  const renderFovState=()=>{
   const slider=section?.querySelector<HTMLInputElement>('input[data-fov-width]');
@@ -209,18 +218,18 @@ export function installDesktopOptionsOverlay(assets?:Assets){
   const videoHeading=document.createElement('div');videoHeading.textContent='Video';videoHeading.style.cssText='font-size:13px;font-weight:700;margin-bottom:8px;';
 
   const graphicsRow=document.createElement('div');graphicsRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) 84px;gap:8px;align-items:center;';
-  const graphicsLabel=document.createElement('div');graphicsLabel.textContent='High-Res Graphics';graphicsLabel.title='Switches live between the original Stunts graphics and the enhanced high-resolution renderer.';graphicsLabel.style.cssText='font-size:12px;color:#ddd;';
+  const graphicsLabel=document.createElement('div');graphicsLabel.textContent='DX Graphics';graphicsLabel.title='Switches live between the original Stunts renderer and the enhanced DX renderer.';graphicsLabel.style.cssText='font-size:12px;color:#ddd;';
   const graphicsButton=document.createElement('button');graphicsButton.type='button';graphicsButton.dataset.graphicsToggle='1';graphicsButton.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;text-align:center;';
   graphicsButton.addEventListener('click',()=>{
    const toggle=graphicsToggle();if(!toggle)return;
    toggle.click();
    window.localStorage.setItem(graphicsStorageKey,String(toggle.getAttribute('aria-pressed')==='true'));
-   renderGraphicsState();applyStoredFps();
+   renderGraphicsState();renderResolutionState();applyStoredFps();
   });
   graphicsRow.append(graphicsLabel,graphicsButton);
 
-  const resolutionRow=document.createElement('div');resolutionRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) minmax(150px,1fr);gap:8px;align-items:center;margin-top:9px;';
-  const resolutionLabel=document.createElement('div');resolutionLabel.textContent='Internal Resolution';resolutionLabel.title='Backing resolution used by the enhanced renderer. Original is 320×200; higher values increase sharpness and GPU load. The current default is 4× (1280×800).';resolutionLabel.style.cssText='font-size:12px;color:#ddd;';
+  const resolutionRow=document.createElement('div');resolutionRow.dataset.renderScaleRow='1';resolutionRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) minmax(150px,1fr);gap:8px;align-items:center;margin-top:9px;';
+  const resolutionLabel=document.createElement('div');resolutionLabel.textContent='Internal Resolution';resolutionLabel.title='Internal render resolution used by DX Graphics. Original is 320×200; higher values increase sharpness and GPU load. Disabled when DX Graphics is off.';resolutionLabel.style.cssText='font-size:12px;color:#ddd;';
   const resolution=document.createElement('select');resolution.dataset.renderScale='1';resolution.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;font:12px/1.2 system-ui,Segoe UI,sans-serif;';
   for(const scale of ENHANCED_RENDER_SCALES){const option=document.createElement('option');option.value=String(scale);option.textContent=scale===1?'Original (1× · 320×200)':`${scale}× · ${320*scale}×${200*scale}`;resolution.append(option);}
   resolution.addEventListener('change',()=>{void persistEnhancedRenderScale(Number(resolution.value));renderResolutionState();});
@@ -312,7 +321,7 @@ export function installDesktopOptionsOverlay(assets?:Assets){
  };
  window.addEventListener('keydown',onTrustedF,true);
 
- const graphicsObserver=new MutationObserver(()=>requestAnimationFrame(()=>{renderGraphicsState();applyStoredFps();}));
+ const graphicsObserver=new MutationObserver(()=>requestAnimationFrame(()=>{renderGraphicsState();renderResolutionState();applyStoredFps();}));
  const observeGraphics=()=>{
   if(disposed)return;
   const toggle=document.querySelector<HTMLButtonElement>('.desktop-game-shell .game-toolbar button[aria-pressed]');
