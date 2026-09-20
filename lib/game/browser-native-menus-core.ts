@@ -487,11 +487,17 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  return {configuration,track,elapsedSinceInputPoll:input.elapsedSinceInputPoll,selectOptions,selectCar:car,selectOpponent:opponent,selectTrack,setInputActive:input.setActive,settings:drivingSettings,get replay(){return replay;},get selectedReplay(){return selectedReplay;},consumeRaceSpawn(){const spawn=pendingRaceSpawn;pendingRaceSpawn=undefined;return spawn;},reopenTrackEditor:editTrack,raceEntryKey:fastForwardKey,fadeMusic:()=>music.fadeOut(input.waitTicks),close:()=>{window.removeEventListener(ENHANCED_TEXTURES_EVENT,syncEnhancedTextures);window.removeEventListener(ENHANCED_FOV_EVENT,syncEnhancedFov);input.close();files.close();},
   /** Use the live allocated game banks and retained framebuffer. */
   async allocatedRacePresentation(runtime:Awaited<ReturnType<typeof createNativeManualRaceRuntime>>,onPoll:()=>void|Promise<void>,alternate?:Awaited<ReturnType<typeof prepareBrowserNativeManualDisplay>>){
-   let upgraded:ReturnType<typeof createUpgradedRaceScene>|undefined,loading=false,closed=false,failed=false;
-   const graphics=options.graphics;if(graphics){runtime.enableGraphicsCapture();graphics.resetPerformance?.();}
+   let upgraded:ReturnType<typeof createUpgradedRaceScene>|undefined,loading=false,closed=false,failed=false,drawRecoveryPending=false;
+   const graphics=options.graphics;let lastGraphicsEnabled=graphics?.enabled??false;if(graphics){runtime.enableGraphicsCapture();graphics.resetPerformance?.();}
    const presentWorld=()=>{
     publishRaceMapFrame(runtime.raw,runtime.session.state.memory);
     if(!graphics){display();return;}
+    if(graphics.enabled!==lastGraphicsEnabled){
+     // A deliberate off/on cycle is also an explicit retry request after a
+     // renderer failure. Do not force the player to leave the race to recover.
+     if(graphics.enabled){failed=false;drawRecoveryPending=false;if(!upgraded)loading=false;}
+     lastGraphicsEnabled=graphics.enabled;
+    }
     if(!graphics.enabled)resetRaceCanvas();
     graphics.refresh=presentWorld;
     const transition=raceGraphicsTransition(graphics.enabled,!!upgraded,failed);
@@ -499,11 +505,22 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     // Keep the last presented frame while a requested DX scene is prepared.
     // Painting the native world here exposes a one-frame original-graphics flash.
     if(transition==='hold'){
-     if(!loading){loading=true;graphics.notice?.('Loading upgraded driving graphics…');void import('./upgraded-race-scene').then(({createUpgradedRaceScene})=>{if(closed)return;upgraded=createUpgradedRaceScene(options.assets,baseline,runtime,()=>graphics.chaseCamera??0,()=>graphics.selectOriginalCamera?.());graphics.refresh?.();}).catch(()=>{failed=true;graphics.notice?.('Upgraded graphics are unavailable. Original graphics remain active.');graphics.refresh?.();});}
+     if(!loading){loading=true;graphics.notice?.('Loading upgraded driving graphics…');void import('./upgraded-race-scene').then(({createUpgradedRaceScene})=>{if(closed)return;upgraded=createUpgradedRaceScene(options.assets,baseline,runtime,()=>graphics.chaseCamera??0,()=>graphics.selectOriginalCamera?.());loading=false;graphics.refresh?.();}).catch(reason=>{loading=false;failed=true;console.error('[DX Graphics] Failed to create upgraded race renderer:',reason);graphics.notice?.('Upgraded graphics are unavailable. Toggle DX Graphics off/on to retry.');graphics.refresh?.();});}
      return;
     }
     const scene=upgraded;if(!scene)return;
-    try{const shown=scene.draw(canvas);if(shown)graphics.performanceFrame?.(performance.now());graphics.notice?.(shown?'Upgraded driving graphics · experimental':'Preparing upgraded driving graphics…');}catch{failed=true;scene.close();upgraded=undefined;display();graphics.notice?.('Upgraded graphics are unavailable. Original graphics remain active.');}
+    try{const shown=scene.draw(canvas);if(shown){drawRecoveryPending=false;graphics.performanceFrame?.(performance.now());}graphics.notice?.(shown?'Upgraded driving graphics · experimental':'Waiting for upgraded graphics context…');}catch(reason){
+     console.error('[DX Graphics] Upgraded race render failed:',reason);
+     scene.close();upgraded=undefined;loading=false;
+     if(!drawRecoveryPending){
+      // Give a one-off runtime failure one clean renderer rebuild. If the new
+      // renderer fails before it produces a good frame, fall back instead of
+      // entering an endless recreate/fail loop.
+      drawRecoveryPending=true;failed=false;graphics.notice?.('Restarting upgraded graphics after a render error…');graphics.refresh?.();
+     }else{
+      failed=true;display();graphics.notice?.('Upgraded graphics are unavailable. Toggle DX Graphics off/on to retry.');
+     }
+    }
    };
    const gameText=await json<TextResources>('race-dialog-text');
    const onTeleport=(event:Event)=>{const spawn=(event as CustomEvent<RaceSpawn>).detail;if(!spawn)return;runtime.session.teleportPlayer(spawn);graphics?.refresh?.();};
