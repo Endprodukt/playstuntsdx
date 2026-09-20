@@ -32,8 +32,8 @@ export interface BlissEditor3DView {
  close():void;
 }
 
-export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,options:{initialCamera?:{position:[number,number,number];target:[number,number,number];fov?:number};transparentBackground?:boolean;showGround?:boolean;showAnnotations?:boolean;layers?:Partial<BlissEditor3DLayers>}={}):BlissEditor3DView{
- const transparentBackground=!!options.transparentBackground;
+export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,options:{initialCamera?:{position:[number,number,number];target:[number,number,number];fov?:number};transparentBackground?:boolean;showGround?:boolean;showAnnotations?:boolean;layers?:Partial<BlissEditor3DLayers>;simplifyTerrain?:boolean}={}):BlissEditor3DView{
+ const transparentBackground=!!options.transparentBackground,simplifyTerrain=!!options.simplifyTerrain;
  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:transparentBackground,logarithmicDepthBuffer:true,powerPreference:'high-performance'});
  renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
  renderer.setClearColor(transparentBackground?0x000000:0x88a0b8,transparentBackground?0:1);
@@ -164,6 +164,14 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
  };
 
  const clearRoot=(root:THREE.Group)=>{while(root.children.length){const child=root.children[root.children.length-1];root.remove(child);disposeObject(child);}};
+ const simplifyTerrainModel=(model:THREE.Object3D)=>{
+  if(!simplifyTerrain)return model;
+  model.traverse(node=>{
+   if(node instanceof THREE.Mesh)node.material=new THREE.MeshBasicMaterial({color:0x7fdf7b,side:THREE.DoubleSide,toneMapped:false});
+   if(node.userData.originalTrackLine||node.userData.originalEdgeVisibility)node.visible=false;
+  });
+  return model;
+ };
  const flatTerrain=(source:BlissTrack)=>{
   const grass:number[]=[],supportGrass:number[]=[],water:number[]=[],support=new Set<string>();
   const cell=(target:number[],x:number,y:number,h:number)=>{
@@ -214,7 +222,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
     if(descriptor){
      const [group,name]=descriptor.shape.split('.'),shape=assets.shapes[group]?.[name];
      if(shape){
-      const model=modelFactory(shape,0,true);
+      const model=terrain>=6?simplifyTerrainModel(modelFactory(shape,0,true)):modelFactory(shape,0,true);
       model.position.set(x*1024+512,terrain===6?450:0,row*1024+512);
       model.rotation.y=descriptor.rotation*Math.PI/512;terrainRoot.add(model);
      }
@@ -227,7 +235,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
    if(terrain===6){
     const high=assets.shapes.GAME2?.high;
     if(high)for(const underlay of elevatedRoadUnderlays(origin,descriptor.multiTile)){
-     const grass=modelFactory(high,0,true);grass.position.set(...underlay.position);terrainRoot.add(grass);
+     const grass=simplifyTerrainModel(modelFactory(high,0,true));grass.position.set(...underlay.position);terrainRoot.add(grass);
     }
    }
    const element=blissElementData[sourceId],road=!!element&&(element.ctype.some(value=>value!==0)||(sourceId>=105&&sourceId<=108)),building=!road&&/(tennis|station|barn|office|windmill|ship|diner)/i.test(element?.id??'');
