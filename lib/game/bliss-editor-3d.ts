@@ -171,11 +171,12 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
    const row=29-y,x0=x*1024,x1=x0+1024,z0=row*1024,z1=z0+1024;
    target.push(x0,h,z0,x1,h,z0,x1,h,z1,x0,h,z0,x1,h,z1,x0,h,z1);
   };
-  // Hills and slopes extend into neighbouring cells. Keep only that local
-  // support available with Terrain; ordinary flat grass belongs to Ground.
+  // Keep support only directly underneath actual hill/slope cells. Expanding
+  // this into neighbouring flat cells made Ground appear partially enabled in
+  // the race map even when the Ground layer was switched off.
   for(let y=0;y<30;y++)for(let x=0;x<30;x++){
    const terrain=source.terrain[y*30+x];
-   if(terrain>=6)for(let oy=-1;oy<=1;oy++)for(let ox=-1;ox<=1;ox++)support.add((x+ox)+','+(y+oy));
+   if(terrain>=6)support.add(x+','+y);
    if(terrain>=1&&terrain<=5)cell(water,x,y,-2);
   }
   for(let y=0;y<30;y++)for(let x=0;x<30;x++){
@@ -193,7 +194,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   };
   add(terrainRoot,water,0x0080d0,-.6);
   add(groundRoot,grass,0x466f35,-.5);
-  add(groundSupportRoot,supportGrass,0x466f35,-.5);
+  add(groundSupportRoot,supportGrass,0x7fdf7b,-.45);
  };
  const applyLayers=()=>{
   base.visible=layerState.ground;groundRoot.visible=layerState.ground;
