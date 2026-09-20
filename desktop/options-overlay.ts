@@ -7,10 +7,14 @@ import {currentPlayerCarId} from '../lib/game/current-player-car';
 const fpsStorageKey='playstunts-dx-fps-visible';
 const graphicsStorageKey='playstunts-dx-enhanced-graphics';
 const steeringDeadzoneStorageKey='playstunts-dx-steering-deadzone-percent';
+const steeringLinearityStorageKey='playstunts-dx-steering-linearity';
 const optionsButtonStorageKey='playstunts-dx-show-options-button';
 const openMapOnRaceStartStorageKey='playstunts-dx-open-map-on-race-start';
 const defaultSteeringDeadzonePercent=4;
 const maxSteeringDeadzonePercent=15;
+const defaultSteeringLinearity=1.4;
+const minSteeringLinearity=1;
+const maxSteeringLinearity=2;
 
 type TauriGlobal={core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}};
 type NativeConfigFile={content:string};
@@ -23,6 +27,13 @@ function storedSteeringDeadzone(){
  return Number.isFinite(saved)?clampSteeringDeadzone(saved):defaultSteeringDeadzonePercent;
 }
 function saveSteeringDeadzone(value:number){window.localStorage.setItem(steeringDeadzoneStorageKey,String(clampSteeringDeadzone(value)));}
+function clampSteeringLinearity(value:number){return Math.max(minSteeringLinearity,Math.min(maxSteeringLinearity,Math.round(value*20)/20));}
+function storedSteeringLinearity(){
+ const stored=window.localStorage.getItem(steeringLinearityStorageKey);if(stored===null)return defaultSteeringLinearity;
+ const saved=Number(stored);
+ return Number.isFinite(saved)?clampSteeringLinearity(saved):defaultSteeringLinearity;
+}
+function saveSteeringLinearity(value:number){window.localStorage.setItem(steeringLinearityStorageKey,String(clampSteeringLinearity(value)));}
 function storedOptionsButtonVisible(){
  const saved=window.localStorage.getItem(optionsButtonStorageKey);
  return saved===null||!['0','false','no','off'].includes(saved.trim().toLowerCase());
@@ -50,6 +61,8 @@ async function loadNativeGeneralSettings(){
   const file=await core.invoke<NativeConfigFile>('native_config');
   const value=Number(configValue(file.content,'Controls','SteeringDeadzone'));
   if(Number.isFinite(value))saveSteeringDeadzone(value);
+  const linearity=Number(configValue(file.content,'Controls','SteeringLinearity'));
+  if(Number.isFinite(linearity))saveSteeringLinearity(linearity);
   const showButton=configValue(file.content,'Display','ShowOptionsButton')?.trim().toLowerCase();
   if(showButton)saveOptionsButtonVisible(!['0','false','no','off'].includes(showButton));
   const openMap=configValue(file.content,'Display','OpenMapOnRaceStart')?.trim().toLowerCase();
@@ -63,6 +76,12 @@ async function persistSteeringDeadzone(value:number){
  const core=tauriCore();if(!core)return;
  try{await core.invoke<void>('native_config_set',{section:'Controls',key:'SteeringDeadzone',value:String(deadzone)});}
  catch(reason){console.warn('[Options] Steering deadzone config save failed:',reason);}
+}
+async function persistSteeringLinearity(value:number){
+ const linearity=clampSteeringLinearity(value);saveSteeringLinearity(linearity);
+ const core=tauriCore();if(!core)return;
+ try{await core.invoke<void>('native_config_set',{section:'Controls',key:'SteeringLinearity',value:linearity.toFixed(2)});}
+ catch(reason){console.warn('[Options] Steering linearity config save failed:',reason);}
 }
 async function persistOptionsButtonVisible(visible:boolean){
  saveOptionsButtonVisible(visible);
@@ -110,7 +129,7 @@ function dispatchFpsShortcut(){
  * existing F shortcut so there remains only one renderer-side toggle path. */
 export function installDesktopOptionsOverlay(assets?:Assets){
  let disposed=false,frame=0,section:HTMLDivElement|undefined,fpsStateApplied=false;
- void loadNativeGeneralSettings().then(()=>{renderSteeringDeadzone();renderOptionsButtonState();});
+ void loadNativeGeneralSettings().then(()=>{renderSteeringDeadzone();renderSteeringLinearity();renderOptionsButtonState();});
 
  const applyStoredFps=()=>{
   if(fpsStateApplied||!graphicsEnabled()||!gameCanvas())return;
@@ -164,6 +183,13 @@ export function installDesktopOptionsOverlay(assets?:Assets){
   const deadzone=storedSteeringDeadzone();
   if(slider)slider.value=String(deadzone);
   if(value)value.value=`${deadzone}%`;
+ };
+ const renderSteeringLinearity=()=>{
+  const slider=section?.querySelector<HTMLInputElement>('input[data-steering-linearity]');
+  const value=section?.querySelector<HTMLOutputElement>('output[data-steering-linearity-value]');
+  const linearity=storedSteeringLinearity();
+  if(slider)slider.value=String(linearity);
+  if(value)value.value=linearity.toFixed(2);
  };
  const renderOptionsButtonState=()=>{
   const button=section?.querySelector<HTMLButtonElement>('button[data-options-button-toggle]');
@@ -314,7 +340,15 @@ export function installDesktopOptionsOverlay(assets?:Assets){
   deadzone.addEventListener('change',()=>void persistSteeringDeadzone(Number(deadzone.value)));
   deadzoneRow.append(deadzoneLabel,deadzone,deadzoneValue);
 
-  section.append(heading,mapRow,buttonRow,deadzoneRow,videoSection,soundSection);panel.insertBefore(section,controlsSection);renderGraphicsState();renderResolutionState();renderTextureState();renderFovState();renderFpsState();renderOpenMapState();renderOptionsButtonState();renderSteeringDeadzone();renderSoundModState();applyStoredFps();
+  const linearityRow=document.createElement('div');linearityRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) minmax(150px,1.5fr) 48px;gap:8px;align-items:center;margin-top:9px;';
+  const linearityLabel=document.createElement('div');linearityLabel.textContent='Steering Linearity';linearityLabel.title='Wheel only. 1.00 is direct linear steering. Higher values reduce sensitivity around center while keeping full lock unchanged.';linearityLabel.style.cssText='font-size:12px;color:#ddd;';
+  const linearity=document.createElement('input');linearity.type='range';linearity.min=String(minSteeringLinearity);linearity.max=String(maxSteeringLinearity);linearity.step='0.05';linearity.dataset.steeringLinearity='1';linearity.style.cssText='width:100%;';
+  const linearityValue=document.createElement('output');linearityValue.dataset.steeringLinearityValue='1';linearityValue.style.cssText='font:12px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;color:#eee;text-align:right;';
+  linearity.addEventListener('input',()=>{saveSteeringLinearity(Number(linearity.value));renderSteeringLinearity();});
+  linearity.addEventListener('change',()=>void persistSteeringLinearity(Number(linearity.value)));
+  linearityRow.append(linearityLabel,linearity,linearityValue);
+
+  section.append(heading,mapRow,buttonRow,deadzoneRow,linearityRow,videoSection,soundSection);panel.insertBefore(section,controlsSection);renderGraphicsState();renderResolutionState();renderTextureState();renderFovState();renderFpsState();renderOpenMapState();renderOptionsButtonState();renderSteeringDeadzone();renderSteeringLinearity();renderSoundModState();applyStoredFps();
  };
  frame=requestAnimationFrame(mount);
 
