@@ -1,10 +1,12 @@
 import {clearDesktopWheelInput,setDesktopWheelInput} from '../lib/game/desktop-wheel-input';
 import {blissEditorActive} from '../lib/game/bliss-editor-presence';
+import {desktopControlBindings,setDesktopControlCapture} from '../lib/game/desktop-control-bindings';
 
 type SetupStage =
   | 'idle'
   | 'steering-left'
   | 'steering-right'
+  | 'steering-center'
   | 'throttle-rest'
   | 'throttle-full'
   | 'brake-rest'
@@ -217,7 +219,7 @@ function createSetupUi(
   title.style.cssText = 'font-size:18px;font-weight:700;margin-bottom:8px;';
 
   const note = document.createElement('div');
-  note.textContent = 'Each calibration point is measured only when you press Enter or Capture. Wheel, pedals and shifter may be separate devices.';
+  note.textContent = 'Each calibration point is measured only when you press Enter, Wheel Accept or Capture. Wheel, pedals and shifter may be separate devices.';
   note.style.cssText = 'color:#bbb;margin-bottom:12px;';
 
   const status = document.createElement('div');
@@ -244,7 +246,7 @@ function createSetupUi(
 
   const capture = document.createElement('button');
   capture.type = 'button';
-  capture.textContent = 'Capture [Enter]';
+  capture.textContent = 'Capture [Enter / Wheel Accept]';
   capture.style.cssText = 'border:1px solid #aaa;background:#eee;color:#111;border-radius:5px;padding:7px 10px;cursor:pointer;font:inherit;';
   capture.addEventListener('click', onCapture);
 
@@ -277,6 +279,7 @@ export function installDesktopDriveControls() {
   let referenceSnapshot: InputSnapshot | undefined;
   let captureNotice = '';
   let pollingNative = false;
+  let acceptWasDown = false;
   const tauri = (window as typeof window & { __TAURI__?: TauriGlobal }).__TAURI__;
 
   async function pollNativeDevices() {
@@ -385,12 +388,14 @@ export function installDesktopDriveControls() {
   }
 
   function stageInstruction() {
-    if (stage === 'steering-left') return '1/6 — Turn the wheel fully LEFT and hold it. Press Enter or Capture.';
-    if (stage === 'steering-right') return '2/6 — Turn the wheel fully RIGHT and hold it. Press Enter or Capture.';
-    if (stage === 'throttle-rest') return '3/6 — Release GAS completely. Press Enter or Capture.';
-    if (stage === 'throttle-full') return '4/6 — Press GAS fully and hold it. Press Enter or Capture.';
-    if (stage === 'brake-rest') return '5/6 — Release BRAKE completely. Press Enter or Capture.';
-    if (stage === 'brake-full') return '6/6 — Press BRAKE fully and hold it. Press Enter or Capture.';
+    const confirm = 'Press Enter, Wheel Accept or Capture.';
+    if (stage === 'steering-left') return `1/7 — Turn the wheel fully LEFT and hold it. ${confirm}`;
+    if (stage === 'steering-right') return `2/7 — Turn the wheel fully RIGHT and hold it. ${confirm}`;
+    if (stage === 'steering-center') return `3/7 — Return the wheel to its natural CENTER position. ${confirm}`;
+    if (stage === 'throttle-rest') return `4/7 — Release GAS completely. ${confirm}`;
+    if (stage === 'throttle-full') return `5/7 — Press GAS fully and hold it. ${confirm}`;
+    if (stage === 'brake-rest') return `6/7 — Release BRAKE completely. ${confirm}`;
+    if (stage === 'brake-full') return `7/7 — Press BRAKE fully and hold it. ${confirm}`;
     if (stage === 'done') return 'Calibration saved. Release the pedals, keep Input Device on WHEEL, close this window and drive.';
     return Object.keys(bindings).length
       ? 'Bindings loaded. Click Start calibration to replace them.'
@@ -427,6 +432,7 @@ export function installDesktopDriveControls() {
       setupOpen=false;
       referenceSnapshot=undefined;
       captureNotice='';
+      setDesktopControlCapture(false);
       if(stage!=='done')stage='idle';
     }
     ui.toggle.style.display = optionsButtonVisible() ? 'block' : 'none';
@@ -464,6 +470,8 @@ export function installDesktopDriveControls() {
     referenceSnapshot = undefined;
     captureNotice = '';
     stage = 'steering-left';
+    acceptWasDown = wheelAcceptDown();
+    setDesktopControlCapture(true);
     clearDesktopWheelInput();
   }
 
@@ -472,6 +480,7 @@ export function installDesktopDriveControls() {
     referenceSnapshot = undefined;
     captureNotice = '';
     stage = 'idle';
+    setDesktopControlCapture(false);
     window.localStorage.removeItem(storageKey);
     window.localStorage.removeItem(oldStorageKey);
     clearDesktopWheelInput();
@@ -511,6 +520,29 @@ export function installDesktopDriveControls() {
         right,
       };
       referenceSnapshot = undefined;
+      stage = 'steering-center';
+      return;
+    }
+
+    if (stage === 'steering-center') {
+      const steering = bindings.steering;
+      const device = resolveDevice(steering);
+      if (!steering || !device) {
+        bindings.steering = undefined;
+        stage = 'steering-left';
+        captureNotice = 'Steering device was lost. Capture full LEFT again.';
+        return;
+      }
+      const center = device.axes[steering.index];
+      const min = Math.min(steering.left, steering.right);
+      const max = Math.max(steering.left, steering.right);
+      if (!Number.isFinite(center) || center <= min || center >= max
+        || Math.abs(center - steering.left) < 0.05
+        || Math.abs(steering.right - center) < 0.05) {
+        captureNotice = 'Center must be clearly between full LEFT and full RIGHT. Center the wheel and capture again.';
+        return;
+      }
+      steering.center = center;
       stage = 'throttle-rest';
       return;
     }
@@ -560,6 +592,7 @@ export function installDesktopDriveControls() {
     bindings.brake = movement;
     referenceSnapshot = undefined;
     stage = 'done';
+    setDesktopControlCapture(false);
     saveBindings(bindings);
   }
 
@@ -572,10 +605,30 @@ export function installDesktopDriveControls() {
       referenceSnapshot = undefined;
       captureNotice = '';
       stage = 'idle';
+      setDesktopControlCapture(false);
     }
   }
 
   const ui = createSetupUi(startCalibration, captureCalibrationPoint, clearBindings, toggleSetup);
+
+  function controlBindingDeviceId(device: InputDevice) {
+    return device.source === 'WebView2' ? `web:${device.index}:${device.id}` : device.id;
+  }
+
+  function wheelAcceptDown() {
+    const binding = desktopControlBindings()['enter-action'].button;
+    if (!binding) return false;
+    const device = devices().find(candidate => controlBindingDeviceId(candidate) === binding.deviceId);
+    return (device?.buttons[binding.button] ?? 0) > buttonCaptureThreshold;
+  }
+
+  function pollWheelAcceptCapture() {
+    const down = wheelAcceptDown();
+    if (setupOpen && stage !== 'idle' && stage !== 'done' && down && !acceptWasDown) {
+      captureCalibrationPoint();
+    }
+    acceptWasDown = down;
+  }
 
   function onKeyDown(event: KeyboardEvent) {
     if(blissEditorActive())return;
@@ -596,10 +649,18 @@ export function installDesktopDriveControls() {
     if (!binding) return 0;
     const device = resolveDevice(binding);
     if (!device) return 0;
-    const range = binding.right - binding.left;
-    if (Math.abs(range) < 0.05) return 0;
     const value = device.axes[binding.index] ?? binding.center;
-    const normalized = Math.max(-1, Math.min(1, ((value - binding.left) / range) * 2 - 1));
+    const delta = value - binding.center;
+    if (Math.abs(delta) < 1e-6) return 0;
+
+    const leftDelta = binding.left - binding.center;
+    const rightDelta = binding.right - binding.center;
+    const towardLeft = delta * leftDelta > 0;
+    const span = towardLeft ? leftDelta : rightDelta;
+    if (Math.abs(span) < 0.05) return 0;
+
+    const amount = Math.max(0, Math.min(1, delta / span));
+    const normalized = towardLeft ? -amount : amount;
     return applySteeringDeadzone(normalized);
   }
 
@@ -638,6 +699,7 @@ export function installDesktopDriveControls() {
   }
 
   function tick(now: number) {
+    pollWheelAcceptCapture();
     publishWheelInput();
     if (now - lastUiUpdate > 100) {
       lastUiUpdate = now;
@@ -653,6 +715,7 @@ export function installDesktopDriveControls() {
     cancelAnimationFrame(frame);
     window.clearInterval(nativeTimer);
     window.removeEventListener('keydown', onKeyDown, true);
+    setDesktopControlCapture(false);
     clearDesktopWheelInput();
     nativeDevices = [];
     ui.root.remove();
