@@ -247,7 +247,6 @@ export function installDesktopRaceMap(assets:Assets){
    transparentBackground:true,
    showGround:settings.layers.ground,
    showAnnotations:false,
-   simplifyTerrain:true,
    layers:{
     ground:settings.layers.ground,terrain:settings.layers.terrain,track:settings.layers.track,
     buildings:settings.layers.buildings,items:settings.layers.items,
