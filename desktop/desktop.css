@@ -100,6 +100,25 @@ body {
   font-weight: 600;
 }
 
+.desktop-gamedata-message button {
+  justify-self: center;
+  margin-top: 0.45rem;
+  padding: 0.45rem 1rem;
+  border: 1px solid #666;
+  border-radius: 4px;
+  background: #252525;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.desktop-gamedata-message button:hover,
+.desktop-gamedata-message button:focus-visible {
+  border-color: #aaa;
+  background: #333;
+  outline: none;
+}
+
 .desktop-error {
   color: #ffb4b4;
 }

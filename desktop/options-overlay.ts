@@ -3,6 +3,7 @@ import {ENGINE_SOUND_PRESETS,loadSoundModSettings,saveSoundModSettings,type Engi
 import {enhancedBackgroundEnabled,enhancedCockpitEnabled,setEnhancedBackgroundEnabled,setEnhancedCockpitEnabled} from '../lib/game/enhanced-textures';
 import {enhancedFovWidth,setEnhancedFovWidth} from '../lib/game/enhanced-view-settings';
 import {ENHANCED_RENDER_SCALES,enhancedRenderScale,setEnhancedRenderScale} from '../lib/game/enhanced-resolution-settings';
+import {currentPlayerCarId} from '../lib/game/current-player-car';
 const fpsStorageKey='playstunts-dx-fps-visible';
 const graphicsStorageKey='playstunts-dx-enhanced-graphics';
 const steeringDeadzoneStorageKey='playstunts-dx-steering-deadzone-percent';
@@ -283,10 +284,13 @@ export function installDesktopOptionsOverlay(assets?:Assets){
    const box=document.createElement('div');box.style.cssText='width:min(720px,92vw);max-height:82vh;background:#161616;border:1px solid #555;border-radius:8px;padding:16px;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:10px;box-shadow:0 20px 70px #000;';
    const heading=document.createElement('strong');heading.textContent='Per-Car Engine Sounds';heading.style.cssText='font-size:15px;color:#eee;';
    const list=document.createElement('div');list.style.cssText='overflow:auto;display:grid;gap:6px;padding-right:4px;';
-   const settings=loadSoundModSettings();
-   for(const car of assets.cars){
-    const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,1fr);gap:8px;align-items:center;';
-    const label=document.createElement('div');label.textContent=car.name+' ('+car.id+')';label.style.cssText='font-size:12px;color:#ddd;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+   const settings=loadSoundModSettings(),currentId=currentPlayerCarId();
+   const currentCar=assets.cars.find(car=>car.id.toUpperCase()===currentId);
+   const orderedCars=currentCar?[currentCar,...assets.cars.filter(car=>car!==currentCar)]:assets.cars;
+   for(const car of orderedCars){
+    const isCurrent=car===currentCar;
+    const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,1fr);gap:8px;align-items:center;'+(isCurrent?'padding:7px;border:1px solid #666;border-radius:5px;background:#202020;margin-bottom:5px;':'');
+    const label=document.createElement('div');label.textContent=(isCurrent?'Current car · ':'')+car.name+' ('+car.id+')';label.style.cssText='font-size:12px;color:'+(isCurrent?'#fff':'#ddd')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+(isCurrent?'font-weight:650;':'');
     const select=document.createElement('select');select.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;font:12px system-ui,Segoe UI,sans-serif;';
     const inherit=document.createElement('option');inherit.value='';inherit.textContent='Use default';select.append(inherit);
     for(const preset of ENGINE_SOUND_PRESETS){const option=document.createElement('option');option.value=preset.id;option.textContent=preset.label;select.append(option);}

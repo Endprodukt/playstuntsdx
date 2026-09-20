@@ -51,6 +51,7 @@ export function createEnhancedCarMenuPresentation(options:{
   return lines;
  };
  const fit=(value:string,max:number)=>value.length<=max?value:value.slice(0,Math.max(1,max-1))+'…';
+ const carCaption=(car:NativeMenuCar|undefined)=>car?(car.name&&car.name!==car.id?`${car.name} (${car.id})`:car.id):'CAR';
  const over=(type:ModernCarMenuAction['type'])=>hover.type===type;
  const button=(bounds:{x:number;y:number;w:number;h:number},caption:string,type:ModernCarMenuAction['type'],size=6.4)=>{
   const active=over(type);rect(bounds.x,bounds.y,bounds.w,bounds.h,active?'#5b6330':'#232323',active?'#b4c35a':'#555',4,active?1.5:1);
@@ -173,7 +174,7 @@ export function createEnhancedCarMenuPresentation(options:{
   ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#090909';ctx.fillRect(0,0,canvas.width,canvas.height);
   rect(7,6,306,30,'#111','#3b3b3b',6);label('CAR SELECT',15,21,9,'#aeb56e',700);
   rect(selector.x,selector.y,selector.w,selector.h,over('selector')?'#2f341c':'#191919',dropdownOpen||over('selector')?'#b4c35a':'#555',4,dropdownOpen||over('selector')?1.5:1);
-  fittedLabel(cars[selected]?.name??cars[selected]?.id??'CAR',selector.x+6,selector.y+selector.h/2,selector.w-18,6.5,'#f2f2f2',600);
+  fittedLabel(carCaption(cars[selected]),selector.x+6,selector.y+selector.h/2,selector.w-18,6.5,'#f2f2f2',600);
   label(dropdownOpen?'▴':'▾',selector.x+selector.w-8,selector.y+selector.h/2,7,'#aaa',700,'center');
   button(importButton,'IMPORT','import');
   drawPreview();drawInfo();drawGraph();drawDescription();

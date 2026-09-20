@@ -244,6 +244,7 @@ function DesktopApp() {
         <div>
           <strong>Original game data not found</strong>
           <span>Copy your complete Stunts game files into the Gamedata folder next to PlayStunts DX.exe, then restart.</span>
+          <button type="button" onClick={exitGame}>Quit</button>
         </div>
       </div>
     );

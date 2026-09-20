@@ -6,6 +6,7 @@ import {createOriginalCarMenuModel} from './car-menu-model.ts';
 import {originalMenuSelectionFlash} from './menu-selection-flash.ts';
 import type {EngineTuning} from '../physics/engine.ts';
 import type {NativeMenuInput} from './native-dialog-runtime.ts';
+import {rememberCurrentPlayerCar} from './current-player-car.ts';
 export interface NativeMenuCar extends EngineTuning {id:string;rawSimulation:string;name?:string;description?:string}
 export interface NativeCarMenuHost {
  captureModel?:Parameters<typeof createOriginalCarMenuModel>[3];
@@ -29,6 +30,7 @@ export async function runNativeCarMenu(host:NativeCarMenuHost,display?:NativeCar
  const initialConfiguration=host.configuration.slice(),offset=host.opponent?7:0,paintOffset=offset+4,transmissionOffset=offset+5,list=originalCarMenuList(host.cars.map(c=>c.id),String.fromCharCode(...host.configuration.slice(offset,offset+4)));
  if(!list.names.length)return;
  let state:OriginalCarMenuState={selected:0,car:list.selected,carCount:list.names.length,paint:host.configuration[paintOffset],transmission:host.configuration[transmissionOffset],ready:false,renderPhase:3,idleExpired:0};
+ if(!host.opponent)rememberCurrentPlayerCar(list.names[state.car]);
  let previousCar=-1,previousSelected=-1,phase=0,color=0,idle=0,delta=0,angle=0,queuedAngle=0,time=host.counter(),mode=-1,background=host.pixels.slice(),renderer:{paintCount:number;render(target:Uint8Array,angle:number,paint:number):void},buttons:ReturnType<NativeCarMenuPresentation['captureButtons']>|undefined;
  const portrait=()=>{if(display){display.portrait();return;}const art=host.opponentArt;if(!art)return;const width=art[0]|art[1]<<8,height=art[2]|art[3]<<8;for(let y=0;y<height;y++)for(let x=0;x<width;x++){const c=art[16+y*width+x];if(c!==255)host.pixels[y*320+240+x]=c;}};
  const panel=()=>{const car=host.cars.find(c=>c.id===list.names[state.car])!;if(display){display.panel(car,state.transmission);return;}const simulation=Uint8Array.from(car.rawSimulation.match(/../g)!,b=>parseInt(b,16)),graph=originalCarAccelerationGraph(car,simulation);drawOriginalCarMenuPanel(host.pixels,host.font,host.smallFont,host.art,host.resources,host.descriptions[car.id],state.transmission,graph.points);};
@@ -47,7 +49,7 @@ export async function runNativeCarMenu(host:NativeCarMenuHost,display?:NativeCar
   const input=await host.input(),hover=input.mouseActive?originalCarMenuBounds.findIndex(r=>input.x>=r.left&&input.x<=r.right&&input.y>=r.top&&input.y<=r.bottom):-1,result=advanceOriginalCarMenu(state,input.key,hover);state=result.state;
   if(result.action==='cancel'){host.configuration.splice(0,host.configuration.length,...initialConfiguration);return;}
   host.configuration[paintOffset]=state.paint;host.configuration[transmissionOffset]=state.transmission;
-  if(result.action==='done'){host.configuration.splice(offset,4,...Array.from(list.names[state.car],c=>c.charCodeAt(0)));return;}
+  if(result.action==='done'){host.configuration.splice(offset,4,...Array.from(list.names[state.car],c=>c.charCodeAt(0)));if(!host.opponent)rememberCurrentPlayerCar(list.names[state.car]);return;}
   if(result.action==='transmission'){
    // Source redraws only the button interior, retaining the active flash border.
    if(display){buttons!.restore();display.transmission(state.transmission);buttons!.close();buttons=display.captureButtons();display.outline(state.selected,color);}else for(const target of [host.pixels,background])drawOriginalMenuButton(target,host.font,host.resources[state.transmission?'ebau':'ebma'],230,162,86,16,15,8,7,0);

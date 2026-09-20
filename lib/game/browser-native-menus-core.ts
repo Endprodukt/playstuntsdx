@@ -42,6 +42,7 @@ import {originalMainMenuBounds} from './main-menu-hit.ts';
 import {ENHANCED_TEXTURES_EVENT,enhancedBackgroundEnabled} from './enhanced-textures.ts';
 import {ENHANCED_FOV_EVENT,enhancedRaceAspect} from './enhanced-view-settings.ts';
 import {runNativeCarMenu,type NativeCarMenuHost,type NativeMenuCar} from './native-car-runtime.ts';
+import {carIdFromConfiguration,rememberCurrentPlayerCar} from './current-player-car.ts';
 import {createEnhancedCarMenuPresentation} from './enhanced-car-menu-presentation.ts';
 import {runModernCarMenu,type ModernCarMenuAction,type ModernCarMenuHost} from './modern-car-menu-runtime.ts';
 import {runNativeOpponentMenu,type NativeOpponentHost} from './native-opponent-runtime.ts';
@@ -115,6 +116,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   return key;
  };
  const configuration=options.configuration??[67,79,85,78,0,1,0,255,0,0,0,0,0,68,69,70,65,85,76,84,0,0,1,0];
+ rememberCurrentPlayerCar(carIdFromConfiguration(configuration));
  const track=options.track??{name:'DEFAULT',path:'',raw:[...options.assets.tracks.find(t=>t.name==='DEFAULT')!.raw]};
  let entryPolls=0,selectedReplay:{bytes:Uint8Array;name:string;path:string}|undefined,pendingRaceSpawn:RaceSpawn|undefined,editorViewMode:'2d'|'3d'='2d',editor3DCamera:import('./bliss-editor-3d.ts').BlissEditor3DCameraState|undefined;
  // Original1AD1C forwards its literal1 to the complete device poll.

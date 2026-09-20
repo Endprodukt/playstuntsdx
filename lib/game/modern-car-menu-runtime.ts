@@ -1,4 +1,5 @@
 import type {NativeMenuCar,NativeCarMenuHost} from './native-car-runtime.ts';
+import {rememberCurrentPlayerCar} from './current-player-car.ts';
 
 export type ModernCarMenuAction=
  |{type:'selector'}
@@ -48,6 +49,7 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
  };
 
  if(!cars.length)return;
+ if(!host.opponent)rememberCurrentPlayerCar(cars[selected].id);
  await sync();
  try{
   for(;;){
@@ -66,6 +68,7 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
    }
    if(current.type==='done'){
     host.configuration.splice(offset,4,...Array.from(cars[selected].id.slice(0,4),c=>c.charCodeAt(0)));
+    if(!host.opponent)rememberCurrentPlayerCar(cars[selected].id);
     return;
    }
 
