@@ -1,23 +1,19 @@
 import {desktopInputDevice,getDesktopWheelInput} from './desktop-wheel-input.ts';
-import {forgetAnalogWheelRaceInput,recordAnalogWheelRaceInput} from './analog-wheel-race-input.ts';
+import {recordAnalogWheelRaceInput} from './analog-wheel-race-input.ts';
 
 export interface NativeRaceInputHost {
  memory():Uint8Array;pauseAudio():void;crash(cause:1,car:0):void;
  mouse():{x:number;y:number;buttons:number};joystickSteering():number;
  controls():number;keyDown(scan:number):number;
 }
-/** Map a calibrated desktop wheel onto Stunts' existing steering range.
- * A physical wheel remains absolute and speed-independent: centre is always
- * centre and full lock is still full lock. A very mild progressive curve only
- * softens tiny movements around centre, avoiding the twitchiness of a naked
- * 1:1 mapping without adding smoothing, lag or gamepad-style steering assists. */
+/** Map the calibrated physical wheel linearly onto Stunts' native steering range.
+ * Deadzone/calibration have already been applied at the device boundary, so a
+ * real wheel must stay absolute: 50% physical travel means 50% steering. */
 export function originalWheelSteeringTarget(memory:Uint8Array,d:number,value:number){
  const normalized=Math.max(-1,Math.min(1,value));
- const magnitude=Math.abs(normalized);
- if(magnitude<1e-4)return 0;
+ if(Math.abs(normalized)<1e-4)return 0;
  const fullLock=memory[d+0x306c+31];
- const shaped=Math.pow(magnitude,1.25);
- return Math.round(Math.sign(normalized)*shaped*fullLock);
+ return Math.round(normalized*fullLock);
 }
 /** Original14414..14599. Null ends this capture call; a returned word goes
  * to the existing14599 recording tail. Forced capture records a zero byte. */
@@ -60,12 +56,12 @@ export function selectOriginalRaceInput(host:NativeRaceInputHost,d:number,forced
     const brakeActive=brake>.01,throttleActive=throttle>.01;
     if(brakeActive||throttleActive){
      input=(controls&0x30)|(brakeActive?2:1);
-     recordAnalogWheelRaceInput(m,d,{throttle:brakeActive?0:throttle,brake:brakeActive?brake:0});
+     recordAnalogWheelRaceInput(m,d,{throttle:brakeActive?0:throttle,brake:brakeActive?brake:0,steeringAngle:Math.max(-240,Math.min(240,target*4))});
     }else{
      // Keep an explicit zero-valued analog frame. This preserves the distinction
      // between a released wheel pedal and the original keyboard/digital path.
      input=controls&0x30;
-     recordAnalogWheelRaceInput(m,d,{throttle:0,brake:0});
+     recordAnalogWheelRaceInput(m,d,{throttle:0,brake:0,steeringAngle:Math.max(-240,Math.min(240,target*4))});
     }
    }else input=controls;
   }
