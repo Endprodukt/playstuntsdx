@@ -1,6 +1,6 @@
 export const ENHANCED_RENDER_SCALE_KEY='playstunts-dx-enhanced-render-scale';
 export const ENHANCED_RENDER_SCALE_EVENT='playstunts-dx-enhanced-render-scale-changed';
-export const ENHANCED_RENDER_SCALES=[1,2,4,6,8,10,12,14,16,18,20] as const;
+export const ENHANCED_RENDER_SCALES=[1,2,4,6,8,10] as const;
 export type EnhancedRenderScale=(typeof ENHANCED_RENDER_SCALES)[number];
 
 const DEFAULT_ENHANCED_RENDER_SCALE:EnhancedRenderScale=4;
