@@ -46,6 +46,7 @@ import {createEnhancedCarMenuPresentation} from './enhanced-car-menu-presentatio
 import {runModernCarMenu,type ModernCarMenuAction,type ModernCarMenuHost} from './modern-car-menu-runtime.ts';
 import {runNativeOpponentMenu,type NativeOpponentHost} from './native-opponent-runtime.ts';
 import {enhancedMenuEnabled,modernTrackEditorEnabled,runNativeOptions,type NativeOptionsHost} from './native-options-runtime.ts';
+import {enhancedRenderResolution} from './enhanced-resolution-settings.ts';
 import {createEnhancedTrackMenuPresentation} from './enhanced-track-menu-presentation.ts';
 import {runModernTrackMenu,type ModernTrackMenuAction,type ModernTrackMenuHost} from './modern-track-menu-runtime.ts';
 import {runNativeTrackMenu,type NativeTrackMenuHost} from './native-track-runtime.ts';
@@ -183,7 +184,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     // Match the physical width of the modern preview as closely as possible.
     // The showroom itself must stay 320:200, but choosing a 1:1-ish source
     // width avoids an extra soft resample when compositing into the menu.
-    const width=Math.max(320,Math.round(canvas.width*218/320)),height=Math.round(width*200/320);
+    const internal=enhancedRenderResolution(),width=Math.max(320,Math.round(internal.width*218/320)),height=Math.round(width*200/320);
     const snapshot=document.createElement('canvas');snapshot.width=width;snapshot.height=height;
     const snapshotContext=snapshot.getContext('2d');if(!snapshotContext)return null;
     const memory=modelMemory;
@@ -264,7 +265,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    const preview=document.createElement('canvas');preview.width=canvas.width;preview.height=canvas.height;const previewContext=preview.getContext('2d')!;
    const base=document.createElement('canvas');base.width=320;base.height=200;const baseContext=base.getContext('2d')!,baseImage=baseContext.createImageData(320,200);
    let modelMemory:Uint8Array|undefined,showroom:ReturnType<typeof createUpgradedCarMenu>|undefined,failed=false;
-   const presentCar=()=>{paint();if(options.graphics){options.graphics.refresh=presentCar;if(options.graphics.enabled&&modelMemory&&!failed){try{showroom??=createUpgradedCarMenu(palette,showroomMaterials.indices);previewContext.setTransform(1,0,0,1,0,0);previewContext.imageSmoothingEnabled=false;previewContext.drawImage(base,0,0,preview.width,preview.height);previewContext.drawImage(showroom.draw(modelMemory,preview.width,preview.height),0,0);if(showroom.lastBuildMilliseconds!==undefined)canvas.dataset.upgradedCarBuildMs=showroom.lastBuildMilliseconds.toFixed(1);}catch{failed=true;showroom?.close();showroom=undefined;options.graphics.notice?.('Upgraded car preview unavailable; original graphics remain active.');return;}context.save();context.beginPath();context.rect(0,0,canvas.width,95*canvas.height/200);context.clip();context.drawImage(preview,0,0);context.restore();}}};
+   const presentCar=()=>{paint();if(options.graphics){options.graphics.refresh=presentCar;if(options.graphics.enabled&&modelMemory&&!failed){try{showroom??=createUpgradedCarMenu(palette,showroomMaterials.indices);previewContext.setTransform(1,0,0,1,0,0);previewContext.imageSmoothingEnabled=false;previewContext.drawImage(base,0,0,preview.width,preview.height);const internal=enhancedRenderResolution();previewContext.drawImage(showroom.draw(modelMemory,internal.width,internal.height),0,0,preview.width,preview.height);if(showroom.lastBuildMilliseconds!==undefined)canvas.dataset.upgradedCarBuildMs=showroom.lastBuildMilliseconds.toFixed(1);}catch{failed=true;showroom?.close();showroom=undefined;options.graphics.notice?.('Upgraded car preview unavailable; original graphics remain active.');return;}context.save();context.beginPath();context.rect(0,0,canvas.width,95*canvas.height/200);context.clip();context.drawImage(preview,0,0);context.restore();}}};
    carHost.captureModel=(memory,background)=>{
     for(let i=0;i<64000;i++){const c=background[i]*3;baseImage.data.set([palette[c],palette[c+1],palette[c+2],255],i*4);}baseContext.putImageData(baseImage,0,0);
     modelMemory=memory;

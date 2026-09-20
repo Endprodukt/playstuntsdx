@@ -38,6 +38,7 @@ import type {createNativeManualRaceRuntime} from './native-manual-race-runtime';
 import type {TrackObject} from '../physics/track';
 import type {CollisionPlane} from '../physics/plane';
 import {enhancedRaceAspect} from './enhanced-view-settings.ts';
+import {enhancedRenderResolution} from './enhanced-resolution-settings.ts';
 import {enhancedBackgroundEnabled} from './enhanced-textures.ts';
 type Runtime=Pick<Awaited<ReturnType<typeof createNativeManualRaceRuntime>>,'raw'|'session'|'graphicsFrame'|'pixels'>;
 const ENHANCED_BACKGROUND_ROOT='/site/enhanced-backgrounds';
@@ -302,7 +303,8 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    // Upgraded mode retains the full world, with camera-frustum culling.
    // Depth testing retains every face instead of reproducing
    // angle-bucket flicker. Original stipple holes remain open in the shader.
-   if(renderer.domElement.width!==canvas.width||renderer.domElement.height!==canvas.height)renderer.setSize(canvas.width,canvas.height,false);
+   const internal=enhancedRenderResolution(),internalHeight=internal.height,internalWidth=Math.max(internal.width,Math.round(internal.width*wideFactor));
+   if(renderer.domElement.width!==internalWidth||renderer.domElement.height!==internalHeight)renderer.setSize(internalWidth,internalHeight,false);
    const shadowCars=cars.map((models,i)=>{
     const state=i?runtime.session.state.opponent.car:runtime.session.state.player.driving.car;
     if(!upgradedCarCastsShadow(!!i,!!live[d+0x8fc8],state.grip.crash))return undefined;
