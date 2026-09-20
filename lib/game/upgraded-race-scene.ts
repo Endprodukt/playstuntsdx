@@ -381,7 +381,13 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    // The original ordered crash raster is still the faithful fallback for the
    // original cameras. A selected enhanced chase camera must keep rendering
    // its own viewpoint through a crash instead of snapping to the cockpit.
-   if(orderedScene&&!chase){context.save();context.setTransform(canvas.width/320,0,0,canvas.height/200,0,0);const [left,right,top,bottom]=frame.rectangle;context.beginPath();context.rect(left,top,right-left,bottom-top);context.clip();for(const call of frame.calls)orderedRaster.draw(context,call,frame.rectangle);context.restore();}else context.drawImage(renderer.domElement,0,0,canvas.width,canvas.height);
+   if(orderedScene&&!chase){context.save();context.setTransform(canvas.width/320,0,0,canvas.height/200,0,0);const [left,right,top,bottom]=frame.rectangle;context.beginPath();context.rect(left,top,right-left,bottom-top);context.clip();for(const call of frame.calls)orderedRaster.draw(context,call,frame.rectangle);context.restore();}else {
+    // Downsample the antialiased high-resolution Three.js frame with browser
+    // filtering. Pixel-art overlays are switched straight back to nearest
+    // neighbour below so cockpit, replay controls and source artwork stay crisp.
+    context.imageSmoothingEnabled=true;
+    context.drawImage(renderer.domElement,0,0,canvas.width,canvas.height);
+   }
    context.imageSmoothingEnabled=false;
    const overlayWidth=nativeWidth,overlayX=(canvas.width-overlayWidth)/2,overlaySx=overlayWidth/320,overlaySy=canvas.height/200;
    if(!chase){
