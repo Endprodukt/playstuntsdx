@@ -30,6 +30,7 @@ let lastSend = 0;
 let latestForce = 0;
 let latestSteering = 0;
 let ffbActive = false;
+let replayActive = false;
 let lastStatus = 0;
 let statusElement: HTMLSpanElement | undefined;
 let configPathElement: HTMLDivElement | undefined;
@@ -221,10 +222,17 @@ async function sendForce(force: number, immediate = false) {
 function resampleAndSend(immediate = false) {
   // Never let stale driving physics leak into menus or setup screens.
   // The hardware receives a literal zero as soon as the driving tick is gone.
-  latestForce = enabled() && ffbActive && forceFeedbackDrivingActive()
+  latestForce = enabled() && ffbActive && !replayActive && forceFeedbackDrivingActive()
     ? -sampleForceFeedback(latestSteering) * strength()
     : 0;
   void sendForce(latestForce, immediate);
+}
+
+export function setDesktopForceFeedbackReplayActive(active: boolean) {
+  if (replayActive === active) return;
+  replayActive = active;
+  if (active) clearForceFeedbackTelemetry();
+  resampleAndSend(true);
 }
 
 export function updateDesktopForceFeedback(input: DesktopWheelInputState) {
@@ -250,6 +258,7 @@ export function stopDesktopForceFeedback() {
   clearForceFeedbackTelemetry();
   latestForce = 0;
   ffbActive = false;
+  replayActive = false;
   const core = tauriCore();
   if (core) void core.invoke<void>('native_stop_force_feedback').catch(() => {});
 }
