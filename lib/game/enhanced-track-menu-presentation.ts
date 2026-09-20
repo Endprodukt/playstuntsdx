@@ -6,7 +6,7 @@ import type {BlissEditor3DView} from './bliss-editor-3d.ts';
 import type {ModernTrackMenuAction,ModernTrackMenuPresentation} from './modern-track-menu-runtime.ts';
 import {enhancedRenderResolution} from './enhanced-resolution-settings.ts';
 
-type PreviewFactory=(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,options:{initialCamera:{position:[number,number,number];target:[number,number,number];fov:number};transparentBackground:boolean;showGround:boolean})=>BlissEditor3DView;
+type PreviewFactory=(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,options:{initialCamera:{position:[number,number,number];target:[number,number,number];fov:number};transparentBackground:boolean;showGround:boolean;simplifyTerrain?:boolean})=>BlissEditor3DView;
 
 export type EnhancedTrackMenuPresentation=ModernTrackMenuPresentation&{
  active(active:boolean):void;
@@ -57,7 +57,7 @@ export function createEnhancedTrackMenuPresentation(options:{
   const next=trackSignature(track);
   if(preview&&signature===next)return preview;
   const decoded=options.decodeTrack(Uint8Array.from(track.raw));
-  if(!preview)preview=options.createPreview(previewCanvas,options.assets,decoded,{initialCamera:options.originalCamera,transparentBackground:true,showGround:true});
+  if(!preview)preview=options.createPreview(previewCanvas,options.assets,decoded,{initialCamera:options.originalCamera,transparentBackground:true,showGround:true,simplifyTerrain:true});
   else{preview.update(decoded);preview.resetView();}
   signature=next;return preview;
  };
