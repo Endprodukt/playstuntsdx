@@ -101,8 +101,10 @@ const oldStorageKey = 'playstunts-dx-wheel-bindings-v1';
 const axisCaptureThreshold = 0.42;
 const buttonCaptureThreshold = 0.55;
 const steeringDeadzoneStorageKey = 'playstunts-dx-steering-deadzone-percent';
+const steeringLinearityStorageKey = 'playstunts-dx-steering-linearity';
 const optionsButtonStorageKey = 'playstunts-dx-show-options-button';
 const defaultSteeringDeadzonePercent = 4;
+const defaultSteeringLinearity = 1.4;
 
 function optionsButtonVisible() {
   const stored = window.localStorage.getItem(optionsButtonStorageKey);
@@ -122,6 +124,19 @@ function applySteeringDeadzone(value: number) {
   if (magnitude <= deadzone) return 0;
   if (deadzone >= 1) return 0;
   return Math.sign(value) * Math.min(1, (magnitude - deadzone) / (1 - deadzone));
+}
+
+function steeringLinearity() {
+  const stored = window.localStorage.getItem(steeringLinearityStorageKey);
+  if (stored === null) return defaultSteeringLinearity;
+  const saved = Number(stored);
+  return Number.isFinite(saved) ? Math.max(1, Math.min(2, saved)) : defaultSteeringLinearity;
+}
+
+function applySteeringLinearity(value: number) {
+  const magnitude = Math.abs(value);
+  if (magnitude <= 0 || magnitude >= 1) return value;
+  return Math.sign(value) * Math.pow(magnitude, steeringLinearity());
 }
 
 let nativeDevices: InputDevice[] = [];
@@ -661,7 +676,7 @@ export function installDesktopDriveControls() {
 
     const amount = Math.max(0, Math.min(1, delta / span));
     const normalized = towardLeft ? -amount : amount;
-    return applySteeringDeadzone(normalized);
+    return applySteeringLinearity(applySteeringDeadzone(normalized));
   }
 
   function inputAmount(binding: InputBinding | undefined) {
