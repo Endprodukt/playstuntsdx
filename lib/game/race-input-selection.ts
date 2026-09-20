@@ -56,12 +56,12 @@ export function selectOriginalRaceInput(host:NativeRaceInputHost,d:number,forced
     const brakeActive=brake>.01,throttleActive=throttle>.01;
     if(brakeActive||throttleActive){
      input=(controls&0x30)|(brakeActive?2:1);
-     recordAnalogWheelRaceInput(m,d,{throttle:brakeActive?0:throttle,brake:brakeActive?brake:0,steeringAngle:Math.max(-240,Math.min(240,target*4))});
+     recordAnalogWheelRaceInput(m,d,{throttle:brakeActive?0:throttle,brake:brakeActive?brake:0,steeringAngle:Math.round(Math.max(-1,Math.min(1,wheel.steering))*240)});
     }else{
      // Keep an explicit zero-valued analog frame. This preserves the distinction
      // between a released wheel pedal and the original keyboard/digital path.
      input=controls&0x30;
-     recordAnalogWheelRaceInput(m,d,{throttle:0,brake:0,steeringAngle:Math.max(-240,Math.min(240,target*4))});
+     recordAnalogWheelRaceInput(m,d,{throttle:0,brake:0,steeringAngle:Math.round(Math.max(-1,Math.min(1,wheel.steering))*240)});
     }
    }else input=controls;
   }
