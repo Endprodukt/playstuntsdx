@@ -10,12 +10,22 @@ export interface EngineState {speed:number;roadSpeed:number;lastSpeed:number;spe
 export interface EngineTuning {gears:number;mass:number;braking:number;idleRPM:number;downshiftRPM:number;upshiftRPM:number;maxRPM:number;gearRatios:number[];gearKnobPoints:number[][];idleTorque:number;torqueCurve:number[];aeroResistance:number}
 export interface AnalogPedalInput {throttle:number;brake:number}
 const ANALOG_INPUT_FLAG=0x40000000;
-/** DX-only transient encoding. The low byte remains the exact original Stunts
- * control byte; two extra bytes carry 0..255 pedal travel into the live physics. */
-export function encodeAnalogDrivingInput(input:number,pedals:AnalogPedalInput){
+const ANALOG_STEERING_BASE=0x100000000;
+const ANALOG_STEERING_OFFSET=241;
+/** DX-only transient encoding. The low 32 bits retain the original controls plus
+ * proportional pedal travel. An optional value above bit31 carries the live
+ * absolute wheel angle without changing any original Stunts control bits. */
+export function encodeAnalogDrivingInput(input:number,pedals:AnalogPedalInput,steeringAngle?:number){
  const throttle=Math.round(Math.max(0,Math.min(1,pedals.throttle))*255);
  const brake=Math.round(Math.max(0,Math.min(1,pedals.brake))*255);
- return (input&255)|(throttle<<8)|(brake<<16)|ANALOG_INPUT_FLAG;
+ const low=((input&255)|(throttle<<8)|(brake<<16)|ANALOG_INPUT_FLAG)>>>0;
+ if(steeringAngle===undefined)return low;
+ const angle=Math.max(-240,Math.min(240,Math.round(steeringAngle)));
+ return low+(angle+ANALOG_STEERING_OFFSET)*ANALOG_STEERING_BASE;
+}
+export function analogSteeringAngle(input:number){
+ const encoded=Math.floor(input/ANALOG_STEERING_BASE);
+ return encoded?Math.max(-240,Math.min(240,encoded-ANALOG_STEERING_OFFSET)):undefined;
 }
 function analogPedals(input:number):AnalogPedalInput|undefined{
  if((input&ANALOG_INPUT_FLAG)===0)return undefined;
