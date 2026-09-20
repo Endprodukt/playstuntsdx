@@ -1,6 +1,7 @@
 import {Vector3} from 'three';
 import {originalExternalCameraClearance} from './external-camera-clearance.ts';
 import {upgradedCameraBasis} from './upgraded-camera-basis.ts';
+import {createChaseTurnOffset} from './chase-turn-offset.ts';
 import {enhancedChaseCameraPosition} from './enhanced-chase-camera-settings.ts';
 import type {RenderPose} from './render-pose.ts';
 import type {TrackObject} from '../physics/track.ts';
@@ -10,6 +11,10 @@ import type {Vector} from '../physics/math.ts';
 export type EnhancedChaseCameraLevel=0|1|2|3;
 
 export const ENHANCED_CHASE_CAMERA_LABELS=['Original','Close','Standard','Far'] as const;
+
+export function enhancedChaseNeedsTransporterCutaway(level:EnhancedChaseCameraLevel,truckVisible:boolean,sourceFrame:number,carInsideTransporter:boolean){
+ return level!==0&&truckVisible&&(sourceFrame===0||carInsideTransporter);
+}
 
 const FIXED_PRESETS={
  1:{lookAhead:105,targetHeight:44,fov:58},
@@ -46,6 +51,7 @@ export function nextEnhancedChaseCameraLevel(level:EnhancedChaseCameraLevel):Enh
 export function createEnhancedChaseCamera(track:{raw:number[];objects:TrackObject[];planes:CollisionPlane[]}){
  const position=new Vector3(),target=new Vector3(),forward=new Vector3(),up=new Vector3(),lastCar=new Vector3();
  const desiredPosition=new Vector3(),desiredTarget=new Vector3(),desiredForward=new Vector3();
+ const turn=createChaseTurnOffset(),turnAxis=new Vector3(0,1,0);
  let initialized=false,lastAt=0,lastCarIndex=-1,lastFrame=-1,rigLevel:Exclude<EnhancedChaseCameraLevel,0>=1;
  const initial=preset(1);
  let rig:ChaseRig=copyRig(initial),transitionFrom:ChaseRig=copyRig(initial),transitionTo:ChaseRig=copyRig(initial),transitionAt=0;
@@ -58,7 +64,7 @@ export function createEnhancedChaseCamera(track:{raw:number[];objects:TrackObjec
   return [point[0]+result[0]-source[0],point[1]+result[1]-source[1],point[2]-result[2]+source[2]];
  };
  return {
-  sample(pose:RenderPose,level:Exclude<EnhancedChaseCameraLevel,0>,carIndex:number,now:number,frame:number,raceMode:number){
+  sample(pose:RenderPose,level:Exclude<EnhancedChaseCameraLevel,0>,carIndex:number,now:number,frame:number,raceMode:number,steering=0){
    const selectedPreset=preset(level),car=new Vector3(pose.position[0],pose.position[1],-pose.position[2]);
    const interrupted=!initialized||carIndex!==lastCarIndex||now-lastAt>250||frame<lastFrame||car.distanceToSquared(lastCar)>1024*1024;
    const basis=upgradedCameraBasis([pose.rotation[2],pose.rotation[1],pose.rotation[0]]);
@@ -80,11 +86,11 @@ export function createEnhancedChaseCamera(track:{raw:number[];objects:TrackObjec
     }
     rig=mixRig(transitionFrom,transitionTo,transitionFraction(now,transitionAt));
    }
-   const dt=interrupted?0:Math.min(.05,Math.max(0,(now-lastAt)/1000));
-   if(interrupted)forward.copy(desiredForward);
-   else{
-    forward.lerp(desiredForward,1-Math.exp(-dt*9)).normalize();
-   }
+   // Live presentation already interpolates chassis heading. Follow that
+   // directly and add only the bounded steering-driven reveal from upstream;
+   // this avoids a second yaw follower rocking on native angle quantization.
+   const turnOffset=turn.sample(frame===0?0:steering,now,interrupted||frame===0);
+   forward.copy(desiredForward).applyAxisAngle(turnAxis,turnOffset);
    up.set(0,1,0);
    desiredTarget.copy(car).addScaledVector(forward,rig.lookAhead).addScaledVector(up,rig.targetHeight);
    desiredPosition.copy(car).addScaledVector(forward,-rig.distance).addScaledVector(up,rig.height);
@@ -105,7 +111,7 @@ export function createEnhancedChaseCamera(track:{raw:number[];objects:TrackObjec
    // correction returned by terrain clearance. Keeping it explicit prevents
    // one-angle-unit horizon hops while the car crosses banked curb pieces.
    const backgroundPitch=Math.round(Math.atan2(rig.targetHeight-rig.height,rig.distance+rig.lookAhead)*512/Math.PI)&1023;
-   return {position:position.toArray() as Vector,target:target.toArray() as Vector,up:up.toArray() as Vector,fov:rig.fov,backgroundPitch};
+   return {position:position.toArray() as Vector,target:target.toArray() as Vector,up:up.toArray() as Vector,fov:rig.fov,backgroundPitch,turnOffset};
   },
   reset(){initialized=false;lastAt=0;lastCarIndex=-1;lastFrame=-1;},
  };

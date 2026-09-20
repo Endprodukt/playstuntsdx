@@ -21,7 +21,7 @@ import {createUpgradedRetroLighting,RETRO_SUN,type RetroSceneryCaster} from './u
 import {upgradedCarGroundingOffset,setUpgradedCarPresentationPose} from './upgraded-car-grounding';
 import {upgradedCompositeShadowShapes,upgradedSceneryCastsShadow,upgradedSceneryUsesPatternedShadow} from './upgraded-scenery-shadows';
 import {upgradedBackgroundView} from './upgraded-background-view';
-import {createEnhancedChaseCamera,type EnhancedChaseCameraLevel} from './enhanced-chase-camera';
+import {createEnhancedChaseCamera,enhancedChaseNeedsTransporterCutaway,type EnhancedChaseCameraLevel} from './enhanced-chase-camera';
 import {createEnhancedCrashEffects} from './enhanced-crash-effects';
 import {createEnhancedCockpitOverlay} from './enhanced-cockpit-overlay';
 import {upgradedTrackSeamShape} from './upgraded-track-seams';
@@ -212,18 +212,13 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    const chasedCarPosition=new THREE.Vector3(shown.cars[chaseCar].position[0],shown.cars[chaseCar].position[1],-shown.cars[chaseCar].position[2]);
    if(truck.group.visible){truck.group.updateWorldMatrix(true,true);transporterBounds.setFromObject(truck.group).expandByScalar(12);transporterBoundsKnown=true;}
    const chaseLevel=requestedChaseLevel as EnhancedChaseCameraLevel;
-   const chase=chaseLevel?chaseCamera.sample(shown.cars[chaseCar],chaseLevel,chaseCar,now,sourceFrame,live[d+0xa3c2]):undefined;
+   const chase=chaseLevel?chaseCamera.sample(shown.cars[chaseCar],chaseLevel,chaseCar,now,sourceFrame,live[d+0xa3c2],shown.steering?.[chaseCar]??0):undefined;
    let transporterCutaway=false;
    if(chase&&transporterBoundsKnown){
     const carInsideTransporter=transporterBounds.containsPoint(chasedCarPosition);
-    // Close and Standard retain their real chase distances at the opening of a
-    // drive or replay. The truck is omitted only from this camera render so its
-    // closed doors cannot occlude the car; simulation, geometry and door motion
-    // remain untouched. Frame zero covers the entire automatic rollout, even
-    // after the car's centre has crossed the truck bounds; keeping the cutaway
-    // until the timed race begins prevents the chase eye from looking back
-    // through a door or wall during that handoff. Far keeps the exterior view.
-    transporterCutaway=chaseLevel<=2&&truck.group.visible&&(sourceFrame===0||carInsideTransporter);
+    // Every enhanced chase preset can intersect the starting transporter.
+    // This is a presentation-only cutaway; simulation and truck animation stay intact.
+    transporterCutaway=enhancedChaseNeedsTransporterCutaway(chaseLevel,truck.group.visible,sourceFrame,carInsideTransporter);
    }
    const chaseChanged=chaseLevel!==lastChaseLevel;
    if(!chase)chaseCamera.reset();
