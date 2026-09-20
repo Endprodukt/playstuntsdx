@@ -9,8 +9,9 @@ export type RetroSceneryCaster=THREE.Group|{
 type NormalizedRetroSceneryCaster={source:THREE.Group;caster:THREE.Group;receiver?:THREE.Group;patterned?:boolean};
 
 /** Display-world direction (the race scene mirrors source Z), independent of
- * the car heading and camera. At 55 degrees the low car silhouette remains
- * visible in native-resolution views instead of hiding almost entirely below it. */
+ * the car heading and camera. At 55 degrees the low Indy silhouette extends
+ * beyond the body in native-resolution helicopter views, including grass
+ * suspension travel; a 70-degree sun hid most of it beneath the car. */
 // Parallel sunlight from the forward/right side of the initial road heading.
 // The Sun's ~149.6 million km distance is represented by this world-fixed
 // direction, not by a nearby point light or an enormous scene object.
@@ -87,12 +88,12 @@ export function retroDistanceStrength(distance:number){
 
 /** A tight, fixed-scale light view follows each car. Shadow pixels stay small
  * during high jumps; the receiving mesh determines the height and slope. */
-export function placeRetroShadowCamera(camera: THREE.OrthographicCamera, center: THREE.Vector3, extent: number, mapSize=CAR_SHADOW_SIZE, depth=16384) {
+export function placeRetroShadowCamera(camera: THREE.OrthographicCamera, center: THREE.Vector3, extent: number, mapSize=CAR_SHADOW_SIZE, depth=16384, sunDirection=RETRO_SUN, near=1) {
  camera.left = camera.bottom = -extent / 2;
  camera.right = camera.top = extent / 2;
- camera.near = 1;
+ camera.near = near;
  camera.far = depth;
- camera.position.copy(center).addScaledVector(RETRO_SUN, depth/2);
+ camera.position.copy(center).addScaledVector(sunDirection, depth/2);
  camera.up.set(0,1,0);
  camera.lookAt(center);
  camera.updateMatrixWorld(true);
@@ -102,8 +103,10 @@ export function placeRetroShadowCamera(camera: THREE.OrthographicCamera, center:
  const texel = extent / mapSize;
  const dx = Math.round(worldOrigin.x / texel) * texel - worldOrigin.x;
  const dy = Math.round(worldOrigin.y / texel) * texel - worldOrigin.y;
- // Apply the texel snap opposite to the moving light-space origin so fixed
- // world points stay on stable shadow texels instead of snapping backwards.
+ // Projection subtracts the orthographic bounds centre. Apply the snap in
+ // the opposite direction so a fixed world point remains on a fixed shadow
+ // texel while the car-centred light view moves. Adding this delta doubled
+ // within-texel motion and then snapped the map backwards at each boundary.
  camera.left += lightCenter.x - dx; camera.right += lightCenter.x - dx;
  camera.bottom += lightCenter.y - dy; camera.top += lightCenter.y - dy;
  camera.updateProjectionMatrix();
@@ -129,12 +132,17 @@ type Shadow = {
 
 /** This layer is installed only by the upgraded race renderer. It composes
  * with original palette/stipple/depth shaders; it never changes game memory. */
-export function createUpgradedRetroLighting() {
+export function createUpgradedRetroLighting(options:{sunDirection?:THREE.Vector3;worldScale?:number}={}) {
+ const sunDirection=(options.sunDirection??RETRO_SUN).clone().normalize(),worldScale=options.worldScale??1;
+ if(!Number.isFinite(worldScale)||worldScale<=0)throw Error('Shadow world scale must be positive');
  // RGB stores depth and alpha explicitly identifies a rasterized caster.
  // Uncovered pixels must never be treated as the shadow-camera footprint.
  const depthMaterial = new THREE.MeshDepthMaterial({depthPacking: THREE.RGBDepthPacking, side: THREE.DoubleSide, blending: THREE.NoBlending, toneMapped: false});
- // Preserve the authored sidedness of car faces. Downward-facing rollover
- // floors must not cast detached rectangles while the car is upright.
+ // The completed car borrows downward-facing rollover floors from car1.
+ // Those coarse floors can extend outside car0's detailed outline. Forcing
+ // their back faces to cast from above creates a detached rectangular lip
+ // that switches on/off as its height crosses the grass receiver. Preserve
+ // authored car sidedness: these floors still cast when exposed in a roll.
  const carDepthMaterial=depthMaterial.clone();carDepthMaterial.side=THREE.FrontSide;
  // Some original models use pattern 1 as genuine open space. The windmill's
  // rotating blade variants are built from alternating solid and fully open
@@ -239,6 +247,7 @@ export function createUpgradedRetroLighting() {
    if(!(Array.isArray(node.material)?node.material:[node.material]).some(material=>material instanceof THREE.MeshBasicMaterial))return;
    const geometry = node.geometry;
    const keepsWorldSurfaceColour=geometry.hasAttribute('originalRoadSurface')&&geometry.hasAttribute('originalTerrainSurface');
+   const excludesSceneryCasterFaces=geometry.hasAttribute('originalSceneryCaster');
    if (!geometry.hasAttribute('normal')) geometry.computeVertexNormals();
    // A source car polygon may be warped. One normal for the complete source
    // polygon avoids a visible diagonal between its triangulated halves.
@@ -255,7 +264,7 @@ export function createUpgradedRetroLighting() {
     const compile = material.onBeforeCompile.bind(material), key = material.customProgramCacheKey();
     material.onBeforeCompile = (shader, renderer) => {
      compile(shader, renderer);
-     shader.uniforms.retroSun = {value: RETRO_FACE_LIGHT};
+     shader.uniforms.retroSun = {value: sunDirection};
      shader.uniforms.retroDistanceTint = {value: retroDistanceTint};
      shader.uniforms.retroFilteredCoverage=filteredCoverage;
      shadows.forEach((shadow,i) => {
@@ -266,13 +275,14 @@ export function createUpgradedRetroLighting() {
       shader.uniforms['retroShadowActive'+i] = shadow.active;
       shader.uniforms['retroShadowTexel'+i] = shadow.texel;
      });
-     shader.vertexShader = `varying vec3 vRetroNormal; varying vec3 vRetroWorld; varying float vRetroViewDistance;
+     shader.vertexShader = `${excludesSceneryCasterFaces?'attribute float originalSceneryCaster; varying float vOriginalSceneryCaster; ':''}varying vec3 vRetroNormal; varying vec3 vRetroWorld; varying float vRetroViewDistance;
       ${shader.vertexShader}`;
      shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      ${excludesSceneryCasterFaces?'vOriginalSceneryCaster = originalSceneryCaster;':''}
       vRetroNormal = normalize(mat3(modelMatrix) * normal);
       vRetroWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
       vRetroViewDistance = length((modelViewMatrix * vec4(transformed, 1.0)).xyz);`);
-     shader.fragmentShader = `uniform vec3 retroSun; uniform vec3 retroDistanceTint; varying vec3 vRetroNormal; varying vec3 vRetroWorld; varying float vRetroViewDistance;
+     shader.fragmentShader = `${excludesSceneryCasterFaces?'varying float vOriginalSceneryCaster; ':''}uniform vec3 retroSun; uniform vec3 retroDistanceTint; varying vec3 vRetroNormal; varying vec3 vRetroWorld; varying float vRetroViewDistance;
       uniform mat4 retroShadowMatrix0; uniform sampler2D retroShadowMap0; uniform sampler2D retroShadowReceiverMap0; uniform float retroShadowActive0; uniform vec2 retroShadowTexel0;
       uniform mat4 retroShadowMatrix1; uniform sampler2D retroShadowMap1; uniform sampler2D retroShadowReceiverMap1; uniform float retroShadowActive1; uniform vec2 retroShadowTexel1;
       uniform mat4 retroShadowMatrix2; uniform sampler2D retroShadowMap2; uniform sampler2D retroShadowReceiverMap2; uniform float retroShadowActive2; uniform vec2 retroShadowTexel2;
@@ -328,13 +338,14 @@ export function createUpgradedRetroLighting() {
        float retroDetailedSceneryShadow=retroShadow(retroCoverageMap2,retroShadowMap2,retroShadowReceiverMap2,retroShadowMatrix2,retroShadowTexel2,retroShadowActive2,${SCENERY_RECEIVER_TOLERANCE.toFixed(12)});
        float retroDistantSceneryShadow=retroShadow(retroCoverageMap3,retroShadowMap3,retroShadowReceiverMap3,retroShadowMatrix3,retroShadowTexel3,retroShadowActive3,${DISTANT_SCENERY_RECEIVER_TOLERANCE.toFixed(12)});
        float retroDetailedSceneryWeight=retroSceneryCascadeWeight(retroShadowMatrix2,retroShadowTexel2,retroShadowActive2);
-       retroShadowAmount=max(retroShadowAmount,mix(retroDistantSceneryShadow,retroDetailedSceneryShadow,retroDetailedSceneryWeight));` : ''}
+       float retroSceneryReceiver=${excludesSceneryCasterFaces?'1.0-step(.5,vOriginalSceneryCaster)':'1.0'};
+       retroShadowAmount=max(retroShadowAmount,mix(retroDistantSceneryShadow,retroDetailedSceneryShadow,retroDetailedSceneryWeight)*retroSceneryReceiver);` : ''}
       outgoingLight *= 1.0-retroShadowAmount*${(1-UPGRADED_SHADOW_AMBIENT).toFixed(3)};
       ${node.userData.retroDistanceColour===false?'':`float retroDistanceAmount = smoothstep(${RETRO_DISTANCE_COLOUR.start.toFixed(1)},${RETRO_DISTANCE_COLOUR.end.toFixed(1)},vRetroViewDistance)*${RETRO_DISTANCE_COLOUR.strength.toFixed(3)}*(1.0-retroSourceSurface);
       outgoingLight = mix(outgoingLight,retroDistanceTint,retroDistanceAmount);`}
       #include <opaque_fragment>`);
     };
-    material.customProgramCacheKey = () => key + '/retro-light-v22/' + Number(receiveCarShadows) + '/' + Number(receiveSceneryShadows) + '/' + Number(!!node.userData.originalBodyFace) + '/' + Number(node.userData.retroDistanceColour!==false) + '/' + Number(keepsWorldSurfaceColour);
+    material.customProgramCacheKey = () => key + '/retro-light-v23/' + Number(receiveCarShadows) + '/' + Number(receiveSceneryShadows) + '/' + Number(!!node.userData.originalBodyFace) + '/' + Number(node.userData.retroDistanceColour!==false) + '/' + Number(keepsWorldSurfaceColour) + '/' + Number(excludesSceneryCasterFaces);
     material.needsUpdate = true;
    }
   });
@@ -366,7 +377,7 @@ export function createUpgradedRetroLighting() {
    renderer.autoClear = true;
    renderer.setClearColor(0x000000,0);
    receiverScene.updateMatrixWorld(true);
-   // Compatibility strips are screen-space presentation, not world surfaces.
+   // Compatibility lines are presentation geometry, not shadow surfaces.
    // Find and hide them once for the complete shadow batch instead of walking
    // the full scene again for every receiver pass.
    receiverScene.traverseVisible(node=>{if(presentationOnlyShadowGeometry(node))presentationHelpers.push(node);});
@@ -399,8 +410,11 @@ export function createUpgradedRetroLighting() {
      proxy.mesh.matrix.copy(proxy.source.matrixWorld);proxy.mesh.matrixWorld.copy(proxy.source.matrixWorld);
     }
     const bounds = new THREE.Box3().setFromObject(source), center = bounds.getCenter(new THREE.Vector3());
-    const extent = Math.max(128, Math.ceil(bounds.getSize(new THREE.Vector3()).length()/64)*64);
-    shadow.matrix.value.copy(placeRetroShadowCamera(shadow.camera,center,extent));
+    // Showroom coordinates are 1/20 racing-world units. Scale the complete
+    // light volume so texel density, contact bias and receiver tolerance keep
+    // the same proportions; the geometry and soft coverage filter are shared.
+    const extent = Math.max(128*worldScale, Math.ceil(bounds.getSize(new THREE.Vector3()).length()/(64*worldScale))*64*worldScale);
+    shadow.matrix.value.copy(placeRetroShadowCamera(shadow.camera,center,extent,CAR_SHADOW_SIZE,16384*worldScale,sunDirection,worldScale));
     renderer.setRenderTarget(shadow.target);
     renderer.render(shadow.scene,shadow.camera);
     // A caster map alone shadows every surface farther down the same sun ray.
@@ -460,7 +474,7 @@ export function createUpgradedRetroLighting() {
     // changing filtering, or dropping any shadow-casting geometry.
     const threshold=extent/8;
     if(shadow.renderedRevision===sceneryRevision&&shadow.renderedCenter&&shadow.renderedCenter.distanceToSquared(center)<=threshold*threshold)return;
-    shadow.matrix.value.copy(placeRetroShadowCamera(shadow.camera,center,extent,size,depth));
+    shadow.matrix.value.copy(placeRetroShadowCamera(shadow.camera,center,extent,size,depth,sunDirection));
     renderer.setRenderTarget(shadow.target);
     renderer.render(shadow.scene,shadow.camera);
     // Hiding only the registered raised/volumetric objects lets their common

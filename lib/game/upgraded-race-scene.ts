@@ -6,7 +6,7 @@ import {distantCloudPlacement,upgradedWorldDetail} from './upgraded-world-visibi
 import {backgroundCamera,createNativeBackground} from './native-background';
 import * as THREE from 'three';
 import type {Assets} from './types';
-import {createTrackModelFactory,PERSPECTIVE_TRACK_LINE_WIDTH} from './track-model';
+import {createTrackModelFactory,markTrackSceneryCasterPrimitives,PERSPECTIVE_TRACK_LINE_WIDTH} from './track-model';
 import {addUpgradedCarStudyLights,setUpgradedCarBrakeLights,setUpgradedCarGroundContactPanels} from './upgraded-car-materials';
 import {createCompleteUpgradedCarModel} from './complete-upgraded-car-model';
 import {createUpgradedCarWheelMotion} from './upgraded-car-wheels';
@@ -108,6 +108,7 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
               road.userData.originalTrackTile=[x,29-z];
               road.position.set(...origin);road.rotation.y=trackRenderPlacement(part,x,z,0,0).rotation;
               const composite=upgradedCompositeShadowShapes(shape,shapeName),patternedShadow=upgradedSceneryUsesPatternedShadow(shapeName);
+              if(composite)markTrackSceneryCasterPrimitives(road,shape,composite.caster);
               road.userData.retroPatternedShadow=patternedShadow;
               road.traverse(node=>{if(node instanceof THREE.Mesh)node.userData.retroPatternedShadow=patternedShadow;});
               const shadow=composite?{source:road,caster:trackModel(composite.caster,paint),receiver:trackModel(composite.receiver,paint),patterned:patternedShadow}:undefined;

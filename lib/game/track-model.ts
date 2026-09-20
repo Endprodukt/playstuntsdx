@@ -21,6 +21,22 @@ const TERRAIN_SURFACE_MATERIALS=new Set([101,102]);
  * screen-space strip, this is measured in track-world units so lines grow
  * nearby and recede naturally with perspective at every internal resolution. */
 export const PERSPECTIVE_TRACK_LINE_WIDTH=4.5;
+/** Mark source primitives which cast the shared scenery shadow but must not
+ * receive it themselves. Composite tiles still leave their road/median faces
+ * unmarked, so the same tree/building silhouette can land on the ground. */
+export function markTrackSceneryCasterPrimitives(group:THREE.Group,shape:Shape,caster:Shape){
+ const casterPrimitives=new Set(caster.primitives),marked=new Set(shape.primitives.flatMap((primitive,index)=>casterPrimitives.has(primitive)?[index]:[]));
+ if(!marked.size)return;
+ group.traverse(object=>{
+  if(!(object instanceof THREE.Mesh))return;
+  const geometry=object.geometry,ranges=geometry.userData.originalPrimitiveRanges as {primitive:number;start:number;count:number}[]|undefined;
+  if(!ranges||geometry.hasAttribute('originalSceneryCaster'))return;
+  const values=new Float32Array(geometry.getAttribute('position').count);
+  for(const range of ranges)if(marked.has(range.primitive))values.fill(1,range.start,range.start+range.count);
+  geometry.setAttribute('originalSceneryCaster',new THREE.Float32BufferAttribute(values,1));
+ });
+}
+
 export function createTrackModel(shape: Shape,trackMaterials:TrackMaterials,paint=0,terrainUnderlay=false,worldLineWidth=0) {
   const patternMaterials:number[]=[],curbPriorities:number[]=[],roadSurfaces:number[]=[],terrainSurfaces:number[]=[],roadMarkings:number[]=[];
   const markingSurfaces=roadMarkingSurfaces(shape,paint);
