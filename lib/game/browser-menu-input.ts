@@ -73,7 +73,13 @@ export function createBrowserMenuInput(element:HTMLCanvasElement,options:{joysti
  const releaseCapture=()=>{const id=capturedPointer;capturedPointer=undefined;if(id!==undefined&&element.hasPointerCapture?.(id))element.releasePointerCapture(id);};
  let mouseBounds=[0,319,0,199];
  const leave=(event:PointerEvent)=>{if(disposed)return;if(capturedPointer===event.pointerId)capturedPointer=undefined;blockedButtons|=buttons|(event.buttons&7);if(active&&buttons)pointerEdges.push({x,y,buttons:0});buttons=0;if(active&&element.hasPointerCapture?.(event.pointerId))element.releasePointerCapture(event.pointerId);};
- const pointer=(event:PointerEvent)=>{if(disposed)return;const rect=element.getBoundingClientRect();const outside=event.clientX<rect.left||event.clientX>=rect.left+rect.width||event.clientY<rect.top||event.clientY>=rect.top+rect.height;x=Math.max(mouseBounds[0],Math.min(mouseBounds[1],Math.floor((event.clientX-rect.left)*320/rect.width)));y=Math.max(mouseBounds[2],Math.min(mouseBounds[3],Math.floor((event.clientY-rect.top)*200/rect.height)));if(outside){leave(event);return;}blockedButtons&=event.buttons&7;const next=(event.buttons&7)&~blockedButtons;if(active&&next!==buttons)pointerEdges.push({x,y,buttons:next});buttons=next;};
+ const pointer=(event:PointerEvent)=>{if(disposed)return;const rect=element.getBoundingClientRect();
+  // Enhanced widescreen keeps the original replay chrome in a centred 4:3
+  // presentation. Its pointer targets must use that same fixed presentation
+  // rectangle instead of stretching across the wider 3D FOV.
+  const fixed43=element.dataset.originalInput43==='true',inputWidth=fixed43?Math.min(rect.width,rect.height*4/3):rect.width,inputLeft=rect.left+(rect.width-inputWidth)/2;
+  const outside=event.clientX<inputLeft||event.clientX>=inputLeft+inputWidth||event.clientY<rect.top||event.clientY>=rect.top+rect.height;
+  x=Math.max(mouseBounds[0],Math.min(mouseBounds[1],Math.floor((event.clientX-inputLeft)*320/inputWidth)));y=Math.max(mouseBounds[2],Math.min(mouseBounds[3],Math.floor((event.clientY-rect.top)*200/rect.height)));if(outside){leave(event);return;}blockedButtons&=event.buttons&7;const next=(event.buttons&7)&~blockedButtons;if(active&&next!==buttons)pointerEdges.push({x,y,buttons:next});buttons=next;};
  const down=(event:PointerEvent)=>{pointer(event);if(!active)return;event.preventDefault();element.focus({preventScroll:true});element.setPointerCapture(event.pointerId);capturedPointer=event.pointerId;};
  const wheel=(event:WheelEvent)=>{if(disposed||!active||event.deltaY===0)return;pendingWheel=event.deltaY<0?-1:1;};
   const contextMenu=(event:MouseEvent)=>{if(active)event.preventDefault();};
