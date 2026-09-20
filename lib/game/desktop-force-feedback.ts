@@ -258,7 +258,6 @@ export function stopDesktopForceFeedback() {
   clearForceFeedbackTelemetry();
   latestForce = 0;
   ffbActive = false;
-  replayActive = false;
   const core = tauriCore();
   if (core) void core.invoke<void>('native_stop_force_feedback').catch(() => {});
 }
