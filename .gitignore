@@ -34,5 +34,7 @@ src-tauri/target/
 # Local replay-analysis samples and generated datasets
 training/replays/input/*
 !training/replays/input/.gitkeep
+training/replays/cars/*
+!training/replays/cars/.gitkeep
 training/replays/output/*
 !training/replays/output/.gitkeep

@@ -7,13 +7,15 @@ import {createServer} from 'vite';
 const repoRoot=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const defaultInput=join(repoRoot,'training','replays','input');
 const defaultOutput=join(repoRoot,'training','replays','output');
+const defaultCars=join(repoRoot,'training','replays','cars');
 
 function args(){
- const result={input:defaultInput,output:defaultOutput,game:null};
+ const result={input:defaultInput,output:defaultOutput,cars:defaultCars,game:null};
  for(let i=2;i<process.argv.length;i++){
   const arg=process.argv[i];
   if(arg==='--input')result.input=resolve(process.argv[++i]??'');
   else if(arg==='--output')result.output=resolve(process.argv[++i]??'');
+  else if(arg==='--cars')result.cars=resolve(process.argv[++i]??'');
   else if(arg==='--game')result.game=resolve(process.argv[++i]??'');
   else throw Error('Unknown option: '+arg);
  }
@@ -46,6 +48,19 @@ async function findCaseInsensitiveFile(root,name){
   return match?join(root,match.name):null;
  }catch{return null;}
 }
+async function findCaseInsensitiveFileRecursive(root,name,depth=3){
+ const direct=await findCaseInsensitiveFile(root,name);if(direct)return direct;
+ if(depth<=0)return null;
+ try{
+  const entries=await readdir(root,{withFileTypes:true});
+  for(const entry of entries){
+   if(!entry.isDirectory())continue;
+   const found=await findCaseInsensitiveFileRecursive(join(root,entry.name),name,depth-1);
+   if(found)return found;
+  }
+ }catch{}
+ return null;
+}
 function decodeCarSimulationResource(bytes,id){
  if(bytes.length<14)throw Error(`CAR${id}.RES is too short`);
  const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),size=view.getUint32(0,true),count=view.getUint16(4,true),base=6+8*count;
@@ -68,9 +83,16 @@ function decodeCarSimulationResource(bytes,id){
  };
  return {tuning,simulation};
 }
-async function loadPreparedCar(gameRoot,id){
- for(const directory of ['setup-media','original-resources']){
-  const path=await findCaseInsensitiveFile(join(gameRoot,directory),`CAR${id}.RES`);
+async function loadPreparedCar(gameRoot,carRoot,id){
+ const filename=`CAR${id}.RES`;
+ const roots=[
+  carRoot,
+  join(repoRoot,'Custom Cars'),
+  join(gameRoot,'setup-media'),
+  join(gameRoot,'original-resources'),
+ ];
+ for(const root of roots){
+  const path=await findCaseInsensitiveFileRecursive(root,filename);
   if(!path)continue;
   const decoded=decodeCarSimulationResource(new Uint8Array(await readFile(path)),id);
   return {...decoded,source:path};
@@ -114,7 +136,7 @@ const row=s=>[
 
 async function main(){
  const options=args(),gameRoot=await findGameRoot(options.game);
- await mkdir(options.output,{recursive:true});
+ await mkdir(options.output,{recursive:true});await mkdir(options.cars,{recursive:true});
  const files=(await readdir(options.input,{withFileTypes:true})).filter(x=>x.isFile()&&/\.rpl$/i.test(x.name)).map(x=>x.name).sort();
  if(!files.length){console.log('No .RPL files found in '+options.input);return;}
  const vite=await createServer({root:repoRoot,configFile:false,appType:'custom',server:{middlewareMode:true,watch:{ignored:['**/.vs/**','**/.git/**','**/node_modules/**','**/training/replays/**','**/dist/**','**/dist-desktop/**','**/src-tauri/target/**']}},logLevel:'error'});
@@ -129,7 +151,7 @@ async function main(){
    json(gameRoot,'track-objects'),json(gameRoot,'route-point-vectors'),json(gameRoot,'route-speed-indices'),
    json(gameRoot,'collision-planes'),json(gameRoot,'collision-walls')
   ]);
-  const manifest={gameRoot,replays:[]};
+  const manifest={gameRoot,carRoot:options.cars,replays:[]};
   for(const name of files){
    const path=join(options.input,name),bytes=new Uint8Array(await readFile(path)),replay=decodeOriginalReplayFile(bytes),id=carId(replay.header);
    const folder=join(options.output,basename(name,extname(name)));await mkdir(folder,{recursive:true});
@@ -140,14 +162,14 @@ async function main(){
    let tuning=assets.cars.find(car=>String(car.id).toUpperCase()===id.toUpperCase()),simulation,tuningSource='assets.json';
    if(tuning?.rawSimulation)simulation=Uint8Array.from(Buffer.from(tuning.rawSimulation,'hex'));
    else{
-    const prepared=await loadPreparedCar(gameRoot,id);
+    const prepared=await loadPreparedCar(gameRoot,options.cars,id);
     if(prepared){tuning=prepared.tuning;simulation=prepared.simulation;tuningSource=prepared.source;}
    }
    if(!tuning||!simulation){
-    const summary={file:name,status:'skipped',carId:id,reason:`Car ${id} is not installed in the prepared game data`};
+    const summary={file:name,status:'skipped',carId:id,reason:`Missing CAR${id}.RES. Put it in ${options.cars}`};
     await writeFile(join(folder,'simulation-summary.json'),JSON.stringify(summary,null,2)+'\n','utf8');
     manifest.replays.push(summary);
-    console.log(`${name}: skipped — car ${id} is not installed`);
+    console.log(`${name}: skipped — missing CAR${id}.RES (drop it into ${options.cars})`);
     continue;
    }
    const session=createNativeReplaySession({startup,packedOpponent:new Uint8Array(),simulation,tuning,records,vectors,samples,objects,points,indices,planes,walls:wallsFile.walls},id,bytes);

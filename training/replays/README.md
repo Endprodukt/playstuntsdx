@@ -10,6 +10,12 @@ This directory is the staging area for offline Stunts replay analysis. Replay fi
 
 The raw probe creates `summary.json`, `frames.csv`, `track.csv` and `terrain.csv`. Both known Stunts layouts are supported: the older 24-byte layout and the common 26-byte layout that stores playback frequency and frame count separately.
 
+## Custom cars
+
+For replay-only training data, place any required custom-car physics files in `training/replays/cars/`. The filename must match the four-character replay car ID: for example replay ID `OXIA` requires `CAROXIA.RES`. Only the `.RES` file is needed for headless physics; graphics files are not required.
+
+The simulator searches, in order: `training/replays/cars/`, the repo's `Custom Cars/` directory, the prepared game's `setup-media/`, and `original-resources/`. Subfolders are searched too. You can override the replay-car folder with `--cars`.
+
 ## 2. Headless physics probe
 
 Run:
@@ -24,6 +30,10 @@ The simulator replays the recorded human controls through PlayStunts DX's recons
 If your prepared game directory lives elsewhere:
 
 `npm run replay:simulate -- --game "C:\\full\\path\\to\\game"`
+
+For a separate custom-car archive:
+
+`npm run replay:simulate -- --cars "D:\\StuntsCars"`
 
 For every supported replay it adds:
 
