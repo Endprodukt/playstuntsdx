@@ -213,18 +213,25 @@ fn hash_content_tree(root: &Path, directory: &Path, hasher: &mut DefaultHasher) 
             0u8.hash(hasher);
             hash_content_tree(root, &path, hasher)?;
         } else if file_type.is_file() {
+            // Startup only needs to know whether an input changed since the
+            // last prepared runtime. Hashing every byte of every custom car,
+            // track and High Res file made an unchanged startup unnecessarily
+            // expensive. File identity + size + modification time gives us a
+            // cheap change fingerprint without rereading the payload.
             1u8.hash(hasher);
-            let mut file = fs::File::open(&path)
-                .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
-            let mut buffer = [0u8; 64 * 1024];
-            loop {
-                let count = file
-                    .read(&mut buffer)
-                    .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
-                if count == 0 {
-                    break;
-                }
-                hasher.write(&buffer[..count]);
+            let metadata = entry
+                .metadata()
+                .map_err(|error| format!("Could not inspect {}: {error}", path.display()))?;
+            metadata.len().hash(hasher);
+            match metadata.modified() {
+                Ok(modified) => match modified.duration_since(std::time::UNIX_EPOCH) {
+                    Ok(age) => {
+                        age.as_secs().hash(hasher);
+                        age.subsec_nanos().hash(hasher);
+                    }
+                    Err(_) => 0u8.hash(hasher),
+                },
+                Err(_) => 0u8.hash(hasher),
             }
         }
     }
@@ -234,7 +241,7 @@ fn hash_content_tree(root: &Path, directory: &Path, hasher: &mut DefaultHasher) 
 fn runtime_content_state(gamedata: &Path) -> Result<String, String> {
     let root = application_root()?;
     let mut hasher = DefaultHasher::new();
-    "playstuntsdx-runtime-content-v2".hash(&mut hasher);
+    "playstuntsdx-runtime-content-v3-metadata".hash(&mut hasher);
     "Gamedata".hash(&mut hasher);
     hash_content_tree(gamedata, gamedata, &mut hasher)?;
     for name in ["Custom Cars", "Custom Tracks", "High Res"] {
