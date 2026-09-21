@@ -36,7 +36,7 @@ import {saveNativeReplay} from './native-replay-save.ts';
 import type {createNativeRaceSession} from './native-race-session.ts';
 import {runNativeMenuCoordinator} from './native-menu-coordinator.ts';
 import {runNativeMainMenuSelection} from './native-main-menu.ts';
-import {createModernMainMenu,type ModernMainMenuAction} from './modern-main-menu.ts';
+import {createModernMainMenu,preloadModernMainMenuBackground,drawModernMainMenuBackground,type ModernMainMenuAction} from './modern-main-menu.ts';
 import {confirmBrowserOpeningExit} from './browser-opening-exit.ts';
 import {originalOpeningExitDecision} from './opening-exit-flow.ts';
 import {restoreOriginalMainMenuPixels} from './main-menu-raster.ts';
@@ -123,6 +123,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  ]);
 
  const mainMenuArt=await binary('main-menu-art.bin');
+ const modernMainBackground=!options.displayMode&&enhancedMenuEnabled()?await preloadModernMainMenuBackground().catch(()=>undefined):undefined;
  const highResMainMenu=new Image();let highResMainMenuReady=false,enhancedTextures=enhancedBackgroundEnabled();
  const syncEnhancedTextures=()=>{enhancedTextures=enhancedBackgroundEnabled();options.graphics?.refresh?.();};
  window.addEventListener(ENHANCED_TEXTURES_EVENT,syncEnhancedTextures);
@@ -604,7 +605,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   show('main');
   if(!options.displayMode&&enhancedMenuEnabled()){
    focusBrowserGameCanvas(canvas);
-   const modern=createModernMainMenu({canvas,assets:options.assets,configuration,track,palette,materialIndices:materials.indices});
+   const modern=createModernMainMenu({canvas,assets:options.assets,configuration,track,palette,materialIndices:materials.indices,backgroundArt:modernMainBackground});
    const actions:ModernMainMenuAction[]=[];
    let focus:ModernMainMenuAction='none',dialogOpen=false;
    const select=(action:ModernMainMenuAction)=>action==='drive'?0:action==='car'?1:action==='opponent'?2:action==='track'?3:action==='options'?4:action==='editor'?-3:action==='replays'?-4:undefined;
@@ -880,5 +881,6 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    const owner=alternate.owner,displayHost={...results,present:()=>{pixels.set(alternate.pixels());paint(alternate.palette,undefined,alternate.owner);},editPath:(path:string,length:number,timeout:number,field:{x:number;y:number})=>editNativeDisplayPath({memory:owner.memory,d:owner.d,mode:owner.mode,drawing:owner.drawing,present:()=>{pixels.set(alternate.pixels());paint(alternate.palette,undefined,alternate.owner);},counters:input.counters,keyboard:input.keyboard},path,length,timeout,field,0xe800)};
    return runNativeRaceResults(displayHost,state,createNativeDisplayResultsPresentation(alternate,displayHost,state));
   },
+  prepareMainMenuTransition(){if(modernMainBackground)drawModernMainMenuBackground(canvas,modernMainBackground);else{context.setTransform(1,0,0,1,0,0);context.fillStyle='#090909';context.fillRect(0,0,canvas.width,canvas.height);}},
   async run(){focusBrowserGameCanvas(canvas);return runNativeMenuCoordinator({configuration,main:selectMain,car:()=>car(configuration,0),opponent:()=>opponent(configuration),track:selectTrack,editor:editTrack,replay:selectReplayFromMain,options:selectOptions});}};
 }
