@@ -1,5 +1,5 @@
 import {bundledTrackReplays} from './bundled-track-replays.ts';
-import {createUpgradedCarMenu} from './upgraded-car-menu';
+import {createModernCarShowroom,createUpgradedCarMenu} from './upgraded-car-menu';
 import {createOriginalCarMenuModel} from './car-menu-model.ts';
 import type {createUpgradedRaceScene} from './upgraded-race-scene';
 export interface BrowserGraphicsSwitch {enabled:boolean;chaseCamera?:0|1|2|3;selectOriginalCamera?:()=>void;refresh?:()=>void;notice?:(message:string)=>void;performanceFrame?:(at:number)=>void;resetPerformance?:()=>void;setPerformancePaused?:(paused:boolean)=>void;}
@@ -205,49 +205,22 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   const carHost:NativeCarMenuHost={...host,configuration:config,opponent,opponentArt:opponent?opponentArt.resources['opp'+opponent]:undefined,baseline,cars:options.assets.cars as unknown as NativeCarMenuHost['cars'],art:carArt.resources,descriptions:carArt.descriptions,bank};
   if(enhancedMenuEnabled()){
    const actions:ModernCarMenuAction[]=[];
-   let modernShowroom:ReturnType<typeof createUpgradedCarMenu>|undefined,modernShowroomFallback=false;
+   let modernShowroom:ReturnType<typeof createModernCarShowroom>|undefined;
    const modernPreview=async(car:NativeMenuCar,paint:number)=>{
-    const bankBytes=await bank(car.id),target=new Uint8Array(65536);
-    let modelMemory:Uint8Array|undefined;
-    const model=createOriginalCarMenuModel(baseline,bankBytes,carArt.resources.stop,(memory)=>{modelMemory=memory;});
-    const paintCount=Math.max(1,model.paintCount|0),safePaint=Math.max(0,Math.min(paint,paintCount-1));
-    model.render(target,0,safePaint);
-    if(!modelMemory)return null;
-    if(!modernShowroom){
-     try{modernShowroom=createUpgradedCarMenu(palette,materials.indices,{environment:!modernShowroomFallback});}
-     catch(reason){
-      console.warn('[Modern Car Select] Showroom renderer creation failed; using plain 3D preview:',reason);
-      modernShowroomFallback=true;
-      modernShowroom=createUpgradedCarMenu(palette,materials.indices,{environment:false});
-     }
-    }
-    // The original showroom projection is authored for the 320x200 Stunts
-    // viewport. Keep that 1.6:1 render aspect here; rendering it into a wider
-    // target stretches the car before the menu compositor ever sees it.
-    const snapshot=document.createElement('canvas');
-    // The menu is already a fixed 1280x800 backing surface. Render the showroom
-    // at that actual UI resolution instead of tying its sharpness to the race
-    // internal-resolution setting (1x could otherwise be enlarged and blurred).
-    snapshot.width=canvas.width;snapshot.height=canvas.height;
-    const snapshotContext=snapshot.getContext('2d');if(!snapshotContext)return null;
-    const memory=modelMemory;
+    const shapes=options.assets.shapes['ST'+car.id],shape=shapes?.car0,raceShape=shapes?.car1;
+    if(!shape)return null;
+    const paintCount=Math.max(1,shape.paintCount|0),safePaint=Math.max(0,Math.min(paint,paintCount-1));
+    modernShowroom??=createModernCarShowroom(palette,materials.indices);
+    // Render at the preview's real backing-store size. The WebGL renderer then
+    // applies the same device-pixel-ratio supersampling as the website showroom,
+    // and the menu performs only the final 2x->display downsample.
+    const previewWidth=Math.max(1,Math.round(canvas.width*218/320));
+    const previewHeight=Math.max(1,Math.round(canvas.height*92/200));
     const renderAngle=(angle:number,pitch=0,zoom=1)=>{
-     if(snapshot.width!==canvas.width)snapshot.width=canvas.width;
-     if(snapshot.height!==canvas.height)snapshot.height=canvas.height;
-     new DataView(memory.buffer,memory.byteOffset,memory.byteLength).setInt16(0x2d1a0+0xb00e,angle&1023,true);
-     let rendered:HTMLCanvasElement;
-     try{rendered=modernShowroom!.draw(memory,snapshot.width,snapshot.height,{pitch,zoom});}
-     catch(reason){
-      if(modernShowroomFallback)throw reason;
-      console.warn('[Modern Car Select] Showroom environment failed; falling back to plain 3D preview:',reason);
-      modernShowroom?.close();modernShowroomFallback=true;
-      modernShowroom=createUpgradedCarMenu(palette,materials.indices,{environment:false});
-      rendered=modernShowroom.draw(memory,snapshot.width,snapshot.height,{pitch,zoom});
-     }
-     snapshotContext.clearRect(0,0,snapshot.width,snapshot.height);snapshotContext.imageSmoothingEnabled=true;snapshotContext.imageSmoothingQuality='high';snapshotContext.drawImage(rendered,0,0,snapshot.width,snapshot.height);
+     modernShowroom!.draw(shape,raceShape,safePaint,previewWidth,previewHeight,{angle,pitch,zoom});
     };
-    renderAngle(0);
-    return {canvas:snapshot,paintCount,render:renderAngle};
+    const rendered=modernShowroom.draw(shape,raceShape,safePaint,previewWidth,previewHeight,{angle:0,pitch:0,zoom:1});
+    return {canvas:rendered,paintCount,render:renderAngle};
    };
    const modern=createEnhancedCarMenuPresentation({canvas,palette,preview:modernPreview,paintColours:car=>{const shape=options.assets.shapes['ST'+car.id]?.car0;return shape?showroomPaintColours(shape,materials):[];}});
    const pickZip=()=>new Promise<File|null>(resolve=>{
