@@ -14,6 +14,7 @@ export type NativeMenuTransition={type:'intro'|'exit'}|{type:'drive'|'replay'|'d
 export async function runNativeMenuCoordinator(host:NativeMenuServices):Promise<NativeMenuTransition>{
  for(;;){
   const main=await host.main(),selection=typeof main==='number'?main:main.selection;
+  if(selection===-2)return {type:'exit'};
   if(selection===-1)return {type:'intro'};
   if(selection===0)return {type:typeof main!=='number'&&main.idleExpired?'demo':'drive',configuration:host.configuration.slice(0,24)};
   if(selection===1)await host.car();
