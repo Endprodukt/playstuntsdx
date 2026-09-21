@@ -764,32 +764,36 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    const display=()=>{pixels.set(runtime.pixels);show('race');paint(alternate?.palette,undefined,alternate?.owner);};
    const alternateDialogPresent=()=>{if(!alternate){paint();return;}pixels.set(alternate.display.pixels());show('race');paint(alternate.palette,undefined,alternate.owner);};
    const control=(mode:number,start:number,current:number)=>{runtime.controlReplay(mode,start,current);if(mode===1)presentWorld();};
-   let dialogRefresh:(()=>void)|undefined,activeDialogBounds:readonly number[]|null=null;
+   let dialogRefresh:(()=>void)|undefined,activeDialogBounds:readonly number[]|null=null,dialogBackdrop:HTMLCanvasElement|undefined;
    const presentRaceDialog=(bounds:readonly number[]|null,presentSource:()=>void=()=>paint())=>{
     activeDialogBounds=bounds;
-    if(!bounds){dialogRefresh=undefined;graphics?.setPerformancePaused?.(false);presentWorld();return;}
+    if(!bounds){dialogRefresh=undefined;dialogBackdrop=undefined;graphics?.setPerformancePaused?.(false);presentWorld();return;}
     graphics?.setPerformancePaused?.(true);
+    if(!dialogBackdrop){
+     dialogBackdrop=document.createElement('canvas');dialogBackdrop.width=canvas.width;dialogBackdrop.height=canvas.height;
+     dialogBackdrop.getContext('2d')!.drawImage(canvas,0,0);
+    }
     const redraw=()=>{
-     // If enhanced graphics are switched off while a race dialog is open,
-     // restore the desktop canvas to its normal 4:3 presentation before the
-     // native 320x200 frame is painted. Otherwise the previous widescreen FOV
-     // CSS remains active for this refresh and stretches the replay/menu frame.
+     // Build the native dialog into the retained 320x200 source, then restore
+     // the exact enhanced frame that was visible when the dialog opened.
+     // Only the dialog rectangle is composited back. This prevents the stale
+     // native replay/main-menu framebuffer from appearing behind the options
+     // dialog and keeps hover redraws visually stable.
      if(graphics&&!graphics.enabled)resetRaceCanvas();
-     // Keep the source menu opaque, including black pixels which may also
-     // match the source background. Only its rectangle covers the 3D scene.
      presentSource();
-     if(graphics?.enabled&&upgraded&&!failed){
-      try{if(upgraded.draw(canvas)){
-       const [left,right,top,bottom]=bounds,sy=canvas.height/200;
-       const displayAspect=enhancedRaceAspect(),wideFactor=Math.max(1,displayAspect/(4/3));
-       const nativeWidth=canvas.width/wideFactor,nativeX=(canvas.width-nativeWidth)/2,sx=nativeWidth/320;
-       context.imageSmoothingEnabled=false;
-       context.drawImage(surface,left,top,right-left,bottom-top,nativeX+left*sx,top*sy,(right-left)*sx,(bottom-top)*sy);
-      }}catch{failed=true;paint();}
+     if(graphics?.enabled&&upgraded&&!failed&&dialogBackdrop){
+      context.setTransform(1,0,0,1,0,0);
+      context.imageSmoothingEnabled=true;
+      context.drawImage(dialogBackdrop,0,0,canvas.width,canvas.height);
+      const [left,right,top,bottom]=bounds,sy=canvas.height/200;
+      const displayAspect=enhancedRaceAspect(),wideFactor=Math.max(1,displayAspect/(4/3));
+      const nativeWidth=canvas.width/wideFactor,nativeX=(canvas.width-nativeWidth)/2,sx=nativeWidth/320;
+      context.imageSmoothingEnabled=false;
+      context.drawImage(surface,left,top,right-left,bottom-top,nativeX+left*sx,top*sy,(right-left)*sx,(bottom-top)*sy);
      }
      dialogRefresh=redraw;if(graphics)graphics.refresh=redraw;
     };
-   redraw();
+    redraw();
    };
    const displayDialogs=(resources:Record<string,ReadonlyArray<number>>)=>{
     if(!alternate){
