@@ -162,6 +162,10 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  const selectGlobalReplay=async()=>pickModernReplay(canvas,await globalReplayChoices());
  const resetRaceCanvas=()=>{canvas.removeAttribute('data-enhanced-widescreen');canvas.style.removeProperty('--dx-race-aspect');if(canvas.width!==nativeCanvasWidth)canvas.width=nativeCanvasWidth;if(canvas.height!==nativeCanvasHeight)canvas.height=nativeCanvasHeight;};
  const drawing=surface.getContext('2d')!,image=drawing.createImageData(320,200),pixels=new Uint8Array(65536),input=createBrowserMenuInput(canvas,{joystickEnabled:()=>activeRace?!!activeRace.session.state.memory[0x2d1a0+0x4602]:drivingSettings.joystick,drivingBindings:()=>activeRace?activeRace.session.state.memory.subarray(0x2d1a0+0x430a,0x2d1a0+0x4314):[57,28,71,72,73,77,81,80,79,75],onPoll:()=>{if(options.signal?.aborted)throw new DOMException('Native menu closed','AbortError');return racePoll?.();}}),palette=materials.palette;
+ // Menu input is born inactive. The opening/title input owns the canvas until
+ // the caller explicitly hands control to the menus. This prevents the key or
+ // mouse click used to skip Mindscape from leaking into the first menu.
+ input.setActive(false);
  const readReplayInput=async(memory:()=>Uint8Array,delta?:number|(()=>number))=>{
   const key=await input.readMemory(memory,0x2d1a0,delta),m=memory(),view=new DataView(m.buffer,m.byteOffset,m.byteLength),at=0x2d1a0+0x9ad4;
   view.setUint16(at,view.getUint16(at,true)|input.replayActivationButtons(),true);
@@ -602,32 +606,54 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    focusBrowserGameCanvas(canvas);
    const modern=createModernMainMenu({canvas,assets:options.assets,configuration,track,palette,materialIndices:materials.indices});
    const actions:ModernMainMenuAction[]=[];
-   let focus:ModernMainMenuAction='drive';
+   let focus:ModernMainMenuAction='none',dialogOpen=false;
    const select=(action:ModernMainMenuAction)=>action==='drive'?0:action==='car'?1:action==='opponent'?2:action==='track'?3:action==='options'?4:undefined;
    const pointerDown=(event:PointerEvent)=>{
-    if(event.button!==0)return;
+    if(dialogOpen||event.button!==0)return;
     const action=modern.actionAt(event);if(action==='none')return;
     event.preventDefault();event.stopImmediatePropagation();actions.push(action);
    };
-   const pointerMove=(event:PointerEvent)=>modern.hoverAt(event);
-   const pointerLeave=()=>modern.clearHover();
+   const pointerMove=(event:PointerEvent)=>{if(!dialogOpen)modern.hoverAt(event);};
+   const pointerLeave=()=>{if(!dialogOpen)modern.clearHover();};
+   const requestExit=async()=>{
+    dialogOpen=true;modern.setSuspended(true);
+    try{
+     const answer=await confirmBrowserOpeningExit(canvas,new AbortController().signal);
+     const exit=originalOpeningExitDecision(27,answer)==='exit';
+     await input.release();
+     if(exit&&tauriCore)await tauriCore.invoke<void>('exit_game');
+     return exit;
+    }finally{
+     dialogOpen=false;modern.setSuspended(false);focusBrowserGameCanvas(canvas);
+    }
+   };
    canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerleave',pointerLeave,true);
-   modern.setFocus(focus);
+   modern.setFocus('none');
    try{
     for(;;){
      const sample=await input.read(),clicked=actions.shift();
-     if(clicked){const selected=select(clicked);if(selected!==undefined)return {selection:selected,idleExpired:0};}
+     if(clicked){
+      if(clicked==='exit'){
+       if(await requestExit())return {selection:-2,idleExpired:0};
+       continue;
+      }
+      const selected=select(clicked);if(selected!==undefined)return {selection:selected,idleExpired:0};
+     }
      const key=sample.key??0;
      if(key===27){
-      const answer=await confirmBrowserOpeningExit(canvas,new AbortController().signal);
-      if(originalOpeningExitDecision(27,answer)==='exit'){
-       if(tauriCore)await tauriCore.invoke<void>('exit_game');else window.close();
-      }
-      await input.release();focusBrowserGameCanvas(canvas);modern.render();continue;
+      if(await requestExit())return {selection:-2,idleExpired:0};
+      continue;
      }
      if(key===0x4800||key===0x4b00){focus=modern.nextFocus(-1);continue;}
      if(key===0x5000||key===0x4d00){focus=modern.nextFocus(1);continue;}
-     if(key===13||key===32){const selected=select(focus);if(selected!==undefined)return {selection:selected,idleExpired:0};}
+     if(key===13||key===32){
+      if(focus==='none'){focus='drive';modern.setFocus(focus);continue;}
+      if(focus==='exit'){
+       if(await requestExit())return {selection:-2,idleExpired:0};
+       continue;
+      }
+      const selected=select(focus);if(selected!==undefined)return {selection:selected,idleExpired:0};
+     }
     }
    }finally{
     canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerleave',pointerLeave,true);modern.close();
