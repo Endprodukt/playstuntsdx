@@ -2,9 +2,10 @@ import type {Shape} from './types.ts';
 
 // The source raster models deliberately overlap neighbouring tiles by one to
 // seven world units. That hid integer-raster cracks, but two intersecting
-// zero-thickness planes expose a wedge when the modern camera looks along a
-// hill crest. Only the straight hill chain is normalized here: both road and
-// terrain then terminate at the shared +/-512 tile boundary.
+// zero-thickness planes expose a wedge or hairline when the modern camera
+// looks along a tile join. Normalize only known continuous road/terrain and
+// elevated bridge chains so adjoining modules terminate at the shared +/-512
+// tile boundary; unrelated scenery keeps its authored overlap untouched.
 const NORMALIZED_AXES:Readonly<Record<string,readonly number[]>>={
  'GAME1.road':[2],
  'GAME1.zroa':[2],
