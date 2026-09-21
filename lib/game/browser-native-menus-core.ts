@@ -228,7 +228,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
      if(snapshot.height!==canvas.height)snapshot.height=canvas.height;
      new DataView(memory.buffer,memory.byteOffset,memory.byteLength).setInt16(0x2d1a0+0xb00e,angle&1023,true);
      const rendered=modernShowroom!.draw(memory,snapshot.width,snapshot.height,{pitch,zoom});
-     snapshotContext.clearRect(0,0,snapshot.width,snapshot.height);snapshotContext.drawImage(rendered,0,0);
+     snapshotContext.clearRect(0,0,snapshot.width,snapshot.height);snapshotContext.imageSmoothingEnabled=true;snapshotContext.imageSmoothingQuality='high';snapshotContext.drawImage(rendered,0,0,snapshot.width,snapshot.height);
     };
     renderAngle(0);
     return {canvas:snapshot,paintCount,render:renderAngle};
