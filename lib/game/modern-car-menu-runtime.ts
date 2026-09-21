@@ -60,6 +60,7 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
  };
 
  const activate=async(action:ModernCarMenuAction):Promise<'done'|undefined>=>{
+  if(action.type!=='sound'&&soundOpen)setSoundOpen(false);
   if(action.type==='selector'){
    if(soundOpen)setSoundOpen(false);focus={type:'selector'};open=!open;display.setCars(cars,selected,open);display.setFocus(focus);display.render();return;
   }
