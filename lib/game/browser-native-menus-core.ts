@@ -316,9 +316,9 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     if(action){event.preventDefault();event.stopImmediatePropagation();actions.push(action);return;}
     if(modern.scrollDropdown(event.deltaY)){event.preventDefault();event.stopImmediatePropagation();}
    };
-   canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('pointerleave',pointerLeave,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});window.addEventListener('keydown',escapeKey,true);
+   canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('pointerleave',pointerLeave,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
    try{return await runModernCarMenu(modernHost,modern);}finally{
-    canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerup',pointerUp,true);canvas.removeEventListener('pointercancel',pointerUp,true);canvas.removeEventListener('pointerleave',pointerLeave,true);canvas.removeEventListener('wheel',wheel,true);window.removeEventListener('keydown',escapeKey,true);
+    canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerup',pointerUp,true);canvas.removeEventListener('pointercancel',pointerUp,true);canvas.removeEventListener('pointerleave',pointerLeave,true);canvas.removeEventListener('wheel',wheel,true);
     modernShowroom?.close();modernShowroom=undefined;modernShowroomMounted=false;canvas.style.background=menuCanvasBackground;canvas.style.zIndex=menuCanvasZIndex;
    }
   }
@@ -473,7 +473,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     event.preventDefault();event.stopImmediatePropagation();
     modernActions.push({type:'back'});
    };
-   canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('pointerleave',pointerLeave,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
+   canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('pointerleave',pointerLeave,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});window.addEventListener('keydown',escapeKey,true);
 
    const pickTrackFile=()=>new Promise<File|null>(resolve=>{
     const picker=document.createElement('input');picker.type='file';picker.accept='.trk,application/octet-stream';picker.style.display='none';
@@ -506,7 +506,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    }};
    pixels.fill(0);
    try{return await runModernTrackMenu(modernHost,enhanced);}finally{
-    canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerup',pointerUp,true);canvas.removeEventListener('pointercancel',pointerUp,true);canvas.removeEventListener('pointerleave',pointerLeave,true);canvas.removeEventListener('wheel',wheel,true);
+    canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerup',pointerUp,true);canvas.removeEventListener('pointercancel',pointerUp,true);canvas.removeEventListener('pointerleave',pointerLeave,true);canvas.removeEventListener('wheel',wheel,true);window.removeEventListener('keydown',escapeKey,true);
     if(options.graphics?.refresh===presentEnhanced)options.graphics.refresh=undefined;
    }
   }
