@@ -104,6 +104,10 @@ async function reloadForceFeedbackConfig() {
   }
 }
 
+export async function reloadDesktopForceFeedbackConfig() {
+  await reloadForceFeedbackConfig();
+}
+
 function ensureForceFeedbackConfig() {
   if (!configLoaded && !configLoading) void reloadForceFeedbackConfig();
 }
