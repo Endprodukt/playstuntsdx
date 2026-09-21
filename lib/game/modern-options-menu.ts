@@ -9,7 +9,7 @@ import {
  type EnhancedChaseCameraPresetLevel,type EnhancedChaseCameraSetting,
 } from './enhanced-chase-camera-settings.ts';
 
-type Tab='gameplay'|'video'|'controls';
+type Tab='gameplay'|'video'|'sound'|'controls';
 type FocusZone='tabs'|'rows'|'footer';
 type FooterAction='replay'|'exit'|'done';
 type TauriGlobal={core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}};
@@ -62,8 +62,8 @@ const inputDevices:ReadonlyArray<{id:DesktopInputDevice;label:string}>=[
  {id:'mouse',label:'Mouse'},
  {id:'wheel',label:'Wheel'},
 ];
-const tabOrder:readonly Tab[]=['gameplay','video','controls'];
-const tabLabels:Record<Tab,string>={gameplay:'GAMEPLAY',video:'VIDEO',controls:'CONTROLS'};
+const tabOrder:readonly Tab[]=['gameplay','video','sound','controls'];
+const tabLabels:Record<Tab,string>={gameplay:'GAMEPLAY',video:'VIDEO',sound:'SOUND',controls:'CONTROLS'};
 const footerLabels:Record<FooterAction,string>={replay:'LOAD REPLAY',exit:'EXIT GAME',done:'DONE'};
 const footerOrder:readonly FooterAction[]=['replay','exit','done'];
 const optionHelp:Record<RowId,string>={
@@ -94,8 +94,9 @@ const optionHelp:Record<RowId,string>={
  'reset-camera':'Restores all Close, Standard and Far chase-camera distances and heights to their defaults.',
 };
 const tabHelp:Record<Tab,string>={
- gameplay:'General game, audio and menu behaviour.',
+ gameplay:'General game and menu behaviour.',
  video:'Rendering, display quality and enhanced chase-camera settings.',
+ sound:'Music, sound effects, emulated sound hardware and DX audio behaviour.',
  controls:'Driving input and wheel-response settings.',
 };
 const rowHeight=13.5,sectionHeight=8,rowRegionBottom=101;
@@ -235,10 +236,10 @@ function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],sta
   if(lastVisible<all.length-1)label('▼',content.x+content.w-9,content.y+99,4.5,'#666',600,'center');
   const hoveredRow=hover?.type==='row'?hover.index:undefined,helpIndex=hoveredRow??(state.zone()==='rows'?state.row():undefined);
   const help=helpIndex!==undefined&&all[helpIndex]?optionHelp[all[helpIndex].id]:tabHelp[state.tab()];
-  rect(content.x+5,content.y+108,content.w-10,15,'#0d0d0d','#292929',3,.6);
-  wrapped(help,content.w-18,3.9,2).forEach((line,index)=>label(line,content.x+9,content.y+113+index*6,3.9,index===0?'#aaa':'#818181',500));
+  rect(content.x+5,content.y+102,content.w-10,18,'#0d0d0d','#292929',3,.6);
+  wrapped(help,content.w-18,3.9,2).forEach((line,index)=>label(line,content.x+9,content.y+107+index*6,3.9,index===0?'#aaa':'#818181',500));
   footerOrder.forEach((action,index)=>{const b=footerBounds[index],over=focused('footer',index);rect(b.x,b.y,b.w,b.h,over?'#3a4022':'#202020',over?'#b4c35a':'#555',4,over?1.5:1);label(footerLabels[action],b.x+b.w/2,b.y+b.h/2,5.1,over?'#fff':'#ddd',650,'center');});
-  label('↑↓ SELECT   ←→ CHANGE   ENTER APPLY   TAB CATEGORY',83,168,3.8,'#6f6f6f',500);
+  label('↑↓ SELECT   ←→ CHANGE   ENTER: APPLY   TAB: CATEGORY',83,168,3.8,'#6f6f6f',500);
   if(state.confirm()){
    ctx.fillStyle='rgba(0,0,0,.72)';ctx.fillRect(0,0,canvas.width,canvas.height);rect(82,65,156,70,'#141414','#777',7,1.4);label('EXIT GAME?',160,82,8,'#eee',750,'center');label('Unsaved race progress will be lost.',160,98,4.4,'#888',500,'center');
    const choices=[{x:101,y:108,w:53,h:19,label:'CANCEL'},{x:166,y:108,w:53,h:19,label:'EXIT'}];
@@ -274,15 +275,19 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
  const currentRows=():OptionRow[]=>{
   const camera=(level:EnhancedChaseCameraPresetLevel,kind:EnhancedChaseCameraSetting,label:string):OptionRow=>({id:(level===1?(kind==='distance'?'close-distance':'close-height'):level===2?(kind==='distance'?'standard-distance':'standard-height'):(kind==='distance'?'far-distance':'far-height')) as RowId,label,value:String(enhancedChaseCameraPosition(level)[kind]),group:'DX / MODERN'});
   if(tab==='gameplay'){
-   const audio=host.audioState(),sound=storedSoundDevice();
    return [
-    {id:'music',label:'Music',value:boolLabel(audio.musicEnabled)},
-    {id:'sound-effects',label:'Sound Effects',value:boolLabel(audio.soundEnabled)},
-    {id:'sound-device',label:'Sound Device',value:soundDevices.find(item=>item.id===sound)?.label??'Sound Blaster'},
     {id:'open-map',label:'Open Map on Race Start',value:boolLabel(storedEnabled(mapKey,false))},
     {id:'menu-style',label:'Menu Style',value:storedEnabled(enhancedMenuKey,true)?'Modern':'Vanilla'},
     {id:'track-editor',label:'Track Editor',value:storedEnabled(trackEditorKey,true)?'Modern':'Vanilla'},
-    {id:'audio-update',label:'Audio Update',value:boolLabel(storedEnabled(audioUpdateKey,true))},
+   ];
+  }
+  if(tab==='sound'){
+   const audio=host.audioState(),sound=storedSoundDevice();
+   return [
+    {id:'music',label:'Music',value:boolLabel(audio.musicEnabled),group:'ORIGINAL STUNTS'},
+    {id:'sound-effects',label:'Sound Effects',value:boolLabel(audio.soundEnabled),group:'ORIGINAL STUNTS'},
+    {id:'sound-device',label:'Sound Device',value:soundDevices.find(item=>item.id===sound)?.label??'Sound Blaster',group:'ORIGINAL STUNTS'},
+    {id:'audio-update',label:'Audio Update',value:boolLabel(storedEnabled(audioUpdateKey,true)),group:'DX / MODERN'},
    ];
   }
   if(tab==='video'){
