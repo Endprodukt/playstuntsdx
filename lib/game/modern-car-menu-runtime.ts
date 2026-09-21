@@ -1,16 +1,18 @@
 import type {NativeMenuCar,NativeCarMenuHost} from './native-car-runtime.ts';
 import {rememberCurrentPlayerCar} from './current-player-car.ts';
+import {ENGINE_SOUND_PRESETS,engineSoundForCar,loadSoundModSettings,saveSoundModSettings} from './sound-mod-settings.ts';
 
 export type ModernCarMenuAction=
  |{type:'selector'}
  |{type:'car';index:number}
  |{type:'import'}
+ |{type:'sound';direction?:-1|1}
  |{type:'transmission'}
  |{type:'colour'}
  |{type:'done'}
  |{type:'none'};
 
-export type ModernCarMenuFocus={type:'selector'|'import'|'transmission'|'colour'|'done'};
+export type ModernCarMenuFocus={type:'selector'|'import'|'sound'|'transmission'|'colour'|'done'};
 
 export interface ModernCarMenuPresentation{
  setCars(cars:readonly NativeMenuCar[],selected:number,open:boolean):void;
@@ -60,6 +62,12 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
   if(action.type==='car'){
    selected=action.index;open=false;focus={type:'selector'};await sync(true);return;
   }
+  if(action.type==='sound'){
+   focus={type:'sound'};
+   const car=cars[selected],settings=loadSoundModSettings(),current=engineSoundForCar(car.id,settings),index=Math.max(0,ENGINE_SOUND_PRESETS.findIndex(preset=>preset.id===current));
+   const direction=action.direction??1,next=ENGINE_SOUND_PRESETS[(index+(direction<0?-1:1)+ENGINE_SOUND_PRESETS.length)%ENGINE_SOUND_PRESETS.length]!;
+   settings.perCar[car.id.toUpperCase()]=next.id;saveSoundModSettings(settings);display.setFocus(focus);display.render();return;
+  }
   if(action.type==='transmission'){
    focus={type:'transmission'};transmission=transmission?0:1;await sync();return;
   }
@@ -95,12 +103,14 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
   if(key===keyUp){
    if(focus.type==='selector')return {type:'done'};
    if(focus.type==='import')return {type:'selector'};
-   if(focus.type==='transmission')return {type:'import'};
+   if(focus.type==='sound')return {type:'import'};
+   if(focus.type==='transmission')return {type:'sound'};
    if(focus.type==='colour')return {type:'transmission'};
    return {type:'colour'};
   }
   if(key===keyDown){
-   if(focus.type==='selector'||focus.type==='import')return {type:'transmission'};
+   if(focus.type==='selector'||focus.type==='import')return {type:'sound'};
+   if(focus.type==='sound')return {type:'transmission'};
    if(focus.type==='transmission')return {type:'colour'};
    if(focus.type==='colour')return {type:'done'};
    return {type:'selector'};
@@ -159,6 +169,9 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
     selected=(selected+(key===keyDown?1:-1)+cars.length)%cars.length;await sync(true);continue;
    }
 
+   if((key===keyLeft||key===keyRight)&&focus.type==='sound'){
+    await activate({type:'sound',direction:key===keyLeft?-1:1});continue;
+   }
    if(key===keyLeft||key===keyRight||key===keyUp||key===keyDown){
     applyFocus(moveFocus(key));continue;
    }
