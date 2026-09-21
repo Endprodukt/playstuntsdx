@@ -607,7 +607,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    const modern=createModernMainMenu({canvas,assets:options.assets,configuration,track,palette,materialIndices:materials.indices});
    const actions:ModernMainMenuAction[]=[];
    let focus:ModernMainMenuAction='none',dialogOpen=false;
-   const select=(action:ModernMainMenuAction)=>action==='drive'?0:action==='car'?1:action==='opponent'?2:action==='track'?3:action==='options'?4:undefined;
+   const select=(action:ModernMainMenuAction)=>action==='drive'?0:action==='car'?1:action==='opponent'?2:action==='track'?3:action==='options'?4:action==='editor'?-3:action==='replays'?-4:undefined;
    const pointerDown=(event:PointerEvent)=>{
     if(dialogOpen||event.button!==0)return;
     const action=modern.actionAt(event);if(action==='none')return;
@@ -662,6 +662,12 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   if(!options.displayMode)return runNativeMainMenuSelection({counter:input.counter,input:input.read,release:input.release,redraw:()=>{outline=undefined;present();},selectScreen:()=>{},outline:(selection,color)=>{outline=[selection,color];present();}});
   const display=await prepareBrowserNativeMainMenu({catalog:await loadBrowserOriginalResourceCatalog()},options.displayMode,options.hercules),nativePresent=()=>{pixels.set(display.pixels());paint(display.palette,display);};
   return runNativeMainMenuSelection({counter:input.counter,input:input.read,release:input.release,redraw(){display.redraw();nativePresent();},selectScreen(){},outline(selection,color){display.outline(selection,color);nativePresent();}});
+ };
+ const selectReplayFromMain=async()=>{
+  const selection=await selectGlobalReplay();if(!selection)return false;
+  replayLoading?.close();replayLoading=createReplayLoadingOverlay(canvas,selection.customPath??selection.name+'.RPL');
+  try{if(!selection.customPath)settings.replayPath=selection.path;await settings.loadReplay(selection);return true;}
+  catch(reason){const loading=replayLoading;if(loading&&!loading.cancelled)await loading.fail(reason);loading?.close();if(replayLoading===loading)replayLoading=undefined;return false;}
  };
  const selectOptions=async()=>{
   show('options');focusBrowserGameCanvas(canvas);
