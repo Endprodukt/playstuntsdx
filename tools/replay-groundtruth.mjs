@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import {access,cp,mkdir,readdir,readFile,rm,writeFile} from 'node:fs/promises';
 import {spawnSync} from 'node:child_process';
-import {basename,dirname,extname,join,resolve} from 'node:path';
+import {createRequire} from 'node:module';
+import {basename,dirname,extname,join,relative,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {decodeReplayBytes} from './replay-dataset.mjs';
 
@@ -45,17 +46,6 @@ async function findRecursive(root,names){
 }
 const csvCell=value=>{const text=String(value??'');return /[",\r\n]/.test(text)?`"${text.replaceAll('"','""')}"`:text;};
 const writeCsv=(path,rows)=>writeFile(path,rows.map(row=>row.map(csvCell).join(',')).join('\n')+'\n','utf8');
-function commandExists(command){
- const probe=spawnSync(process.platform==='win32'?'where.exe':'which',[command],{encoding:'utf8',windowsHide:true});
- if(probe.status!==0)return null;
- return (probe.stdout??'').split(/\r?\n/).map(x=>x.trim()).find(Boolean)??null;
-}
-async function findDosbox(explicit){
- if(explicit){if(!await exists(explicit))throw Error('DOSBox executable not found: '+explicit);return explicit;}
- const env=process.env.DOSBOX;if(env&&await exists(env))return env;
- for(const name of process.platform==='win32'?['dosbox-staging.exe','dosbox-x.exe','dosbox.exe']:['dosbox-staging','dosbox-x','dosbox']){const found=commandExists(name);if(found)return found;}
- return null;
-}
 function psLiteral(value){return "'"+String(value).replaceAll("'","''")+"'";}
 function extractZip(zip,target){
  if(process.platform==='win32'){
@@ -67,12 +57,14 @@ function extractZip(zip,target){
 }
 async function ensureRepldump(root){
  await mkdir(root,{recursive:true});
- let exe=await findRecursive(root,['REPLDUMO.EXE','REPLDUMP.EXE']);if(exe)return exe;
+ let exe=await findRecursive(root,['REPLDUMO.EXE']);if(exe)return exe;
+ exe=await findRecursive(root,['REPLDUMP.EXE']);if(exe)return exe;
  const zip=join(root,'repldump-dos-2013-02-10.zip');
  if(!await exists(zip)){console.log('Downloading Restunts repldump from '+REPLDUMP_DOWNLOAD);const response=await fetch(REPLDUMP_DOWNLOAD);if(!response.ok)throw Error('Could not download repldump: HTTP '+response.status);await writeFile(zip,new Uint8Array(await response.arrayBuffer()));}
  extractZip(zip,root);
- exe=await findRecursive(root,['REPLDUMO.EXE','REPLDUMP.EXE']);if(!exe)throw Error('The repldump archive did not contain REPLDUMO.EXE or REPLDUMP.EXE');
- return exe;
+ exe=await findRecursive(root,['REPLDUMO.EXE']);if(exe)return exe;
+ exe=await findRecursive(root,['REPLDUMP.EXE']);if(exe)return exe;
+ throw Error('The repldump archive did not contain REPLDUMO.EXE or REPLDUMP.EXE');
 }
 async function copyDirectoryContents(source,target){for(const entry of await readdir(source,{withFileTypes:true}))await cp(join(source,entry.name),join(target,entry.name),{recursive:true,force:true});}
 async function findCar(gameRoot,carsRoot,id){
@@ -80,9 +72,62 @@ async function findCar(gameRoot,carsRoot,id){
  for(const root of [carsRoot,join(repoRoot,'Custom Cars'),join(gameRoot,'setup-media')]){const found=await findRecursive(root,[filename]);if(found)return found;}
  return null;
 }
-function runDosbox(dosbox,workspace){
+function runExternalDosbox(dosbox,workspace){
  const result=spawnSync(dosbox,['-c',`mount c "${workspace}"`,'-c','c:','-c','REPLDUMP.EXE INPUT.RPL -o STATE.BIN','-c','exit'],{stdio:'inherit',windowsHide:true});
  if(result.error)throw result.error;if(result.status!==0)throw Error('DOSBox/repldump exited with code '+result.status);
+}
+async function workspaceInitFs(root){
+ const files=[];
+ const walk=async directory=>{
+  const entries=(await readdir(directory,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name));
+  for(const entry of entries){
+   const path=join(directory,entry.name);
+   if(entry.isDirectory())await walk(path);
+   else if(entry.isFile())files.push({path:relative(root,path).replaceAll('\\','/'),contents:new Uint8Array(await readFile(path))});
+  }
+ };
+ await walk(root);return files;
+}
+function treeFile(node,name){
+ if(node.size!==null&&String(node.name).toUpperCase()===name.toUpperCase())return node;
+ for(const child of node.nodes??[]){const found=treeFile(child,name);if(found)return found;}
+ return null;
+}
+async function runEmbeddedDosbox(workspace,expectedBytes){
+ const require=createRequire(import.meta.url),entry=require.resolve('emulators');
+ require(entry);
+ const emulators=globalThis.emulators;
+ if(!emulators?.dosboxNode)throw Error('Installed emulators package does not provide the Node DOSBox backend');
+ emulators.pathPrefix=dirname(entry);
+ if(typeof globalThis.ImageData==='undefined')globalThis.ImageData=class ImageData{constructor(data,width,height){this.data=data;this.width=width;this.height=height;}};
+ const encoder=new TextEncoder(),dosboxConf='[sdl]\nfullscreen=false\n[dosbox]\nmemsize=16\n[cpu]\ncore=auto\ncycles=max\n[mixer]\nnosound=true\n[autoexec]\nmount c .\nc:\nREPLDUMP.EXE INPUT.RPL -o STATE.BIN\n';
+ const initFs=await workspaceInitFs(workspace);
+ initFs.push({path:'.jsdos/dosbox.conf',contents:encoder.encode(dosboxConf)},{path:'.jsdos/jsdos.json',contents:encoder.encode(JSON.stringify({version:'8'},null,2))});
+ const ci=await emulators.dosboxNode(initFs);
+ ci.mute();
+ const output=[];let exited=false;
+ ci.events().onStdout(message=>{if(message)output.push(message);});
+ ci.events().onExit(()=>{exited=true;});
+ const deadline=Date.now()+120000;
+ try{
+  for(;;){
+   const state=treeFile(await ci.fsTree(),'STATE.BIN');
+   if(state?.size===expectedBytes)return await ci.fsReadFile('STATE.BIN');
+   if(state?.size>expectedBytes)throw Error(`repldump produced an oversized STATE.BIN (${state.size} bytes, expected ${expectedBytes})`);
+   if(exited)throw Error('Embedded DOSBox exited before STATE.BIN was complete'+(output.length?': '+output.slice(-5).join(' | '):''));
+   if(Date.now()>deadline)throw Error('Embedded DOSBox timed out waiting for STATE.BIN'+(output.length?': '+output.slice(-5).join(' | '):''));
+   await new Promise(resolve=>setTimeout(resolve,25));
+  }
+ }finally{if(!exited)await ci.exit().catch(()=>{});}
+}
+async function runGroundTruthDos(workspace,expectedBytes,externalDosbox){
+ if(externalDosbox){
+  if(!await exists(externalDosbox))throw Error('DOSBox executable not found: '+externalDosbox);
+  runExternalDosbox(externalDosbox,workspace);
+  const produced=join(workspace,'STATE.BIN');if(!await exists(produced))throw Error('External DOSBox completed without producing STATE.BIN');
+  return new Uint8Array(await readFile(produced));
+ }
+ return runEmbeddedDosbox(workspace,expectedBytes);
 }
 function inputFields(decoded,index){return decoded.frames[index]??{raw:0,throttle:0,brake:0,driveConflict:0,steer:'center',steerValue:0,shiftUp:0,shiftDown:0};}
 
@@ -113,8 +158,8 @@ async function convertDump(replayPath,dumpPath,outputFolder){
 async function main(){
  const options=args();await Promise.all([mkdir(options.input,{recursive:true}),mkdir(options.output,{recursive:true}),mkdir(options.cars,{recursive:true}),mkdir(options.tools,{recursive:true}),mkdir(options.work,{recursive:true})]);
  const files=(await readdir(options.input,{withFileTypes:true})).filter(x=>x.isFile()&&/\.rpl$/i.test(x.name)).map(x=>x.name).sort();if(!files.length){console.log('No .RPL files found in '+options.input);return;}
- const gameRoot=options.convertOnly?null:await findGameRoot(options.game);let repldump=null,dosbox=null;
- if(!options.convertOnly){repldump=await ensureRepldump(options.tools);dosbox=await findDosbox(options.dosbox);if(!dosbox)throw Error('No DOSBox executable found. Install DOSBox/DOSBox-X/DOSBox Staging or pass --dosbox "FULL\\PATH\\TO\\dosbox.exe".');console.log('Restunts tool: '+repldump);console.log('DOSBox: '+dosbox);}
+ const gameRoot=options.convertOnly?null:await findGameRoot(options.game);let repldump=null;
+ if(!options.convertOnly){repldump=await ensureRepldump(options.tools);console.log('Restunts tool: '+repldump);console.log(options.dosbox?'DOS backend: external '+options.dosbox:'DOS backend: bundled Node emulator');}
  const manifest={source:'restunts-repldump',replays:[]};
  for(const name of files){
   const replayPath=join(options.input,name),stem=basename(name,extname(name)),out=join(options.output,stem),dumpPath=join(out,'restunts-state.bin');await mkdir(out,{recursive:true});
@@ -122,7 +167,7 @@ async function main(){
    const replayBytes=new Uint8Array(await readFile(replayPath)),decoded=decodeReplayBytes(replayBytes,name),workspace=join(options.work,stem);await rm(workspace,{recursive:true,force:true});await mkdir(workspace,{recursive:true});await copyDirectoryContents(join(gameRoot,'setup-media'),workspace);
    const car=await findCar(gameRoot,options.cars,decoded.header.carId);if(!car){const skipped={file:name,status:'skipped',reason:`Missing CAR${decoded.header.carId}.RES`};manifest.replays.push(skipped);console.log(name+': skipped — '+skipped.reason);continue;}await cp(car,join(workspace,`CAR${decoded.header.carId}.RES`),{force:true});
    if(decoded.header.opponentSelected){const opponent=await findCar(gameRoot,options.cars,decoded.header.opponentCarId);if(!opponent){const skipped={file:name,status:'skipped',reason:`Missing CAR${decoded.header.opponentCarId}.RES for opponent`};manifest.replays.push(skipped);console.log(name+': skipped — '+skipped.reason);continue;}await cp(opponent,join(workspace,`CAR${decoded.header.opponentCarId}.RES`),{force:true});}
-   await Promise.all([cp(repldump,join(workspace,'REPLDUMP.EXE'),{force:true}),cp(replayPath,join(workspace,'INPUT.RPL'),{force:true})]);console.log(name+': running Restunts ground-truth replay...');runDosbox(dosbox,workspace);const produced=join(workspace,'STATE.BIN');if(!await exists(produced))throw Error(name+': repldump completed without producing STATE.BIN');await cp(produced,dumpPath,{force:true});
+   await Promise.all([cp(repldump,join(workspace,'REPLDUMP.EXE'),{force:true}),cp(replayPath,join(workspace,'INPUT.RPL'),{force:true})]);console.log(name+': running Restunts ground-truth replay...');const stateBytes=await runGroundTruthDos(workspace,2+decoded.frameCount*RESTUNTS_GAMESTATE_BYTES,options.dosbox);await writeFile(dumpPath,stateBytes);
   }
   if(!await exists(dumpPath)){console.log(name+': no restunts-state.bin to convert');continue;}
   const summary=await convertDump(replayPath,dumpPath,out);manifest.replays.push({status:'ok',...summary});console.log(`${name}: ${summary.frames} ground-truth frames, max ${summary.maxSpeedMph.toFixed(1)} mph, crash ${summary.firstCrashFrame??'none'}`);

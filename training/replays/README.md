@@ -63,7 +63,7 @@ Run:
 
 The command downloads the public 2013 Restunts repldump package on first use, stages the prepared original Stunts files, overlays matching `CARxxxx.RES` files from `training/replays/cars/` recursively, runs the replay under DOSBox, and converts each packed 0x460-byte GAMESTATE frame into `groundtruth.csv`.
 
-It auto-detects `dosbox-staging`, `dosbox-x` or `dosbox` from PATH. If needed:
+The default runner uses the already installed `emulators` npm package and its headless Node DOSBox backend, so no separate DOSBox installation is required. An external DOSBox remains available as an optional override:
 
 `npm run replay:groundtruth -- --dosbox "C:\\Program Files\\DOSBox-X\\dosbox-x.exe"`
 
