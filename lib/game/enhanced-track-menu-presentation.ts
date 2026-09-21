@@ -65,6 +65,8 @@ export function createEnhancedTrackMenuPresentation(options:{
  };
  mountPreview();syncPreviewBounds();
  let preview:BlissEditor3DView|undefined,signature='',track:NativeMenuTrack|undefined,score:ReadonlyArray<number>|null=null,enabled=true;
+ const previewObserver=new ResizeObserver(()=>{syncPreviewBounds();if(enabled&&preview)preview.render();});
+ previewObserver.observe(canvas);
  let tracks:string[]=[],selectedTrack=0,dropdownOpen=false,dropdownStart=0,hoverAction:ModernTrackMenuAction={type:'none'},focusAction:ModernTrackMenuFocus={type:'selector'};
 
  const sx=()=>canvas.width/320,sy=()=>canvas.height/200;
@@ -227,6 +229,6 @@ export function createEnhancedTrackMenuPresentation(options:{
   orbit(dx,dy){if(options.previewEnabled){ensurePreview().orbit(dx,dy);render();}},
   pan(dx,dy){if(options.previewEnabled){ensurePreview().pan(dx,dy);render();}},
   dolly(delta,x,y){if(options.previewEnabled){ensurePreview().dolly(delta,x,y);render();}},
-  close(){preview?.close();preview=undefined;previewCanvas.remove();previewMounted=false;previewCanvas.width=previewCanvas.height=1;canvas.style.background=menuCanvasBackground;canvas.style.zIndex=menuCanvasZIndex;}
+  close(){previewObserver.disconnect();preview?.close();preview=undefined;previewCanvas.remove();previewMounted=false;previewCanvas.width=previewCanvas.height=1;canvas.style.background=menuCanvasBackground;canvas.style.zIndex=menuCanvasZIndex;}
  };
 }
