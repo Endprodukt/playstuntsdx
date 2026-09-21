@@ -68,11 +68,36 @@ import type {NativeDialogHost} from './native-dialog-runtime.ts';
 import {createNativeDialogRuntime} from './native-dialog-runtime.ts';
 import {runNativeRaceResults,type NativeRaceResultsState,type NativeRaceResultsHost,type NativeEvaluationResources} from './native-race-results.ts';
 import type {NativeHighScorePreparationHost} from './native-high-score-preparation.ts';
-import type {Assets} from './types.ts';
+import type {Assets,Primitive,Shape} from './types.ts';
 import {blissOriginalSceneryPreview} from './bliss-scenery-preview.ts';
 import {clearRaceMapFrame,publishRaceMapFrame} from './race-map-state.ts';
 import {RACE_TELEPORT_EVENT,type RaceSpawn} from './race-spawn.ts';
 const HIRES_MAIN_MENU='/game/hires/main-menu.png';
+
+function showroomPrimitiveArea(shape:Shape,primitive:Primitive){
+ const [first,...rest]=primitive.indices;if(first===undefined||rest.length<2)return 0;
+ const origin=shape.vertices[first],cross=[0,0,0];
+ for(let i=0;i<rest.length-1;i++){
+  const a=shape.vertices[rest[i]],b=shape.vertices[rest[i+1]];
+  const ax=a[0]-origin[0],ay=a[1]-origin[1],az=a[2]-origin[2];
+  const bx=b[0]-origin[0],by=b[1]-origin[1],bz=b[2]-origin[2];
+  cross[0]+=ay*bz-az*by;cross[1]+=az*bx-ax*bz;cross[2]+=ax*by-ay*bx;
+ }
+ return Math.hypot(cross[0],cross[1],cross[2]);
+}
+
+function showroomPaintColours(shape:Shape){
+ let body:Primitive|undefined,bestArea=-1;
+ for(const primitive of shape.primitives){
+  if(primitive.type<3||primitive.type>10||primitive.materials.length<2||new Set(primitive.materials).size<2)continue;
+  const area=showroomPrimitiveArea(shape,primitive);if(area>bestArea){bestArea=area;body=primitive;}
+ }
+ const count=Math.max(1,shape.paintCount|0);
+ return Array.from({length:count},(_,paint)=>{
+  const material=body?.materials[Math.min(paint,(body?.materials.length??1)-1)]??0,index=showroomMaterials.indices[material]??0;
+  return (showroomMaterials.palette[index*3]<<16)|(showroomMaterials.palette[index*3+1]<<8)|showroomMaterials.palette[index*3+2];
+ });
+}
 type TextResources={resources:NativeDialogHost['resources']};
 type ScreenResources=NativeEditorHost['screenResources'];
 type RouteResources=NativeEditorHost['routeResources'];
@@ -195,21 +220,23 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     // The menu crops/composites this render afterwards; it must not lower the
     // 3D resolution merely because the preview rectangle itself is smaller.
     const snapshot=document.createElement('canvas');
-    const initial=enhancedRenderResolution();snapshot.width=initial.width;snapshot.height=initial.height;
+    // The menu is already a fixed 1280x800 backing surface. Render the showroom
+    // at that actual UI resolution instead of tying its sharpness to the race
+    // internal-resolution setting (1x could otherwise be enlarged and blurred).
+    snapshot.width=canvas.width;snapshot.height=canvas.height;
     const snapshotContext=snapshot.getContext('2d');if(!snapshotContext)return null;
     const memory=modelMemory;
     const renderAngle=(angle:number,pitch=0,zoom=1)=>{
-     const internal=enhancedRenderResolution();
-     if(snapshot.width!==internal.width)snapshot.width=internal.width;
-     if(snapshot.height!==internal.height)snapshot.height=internal.height;
+     if(snapshot.width!==canvas.width)snapshot.width=canvas.width;
+     if(snapshot.height!==canvas.height)snapshot.height=canvas.height;
      new DataView(memory.buffer,memory.byteOffset,memory.byteLength).setInt16(0x2d1a0+0xb00e,angle&1023,true);
-     const rendered=modernShowroom!.draw(memory,internal.width,internal.height,{pitch,zoom});
+     const rendered=modernShowroom!.draw(memory,snapshot.width,snapshot.height,{pitch,zoom});
      snapshotContext.clearRect(0,0,snapshot.width,snapshot.height);snapshotContext.drawImage(rendered,0,0);
     };
     renderAngle(0);
     return {canvas:snapshot,paintCount,render:renderAngle};
    };
-   const modern=createEnhancedCarMenuPresentation({canvas,palette,preview:modernPreview});
+   const modern=createEnhancedCarMenuPresentation({canvas,palette,preview:modernPreview,paintColours:car=>{const shape=options.assets.shapes['ST'+car.id]?.car0;return shape?showroomPaintColours(shape):[];}});
    const pickZip=()=>new Promise<File|null>(resolve=>{
     const picker=document.createElement('input');picker.type='file';picker.accept='.zip,application/zip';picker.style.display='none';
     const finish=(file:File|null)=>{picker.remove();resolve(file);};
