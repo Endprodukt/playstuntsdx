@@ -205,8 +205,8 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   const carHost:NativeCarMenuHost={...host,configuration:config,opponent,opponentArt:opponent?opponentArt.resources['opp'+opponent]:undefined,baseline,cars:options.assets.cars as unknown as NativeCarMenuHost['cars'],art:carArt.resources,descriptions:carArt.descriptions,bank};
   if(enhancedMenuEnabled()){
    const actions:ModernCarMenuAction[]=[];
-   const menuCanvasBackground=canvas.style.background;
-   canvas.style.background='transparent';
+   const menuCanvasBackground=canvas.style.background,menuCanvasZIndex=canvas.style.zIndex;
+   canvas.style.background='transparent';canvas.style.zIndex='1';
    let modernShowroom:ReturnType<typeof createModernCarShowroom>|undefined,modernShowroomMounted=false;
    const mountModernShowroom=()=>{
     if(!modernShowroom||modernShowroomMounted)return;
@@ -315,7 +315,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('pointerleave',pointerLeave,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
    try{return await runModernCarMenu(modernHost,modern);}finally{
     canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerup',pointerUp,true);canvas.removeEventListener('pointercancel',pointerUp,true);canvas.removeEventListener('pointerleave',pointerLeave,true);canvas.removeEventListener('wheel',wheel,true);
-    modernShowroom?.close();modernShowroom=undefined;modernShowroomMounted=false;canvas.style.background=menuCanvasBackground;
+    modernShowroom?.close();modernShowroom=undefined;modernShowroomMounted=false;canvas.style.background=menuCanvasBackground;canvas.style.zIndex=menuCanvasZIndex;
    }
   }
   if(!options.displayMode){
