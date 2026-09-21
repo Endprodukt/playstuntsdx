@@ -211,15 +211,19 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     if(!shape)return null;
     const paintCount=Math.max(1,shape.paintCount|0),safePaint=Math.max(0,Math.min(paint,paintCount-1));
     modernShowroom??=createModernCarShowroom(palette,materials.indices);
-    // Render at the preview's real backing-store size. The WebGL renderer then
-    // applies the same device-pixel-ratio supersampling as the website showroom,
-    // and the menu performs only the final 2x->display downsample.
-    const previewWidth=Math.max(1,Math.round(canvas.width*218/320));
-    const previewHeight=Math.max(1,Math.round(canvas.height*92/200));
-    const renderAngle=(angle:number,pitch=0,zoom=1)=>{
-     modernShowroom!.draw(shape,raceShape,safePaint,previewWidth,previewHeight,{angle,pitch,zoom});
+    // Match the same user-selectable internal resolution as enhanced gameplay:
+    // Original / 2x / 4x / 6x / 8x / 10x. Render the showroom directly at that
+    // logical preview resolution, then downsample once into the fixed menu canvas.
+    const previewSize=()=>{
+     const scale=enhancedRenderResolution().width/320;
+     return {width:Math.max(1,Math.round(218*scale)),height:Math.max(1,Math.round(92*scale))};
     };
-    const rendered=modernShowroom.draw(shape,raceShape,safePaint,previewWidth,previewHeight,{angle:0,pitch:0,zoom:1});
+    const renderAngle=(angle:number,pitch=0,zoom=1)=>{
+     const size=previewSize();
+     modernShowroom!.draw(shape,raceShape,safePaint,size.width,size.height,{angle,pitch,zoom});
+    };
+    const size=previewSize();
+    const rendered=modernShowroom.draw(shape,raceShape,safePaint,size.width,size.height,{angle:0,pitch:0,zoom:1});
     return {canvas:rendered,paintCount,render:renderAngle};
    };
    const modern=createEnhancedCarMenuPresentation({canvas,palette,preview:modernPreview,paintColours:car=>{const shape=options.assets.shapes['ST'+car.id]?.car0;return shape?showroomPaintColours(shape,materials):[];}});
