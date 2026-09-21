@@ -243,7 +243,7 @@ function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],sta
   if(state.confirm()){
    ctx.fillStyle='rgba(0,0,0,.72)';ctx.fillRect(0,0,canvas.width,canvas.height);rect(82,65,156,70,'#141414','#777',7,1.4);label('EXIT GAME?',160,82,8,'#eee',750,'center');label('Unsaved race progress will be lost.',160,98,4.4,'#888',500,'center');
    const choices=[{x:101,y:108,w:53,h:19,label:'CANCEL'},{x:166,y:108,w:53,h:19,label:'EXIT'}];
-   choices.forEach((b,index)=>{const active=state.confirmChoice()===index;rect(b.x,b.y,b.w,b.h,active?'#454d28':'#242424',active?'#bdca66':'#555',4,active?1.5:1);label(b.label,b.x+b.w/2,b.y+b.h/2,5.5,active?'#fff':'#ccc',650,'center');});
+   choices.forEach((b,index)=>{const active=hover?.type==='confirm'?hover.index===index:state.confirmChoice()===index;rect(b.x,b.y,b.w,b.h,active?'#454d28':'#242424',active?'#bdca66':'#555',4,active?1.5:1);label(b.label,b.x+b.w/2,b.y+b.h/2,5.5,active?'#fff':'#ccc',650,'center');});
   }
   ctx.restore();
  };
