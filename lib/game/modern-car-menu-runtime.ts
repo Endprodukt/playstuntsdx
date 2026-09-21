@@ -6,7 +6,8 @@ export type ModernCarMenuAction=
  |{type:'selector'}
  |{type:'car';index:number}
  |{type:'import'}
- |{type:'sound';direction?:-1|1}
+ |{type:'sound';direction?:-1|1;index?:number}
+ |{type:'autorotate';enabled:boolean}
  |{type:'transmission'}
  |{type:'colour';index?:number}
  |{type:'done'}
@@ -17,6 +18,8 @@ export type ModernCarMenuFocus={type:'selector'|'import'|'sound'|'transmission'|
 export interface ModernCarMenuPresentation{
  setCars(cars:readonly NativeMenuCar[],selected:number,open:boolean):void;
  setFocus(focus:ModernCarMenuFocus):void;
+ setSoundOpen(open:boolean):void;
+ setAutoRotate(enabled:boolean):void;
  draw(car:NativeMenuCar,transmission:number,paint:number):Promise<{paintCount:number}>;
  actionAt(event:{clientX:number;clientY:number}):ModernCarMenuAction;
  hoverAt(event:{clientX:number;clientY:number}):void;
@@ -40,10 +43,11 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
  const initial=host.configuration.slice(),offset=host.opponent?7:0,paintOffset=offset+4,transmissionOffset=offset+5;
  let cars=[...host.cars].sort((a,b)=>(a.name??a.id).localeCompare(b.name??b.id)),open=false;
  let selected=Math.max(0,cars.findIndex(car=>car.id===idAt(host.configuration,offset)));
- let paint=host.configuration[paintOffset]??0,transmission=host.configuration[transmissionOffset]??0,paintCount=1,typePrefix='',typeDeadline=0;
+ let paint=host.configuration[paintOffset]??0,transmission=host.configuration[transmissionOffset]??0,paintCount=1,typePrefix='',typeDeadline=0,soundOpen=false;
  let focus:ModernCarMenuFocus={type:'selector'};
 
- const applyFocus=(next:ModernCarMenuFocus)=>{focus=next;display.setFocus(focus);};
+ const setSoundOpen=(open:boolean)=>{soundOpen=open;display.setSoundOpen(open);};
+ const applyFocus=(next:ModernCarMenuFocus)=>{focus=next;if(next.type!=='sound'&&soundOpen)setSoundOpen(false);display.setFocus(focus);};
  const sync=async(resetPaint=false)=>{
   if(!cars.length)return;
   selected=Math.max(0,Math.min(cars.length-1,selected));
@@ -57,16 +61,26 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
 
  const activate=async(action:ModernCarMenuAction):Promise<'done'|undefined>=>{
   if(action.type==='selector'){
-   focus={type:'selector'};open=!open;display.setCars(cars,selected,open);display.setFocus(focus);display.render();return;
+   if(soundOpen)setSoundOpen(false);focus={type:'selector'};open=!open;display.setCars(cars,selected,open);display.setFocus(focus);display.render();return;
   }
   if(action.type==='car'){
-   selected=action.index;open=false;focus={type:'selector'};await sync(true);return;
+   if(soundOpen)setSoundOpen(false);selected=action.index;open=false;focus={type:'selector'};await sync(true);return;
   }
   if(action.type==='sound'){
    focus={type:'sound'};
-   const car=cars[selected],settings=loadSoundModSettings(),current=engineSoundForCar(car.id,settings),index=Math.max(0,ENGINE_SOUND_PRESETS.findIndex(preset=>preset.id===current));
-   const direction=action.direction??1,next=ENGINE_SOUND_PRESETS[(index+(direction<0?-1:1)+ENGINE_SOUND_PRESETS.length)%ENGINE_SOUND_PRESETS.length]!;
-   settings.perCar[car.id.toUpperCase()]=next.id;saveSoundModSettings(settings);display.setFocus(focus);display.render();return;
+   const car=cars[selected],settings=loadSoundModSettings(),current=engineSoundForCar(car.id,settings),currentIndex=Math.max(0,ENGINE_SOUND_PRESETS.findIndex(preset=>preset.id===current));
+   if(action.index!==undefined){
+    const next=ENGINE_SOUND_PRESETS[Math.max(0,Math.min(ENGINE_SOUND_PRESETS.length-1,action.index))]!;
+    settings.perCar[car.id.toUpperCase()]=next.id;saveSoundModSettings(settings);setSoundOpen(false);display.setFocus(focus);display.render();return;
+   }
+   if(action.direction!==undefined){
+    const next=ENGINE_SOUND_PRESETS[(currentIndex+(action.direction<0?-1:1)+ENGINE_SOUND_PRESETS.length)%ENGINE_SOUND_PRESETS.length]!;
+    settings.perCar[car.id.toUpperCase()]=next.id;saveSoundModSettings(settings);display.setFocus(focus);display.render();return;
+   }
+   setSoundOpen(!soundOpen);display.setFocus(focus);display.render();return;
+  }
+  if(action.type==='autorotate'){
+   display.setAutoRotate(action.enabled);display.render();return;
   }
   if(action.type==='transmission'){
    focus={type:'transmission'};transmission=transmission?0:1;await sync();return;
@@ -146,7 +160,8 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
    }
 
    if(key===27){
-    if(open){open=false;focus={type:'selector'};display.setCars(cars,selected,false);display.setFocus(focus);display.render();}
+    if(soundOpen){setSoundOpen(false);display.render();}
+    else if(open){open=false;focus={type:'selector'};display.setCars(cars,selected,false);display.setFocus(focus);display.render();}
     else{host.configuration.splice(0,host.configuration.length,...initial);return;}
     continue;
    }
