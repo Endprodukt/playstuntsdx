@@ -214,7 +214,14 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     const paintCount=Math.max(1,model.paintCount|0),safePaint=Math.max(0,Math.min(paint,paintCount-1));
     model.render(target,0,safePaint);
     if(!modelMemory)return null;
-    modernShowroom??=createUpgradedCarMenu(palette,showroomMaterials.indices,{environment:!modernShowroomFallback});
+    if(!modernShowroom){
+     try{modernShowroom=createUpgradedCarMenu(palette,showroomMaterials.indices,{environment:!modernShowroomFallback});}
+     catch(reason){
+      console.warn('[Modern Car Select] Showroom renderer creation failed; using plain 3D preview:',reason);
+      modernShowroomFallback=true;
+      modernShowroom=createUpgradedCarMenu(palette,showroomMaterials.indices,{environment:false});
+     }
+    }
     // The original showroom projection is authored for the 320x200 Stunts
     // viewport. Keep that 1.6:1 render aspect here; rendering it into a wider
     // target stretches the car before the menu compositor ever sees it.
