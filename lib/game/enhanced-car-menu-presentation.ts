@@ -14,6 +14,7 @@ export function createEnhancedCarMenuPresentation(options:{
  palette:number[];
  preview:(car:NativeMenuCar,paint:number)=>Promise<{canvas:HTMLCanvasElement;paintCount:number;render(angle:number,pitch?:number,zoom?:number):void}|null>;
  paintColours?:(car:NativeMenuCar)=>readonly number[];
+ directPreview?:boolean;
 }):ModernCarMenuPresentation&{inPreview(event:{clientX:number;clientY:number}):boolean;beginRotate():void;rotateBy(dx:number,dy:number):void;endRotate():void;zoomBy(delta:number):void}{
  const {canvas}=options,ctx=canvas.getContext('2d')!;
  let cars:readonly NativeMenuCar[]=[],selected=0,dropdownOpen=false,dropdownStart=0,hover:ModernCarMenuAction={type:'none'},focus:ModernCarMenuFocus={type:'selector'};
@@ -170,14 +171,20 @@ export function createEnhancedCarMenuPresentation(options:{
  const drawPreview=()=>{
   rect(7,44,220,153,'#111','#3b3b3b',6);
   ctx.save();ctx.beginPath();ctx.roundRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy(),4*Math.min(sx(),sy()));ctx.clip();
-  ctx.fillStyle='#0a0b0a';ctx.fillRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
+  if(options.directPreview){
+   // Punch a transparent rounded window through the 2D menu canvas. The actual
+   // WebGL showroom sits directly behind this canvas, so no drawImage resampling
+   // occurs between Three.js and the user's display.
+   ctx.clearRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
+  }else{
+   ctx.fillStyle='#0a0b0a';ctx.fillRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
+  }
   if(previewCanvas){
-   const previousSmoothing=ctx.imageSmoothingEnabled;ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='medium';
-   const targetX=previewRect.x*sx(),targetY=previewRect.y*sy(),targetW=previewRect.w*sx(),targetH=previewRect.h*sy();
-   // The WebGL showroom is already framed for this exact preview rectangle.
-   // Copy the complete camera image once; do not crop a 320x200-style source
-   // or enlarge it again, which was the main cause of the soft-looking car/grid.
-   ctx.drawImage(previewCanvas,0,0,previewCanvas.width,previewCanvas.height,targetX,targetY,targetW,targetH);ctx.imageSmoothingEnabled=previousSmoothing;
+   if(!options.directPreview){
+    const previousSmoothing=ctx.imageSmoothingEnabled;ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='medium';
+    const targetX=previewRect.x*sx(),targetY=previewRect.y*sy(),targetW=previewRect.w*sx(),targetH=previewRect.h*sy();
+    ctx.drawImage(previewCanvas,0,0,previewCanvas.width,previewCanvas.height,targetX,targetY,targetW,targetH);ctx.imageSmoothingEnabled=previousSmoothing;
+   }
   }else if(previewError){
    label('PREVIEW UNAVAILABLE',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2-4,5,'#a77',600,'center');
    if(previewErrorText)fittedLabel(previewErrorText,previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2+7,previewRect.w-24,3.4,'#8e7777',450,'center');
