@@ -432,12 +432,11 @@ fn ensure_runtime(app: &tauri::AppHandle, gamedata: &Path) -> Result<(), String>
     Ok(())
 }
 
-#[tauri::command]
-fn check_gamedata(app: tauri::AppHandle) -> Result<bool, String> {
-    runtime_progress(&app, "Starting PlayStunts DX", "Checking original game data and custom content");
+fn check_gamedata_blocking(app: &tauri::AppHandle) -> Result<bool, String> {
+    runtime_progress(app, "Starting PlayStunts DX", "Checking original game data and custom content");
     for root in gamedata_roots() {
         if complete_gamedata(&root) {
-            ensure_runtime(&app, &root)?;
+            ensure_runtime(app, &root)?;
             ensure_hires_fallbacks()?;
             return Ok(true);
         }
@@ -447,6 +446,13 @@ fn check_gamedata(app: tauri::AppHandle) -> Result<bool, String> {
     fs::create_dir_all(&root)
         .map_err(|error| format!("Could not create {}: {error}", root.display()))?;
     Ok(false)
+}
+
+#[tauri::command]
+async fn check_gamedata(app: tauri::AppHandle) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || check_gamedata_blocking(&app))
+        .await
+        .map_err(|error| format!("Game-data preparation task failed: {error}"))?
 }
 
 fn checked_track_filename(name: &str) -> Result<String, String> {
