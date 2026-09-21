@@ -880,5 +880,5 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    const owner=alternate.owner,displayHost={...results,present:()=>{pixels.set(alternate.pixels());paint(alternate.palette,undefined,alternate.owner);},editPath:(path:string,length:number,timeout:number,field:{x:number;y:number})=>editNativeDisplayPath({memory:owner.memory,d:owner.d,mode:owner.mode,drawing:owner.drawing,present:()=>{pixels.set(alternate.pixels());paint(alternate.palette,undefined,alternate.owner);},counters:input.counters,keyboard:input.keyboard},path,length,timeout,field,0xe800)};
    return runNativeRaceResults(displayHost,state,createNativeDisplayResultsPresentation(alternate,displayHost,state));
   },
-  async run(){focusBrowserGameCanvas(canvas);return runNativeMenuCoordinator({configuration,main:selectMain,car:()=>car(configuration,0),opponent:()=>opponent(configuration),track:selectTrack,options:selectOptions});}};
+  async run(){focusBrowserGameCanvas(canvas);return runNativeMenuCoordinator({configuration,main:selectMain,car:()=>car(configuration,0),opponent:()=>opponent(configuration),track:selectTrack,editor:editTrack,replay:selectReplayFromMain,options:selectOptions});}};
 }
