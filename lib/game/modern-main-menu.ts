@@ -45,7 +45,7 @@ export function createModernMainMenu(options:{
  backgroundArt.decoding='async';
  backgroundArt.onload=()=>{backgroundArtReady=true;if(!closed&&!suspended)render();};
  backgroundArt.onerror=()=>{backgroundArtReady=false;};
- backgroundArt.src='/ui/stunts-dx-main-background.svg';
+ backgroundArt.src='/ui/stunts-dx-main-background.jpg';
  let closed=false,suspended=false,focus:ModernMainMenuAction='none',hover:ModernMainMenuAction='none',keyboardFocus=false,carAngle=80,lastCarFrame=performance.now(),animationFrame=0;
 
  const mount=(surface:HTMLCanvasElement,kind:string)=>{
@@ -54,7 +54,7 @@ export function createModernMainMenu(options:{
   for(const [property,value] of [
    ['position','absolute'],['pointer-events','none'],['display','block'],['transform','none'],
    ['max-width','none'],['max-height','none'],['margin','0'],['padding','0'],['border','0'],
-   ['background','#121314'],['z-index','1'],['border-radius','2px'],
+   ['background','#101b25'],['z-index','1'],['border-radius','2px'],
   ] as const)surface.style.setProperty(property,value,'important');
   parent.insertBefore(surface,canvas);
  };
@@ -62,7 +62,7 @@ export function createModernMainMenu(options:{
  mount(trackSurface,'modern-main-track-preview');
 
  const sx=()=>canvas.width/320,sy=()=>canvas.height/200;
- const rect=(x:number,y:number,w:number,h:number,fill:string,stroke='#777',radius=3,lineWidth=1)=>{
+ const rect=(x:number,y:number,w:number,h:number,fill:string,stroke='#3b3b3b',radius=3,lineWidth=1)=>{
   const X=x*sx(),Y=y*sy(),W=w*sx(),H=h*sy(),R=Math.max(1,Math.min(radius*sx(),radius*sy()));
   ctx.beginPath();ctx.roundRect(X,Y,W,H,R);ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle=stroke;ctx.lineWidth=Math.max(lineWidth,Math.min(sx(),sy()));ctx.stroke();
  };
@@ -85,7 +85,7 @@ export function createModernMainMenu(options:{
  const active=(action:ModernMainMenuAction)=>activeAction()===action;
 
  const icon=(action:ModernMainMenuAction,x:number,y:number,selected:boolean)=>{
-  const c=selected?'#17191a':'#d7e0e7',s=Math.min(sx(),sy()),X=x*sx(),Y=y*sy(),u=sy();
+  const c=selected?'#fff':'#d8d8d8',s=Math.min(sx(),sy()),X=x*sx(),Y=y*sy(),u=sy();
   ctx.save();ctx.strokeStyle=c;ctx.fillStyle=c;ctx.lineWidth=Math.max(1.2*s,1);ctx.lineCap='round';ctx.lineJoin='round';
   if(action==='drive'){
    // Proper little checkered flag, matching the reference menu language.
@@ -115,11 +115,11 @@ export function createModernMainMenu(options:{
  };
  const button=(bounds:Bounds,caption:string,action:ModernMainMenuAction,size=6.1)=>{
   const selected=active(action);
-  rect(bounds.x,bounds.y,bounds.w,bounds.h,selected?'#d8cf36':'#273039',selected?'#fff28a':'#778693',3,selected?1.45:1);
-  line(bounds.x+2,bounds.y+1,bounds.x+bounds.w-1,bounds.y+1,selected?'#fff8a8':'#9aa5ad',.45);
+  rect(bounds.x,bounds.y,bounds.w,bounds.h,selected?'#454d28':'#232323',selected?'#bdca66':'#555',3,selected?1.45:1);
+  line(bounds.x+2,bounds.y+1,bounds.x+bounds.w-1,bounds.y+1,selected?'#d8e27e':'#555',.45);
   icon(action,bounds.x+8,bounds.y+bounds.h/2,selected);
-  label(caption,bounds.x+15,bounds.y+bounds.h/2+.2,size,selected?'#17191a':'#edf1f4',850,'left',true);
-  label('›',bounds.x+bounds.w-6,bounds.y+bounds.h/2,size+1.5,selected?'#17191a':'#cbd8e1',850,'center');
+  label(caption,bounds.x+15,bounds.y+bounds.h/2+.2,size,selected?'#fff':'#eee',850,'left',true);
+  label('›',bounds.x+bounds.w-6,bounds.y+bounds.h/2,size+1.5,selected?'#fff':'#aaa',850,'center');
  };
 
  const syncBounds=()=>{
@@ -198,8 +198,8 @@ export function createModernMainMenu(options:{
   }
   line(0,43,320,43,'rgba(160,176,187,.82)',1);
 
-  rect(7,45,82,148,'rgba(20,24,28,.88)','#697985',4);
-  label('MAIN MENU',13,50,5.2,'#d9e2e8',850);
+  rect(7,45,82,148,'rgba(17,17,17,.90)','#3b3b3b',4);
+  label('MAIN MENU',13,50,5.2,'#aaa',800);
   button(driveButton,'RACE','drive',6.8);
   button(opponentButton,'OPPONENT','opponent',5.5);
   button(editorButton,'TRACK EDITOR','editor',5.1);
@@ -209,32 +209,32 @@ export function createModernMainMenu(options:{
   label('ENTER  SELECT',13,179,3.8,'#d0d0d0',650);
   label('ESC  EXIT',13,186,3.8,'#c0c0c0',650);
 
-  rect(94,45,105,148,'rgba(20,24,28,.88)','#697985',4);
-  label('CURRENT CAR',101,50,5.1,'#d9e2e8',850);
-  fitToWidth(car.name??car.id,101,59,91,6.4,'#e6d23e',850,true);
+  rect(94,45,105,148,'rgba(17,17,17,.90)','#3b3b3b',4);
+  label('CURRENT CAR',101,50,5.1,'#aaa',800);
+  fitToWidth(car.name??car.id,101,59,91,6.4,'#d8d66d',800,true);
   ctx.clearRect(carPreview.x*sx(),carPreview.y*sy(),carPreview.w*sx(),carPreview.h*sy());
-  line(101,132,193,132,'#7f909c',1.2);
-  label('GEARS',101,139,3.7,'#aebbc4',650);label(String(car.gears??'?'),193,139,4.1,'#edf2f5',760,'right');
-  label('WEIGHT',101,146,3.7,'#aebbc4',650);label(`${car.mass??'?'} KG`,193,146,4.1,'#edf2f5',760,'right');
-  label('MAX RPM',101,153,3.7,'#aebbc4',650);label(String(car.maxRPM??'?'),193,153,4.1,'#edf2f5',760,'right');
-  label('IDLE RPM',101,160,3.7,'#aebbc4',650);label(String(car.idleRPM??'?'),193,160,4.1,'#edf2f5',760,'right');
+  line(101,132,193,132,'#565656',1.2);
+  label('GEARS',101,139,3.7,'#777',600);label(String(car.gears??'?'),193,139,4.1,'#ddd',600,'right');
+  label('WEIGHT',101,146,3.7,'#777',600);label(`${car.mass??'?'} KG`,193,146,4.1,'#ddd',600,'right');
+  label('MAX RPM',101,153,3.7,'#777',600);label(String(car.maxRPM??'?'),193,153,4.1,'#ddd',600,'right');
+  label('IDLE RPM',101,160,3.7,'#777',600);label(String(car.idleRPM??'?'),193,160,4.1,'#ddd',600,'right');
   button(carButton,'CHANGE CAR','car',5.1);
 
-  rect(204,45,109,148,'rgba(20,24,28,.88)','#697985',4);
-  label('SELECTED TRACK',211,50,5.1,'#d9e2e8',850);
-  fitToWidth(options.track.name||'UNTITLED',211,59,94,6.4,'#e6d23e',850,true);
+  rect(204,45,109,148,'rgba(17,17,17,.90)','#3b3b3b',4);
+  label('SELECTED TRACK',211,50,5.1,'#aaa',800);
+  fitToWidth(options.track.name||'UNTITLED',211,59,94,6.4,'#d8d66d',800,true);
   ctx.clearRect(trackPreview.x*sx(),trackPreview.y*sy(),trackPreview.w*sx(),trackPreview.h*sy());
-  line(211,132,305,132,'#7f909c',1.2);
+  line(211,132,305,132,'#565656',1.2);
   const roadCells=Array.from(decoded.track).filter(value=>value!==0).length;
   const terrainCells=Array.from(decoded.terrain).filter(value=>value!==0).length;
-  label('SCENERY',211,142,3.7,'#aebbc4',650);label(sceneryName(decoded.landscape),305,142,4.1,'#edf2f5',760,'right');
-  label('TRACK PIECES',211,150,3.7,'#aebbc4',650);label(String(roadCells),305,150,4.1,'#edf2f5',760,'right');
-  label('TERRAIN TILES',211,158,3.7,'#aebbc4',650);label(String(terrainCells),305,158,4.1,'#edf2f5',760,'right');
+  label('SCENERY',211,142,3.7,'#777',600);label(sceneryName(decoded.landscape),305,142,4.1,'#ddd',600,'right');
+  label('TRACK PIECES',211,150,3.7,'#777',600);label(String(roadCells),305,150,4.1,'#ddd',600,'right');
+  label('TERRAIN TILES',211,158,3.7,'#777',600);label(String(terrainCells),305,158,4.1,'#ddd',600,'right');
   button(trackButton,'CHANGE TRACK','track',5);
 
-  line(7,196,313,196,'#657681');
-  label('STUNTS DX',8,198,3.4,'#9db0bc',700);
-  label('SAME ROADS. BIGGER POSSIBILITIES.',312,198,3.4,'#9db0bc',700,'right');
+  line(7,196,313,196,'#3b3b3b');
+  label('STUNTS DX',8,198,3.4,'#777',600);
+  label('SAME ROADS. BIGGER POSSIBILITIES.',312,198,3.4,'#777',600,'right');
   ctx.restore();
   carSurface.style.display='block';trackSurface.style.display='block';
  };
