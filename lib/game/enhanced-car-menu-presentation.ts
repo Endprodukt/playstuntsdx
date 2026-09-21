@@ -232,8 +232,8 @@ export function createEnhancedCarMenuPresentation(options:{
   setFocus(next){const changed=focus.type!==next.type;focus=next;if(changed)render();},
   async draw(car,transmission,paint){
    if(currentCarId!==car.id){previewZoom=1;currentCarId=car.id;}current=car;currentTransmission=transmission;currentPaint=paint;paintColours=[];previewCanvas=undefined;previewRender=undefined;previewError=false;render();
+   try{paintColours=options.paintColours?.(car)??[];}catch(reason){console.warn('[Modern Car Select] Paint swatches unavailable:',reason);}
    try{
-    paintColours=options.paintColours?.(car)??[];
     const preview=await options.preview(car,paint);
     if(preview){previewCanvas=preview.canvas;previewRender=preview.render;paintCount=Math.max(1,preview.paintCount|0);preview.render(Math.floor(currentAngle)&1023,manualRotate?manualPitch:0,previewZoom);}
     else{previewError=true;paintCount=1;}
