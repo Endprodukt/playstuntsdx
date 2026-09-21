@@ -6,6 +6,7 @@ import {createTrackModel,createTrackModelFactory,type TrackMaterials} from './tr
 import {trackRenderPlacement} from './track-render-placement.ts';
 import {hillRenderSelection} from './hill-render-selection.ts';
 import {elevatedRoadUnderlays} from './elevated-road-underlays.ts';
+import {upgradedTrackSeamShape} from './upgraded-track-seams';
 import type {Assets} from './types.ts';
 import type {BlissTrack} from './bliss-track.ts';
 import {BLISS_TRANSPARENT_COLOUR,blissTrackMetadata} from './bliss-metadata.ts';
@@ -109,14 +110,14 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
    if(descriptor){
     const parts=[descriptor,...(descriptor.overlay?[(trackRenderModels as Record<string,typeof descriptor>)[String(descriptor.overlay)]]:[])].filter(Boolean);
     if(terrainCode===6&&descriptor){
-     const origin=trackRenderPlacement(descriptor,cell.x,row,450,0).position,high=assets.shapes.GAME2?.high;
+     const origin=trackRenderPlacement(descriptor,cell.x,row,450,0).position,sourceHigh=assets.shapes.GAME2?.high,high=sourceHigh?upgradedTrackSeamShape(sourceHigh,'GAME2.high'):undefined;
      if(high)for(const underlay of elevatedRoadUnderlays(origin,descriptor.multiTile)){
       const grass=makeGhost(createTrackModel(high,materials,0,true,2));grass.position.set(...underlay.position);ghostRoot.add(grass);
      }
     }
     for(const part of parts){
-     if(!part?.shape)continue;const [group,name]=part.shape.split('.'),shape=assets.shapes[group]?.[name];if(!shape)continue;
-     const placement=trackRenderPlacement(part,cell.x,row,terrainCode===6?450:18,0),paint=part.paint===255?0:placement.paint;
+     if(!part?.shape)continue;const [group,name]=part.shape.split('.'),sourceShape=assets.shapes[group]?.[name];if(!sourceShape)continue;
+     const shape=upgradedTrackSeamShape(sourceShape,part.shape),placement=trackRenderPlacement(part,cell.x,row,terrainCode===6?450:18,0),paint=part.paint===255?0:placement.paint;
      const model=makeGhost(createTrackModel(shape,materials,paint,false,2));model.position.set(...placement.position);model.rotation.y=placement.rotation;ghostRoot.add(model);
     }
    }
@@ -214,7 +215,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
    if(selected.terrain&&!(terrain===6&&sourceId!==0)){
     const descriptor=(terrainObjects as Array<{id:number;shape:string;rotation:number}>).find(entry=>entry.id===selected.terrain);
     if(descriptor){
-     const [group,name]=descriptor.shape.split('.'),shape=assets.shapes[group]?.[name];
+     const [group,name]=descriptor.shape.split('.'),sourceShape=assets.shapes[group]?.[name],shape=sourceShape?upgradedTrackSeamShape(sourceShape,descriptor.shape):undefined;
      if(shape){
       const model=modelFactory(shape,0,true);
       model.position.set(x*1024+512,terrain===6?450:0,row*1024+512);
@@ -227,7 +228,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
    if(!descriptor)continue;
    const origin=trackRenderPlacement(descriptor,x,row,terrain===6?450:0,0).position;
    if(terrain===6){
-    const high=assets.shapes.GAME2?.high;
+    const sourceHigh=assets.shapes.GAME2?.high,high=sourceHigh?upgradedTrackSeamShape(sourceHigh,'GAME2.high'):undefined;
     if(high)for(const underlay of elevatedRoadUnderlays(origin,descriptor.multiTile)){
      const grass=modelFactory(high,0,true);grass.position.set(...underlay.position);terrainRoot.add(grass);
     }
@@ -237,9 +238,9 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
    const parts=[descriptor,...(descriptor.overlay?[(trackRenderModels as Record<string,typeof descriptor>)[String(descriptor.overlay)]]:[])].filter(Boolean);
    for(const part of parts){
     if(!part?.shape)continue;
-    const [group,name]=part.shape.split('.'),shape=assets.shapes[group]?.[name];
-    if(!shape)continue;
-    const placement=trackRenderPlacement(part,x,row,terrain===6?450:0,0);
+    const [group,name]=part.shape.split('.'),sourceShape=assets.shapes[group]?.[name];
+    if(!sourceShape)continue;
+    const shape=upgradedTrackSeamShape(sourceShape,part.shape),placement=trackRenderPlacement(part,x,row,terrain===6?450:0,0);
     const paint=part.paint===255?0:placement.paint;
     const model=modelFactory(shape,paint);
     model.position.set(...placement.position);model.rotation.y=placement.rotation;root.add(model);
