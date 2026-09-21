@@ -28,7 +28,8 @@
     "replay:file:test": "node --test tools/test-replay-file.ts",
     "replay:groundtruth": "node tools/replay-groundtruth.mjs",
     "replay:groundtruth:convert": "node tools/replay-groundtruth.mjs --convert-only",
-    "replay:groundtruth:test": "node --test tools/test-replay-groundtruth.mjs"
+    "replay:groundtruth:test": "node --test tools/test-replay-groundtruth.mjs",
+    "physics:bb11:test": "node --test tools/test-bb11-physics.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
