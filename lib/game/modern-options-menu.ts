@@ -12,7 +12,7 @@ import {
 
 type Tab='gameplay'|'video'|'sound'|'controls';
 type FocusZone='tabs'|'rows'|'footer';
-type FooterAction='replay'|'exit'|'done';
+type FooterAction='back'|'exit'|'done';
 type TauriGlobal={core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}};
 type NativeConfigFile={content:string;path:string;created:boolean};
 type DesktopSoundDevice='off'|'pc-speaker'|'tandy'|'adlib'|'sound-blaster'|'mt32';
@@ -29,11 +29,11 @@ type FfbNumericRowId=
 type RowId=
  |'music'|'sound-effects'|'sound-device'|'open-map'|'menu-style'|'track-editor'|'audio-update'
  |'dx-graphics'|'resolution'|'background'|'cockpit'|'fov'|'fps'|'original-detail'
- |'input-device'|'deadzone'|'linearity'|'show-f8'|'ffb-enabled'|FfbNumericRowId
+ |'input-device'|'deadzone'|'linearity'|'show-f8'|'ffb-enabled'|'ffb-details'|FfbNumericRowId
  |'close-distance'|'close-height'|'standard-distance'|'standard-height'|'far-distance'|'far-height'|'reset-camera';
 
-interface OptionRow {id:RowId;label:string;value:string;disabled?:boolean;actionOnly?:boolean;group?:string}
-interface PointerAction {type:'tab'|'row'|'footer'|'confirm';index:number}
+interface OptionRow {id:RowId;label:string;value:string;disabled?:boolean;actionOnly?:boolean;numeric?:boolean;group?:string}
+interface PointerAction {type:'tab'|'row'|'minus'|'plus'|'value'|'footer'|'confirm';index:number}
 
 export interface ModernOptionsMenuHost {
  canvas:HTMLCanvasElement;
@@ -125,8 +125,7 @@ const ffbDefaults:Record<FfbNumericRowId,number>={
 const ffbFieldById=new Map<FfbNumericRowId,FfbField>(ffbFields.map(field=>[field.id,field]));
 const tabOrder:readonly Tab[]=['gameplay','video','sound','controls'];
 const tabLabels:Record<Tab,string>={gameplay:'GAMEPLAY',video:'VIDEO',sound:'SOUND',controls:'CONTROLS'};
-const footerLabels:Record<FooterAction,string>={replay:'LOAD REPLAY',exit:'EXIT GAME',done:'DONE'};
-const footerOrder:readonly FooterAction[]=['replay','exit','done'];
+const footerLabels:Record<FooterAction,string>={back:'BACK',exit:'EXIT GAME',done:'DONE'};
 const optionHelp:Partial<Record<RowId,string>>={
  'music':'Turns the original Stunts music on or off.',
  'sound-effects':'Turns game sound effects on or off. Per-car engine sounds are configured in Car Select or the F8 panel.',
@@ -147,6 +146,7 @@ const optionHelp:Partial<Record<RowId,string>>={
  'linearity':'Wheel only. Higher values make steering less sensitive around centre while preserving full steering lock.',
  'show-f8':'Shows or hides the Options [F8] button. The F8 shortcut itself remains available.',
  'ffb-enabled':'Master force-feedback switch. Available when Driving Input Device is set to Wheel.',
+ 'ffb-details':'Opens the detailed force-feedback tuning list. Available when Driving Input Device is set to Wheel.',
  'close-distance':'Distance of the Close enhanced chase camera behind the car.',
  'close-height':'Height of the Close enhanced chase camera above the car.',
  'standard-distance':'Distance of the Standard enhanced chase camera behind the car.',
@@ -161,7 +161,7 @@ const tabHelp:Record<Tab,string>={
  sound:'Music, sound effects, emulated sound hardware and DX audio behaviour.',
  controls:'Driving input and wheel-response settings.',
 };
-const rowHeight=13.5,sectionHeight=8,rowRegionBottom=101;
+const rowRegionBottom=101;
 const truthy=(value:string|null,defaultValue=false)=>value===null?defaultValue:!['0','false','no','off'].includes(value.trim().toLowerCase());
 const boolLabel=(value:boolean)=>value?'On':'Off';
 const clamp=(value:number,min:number,max:number)=>Math.max(min,Math.min(max,value));
@@ -288,13 +288,16 @@ async function mt32Ready(){
 }
 
 function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],state:{
- tab:()=>Tab;zone:()=>FocusZone;row:()=>number;footer:()=>number;confirm:()=>boolean;confirmChoice:()=>number;
+ tab:()=>Tab;zone:()=>FocusZone;row:()=>number;footer:()=>number;details:()=>boolean;confirm:()=>boolean;confirmChoice:()=>number;
 }){
  const ctx=canvas.getContext('2d')!,sx=()=>canvas.width/320,sy=()=>canvas.height/200;
  const tabBounds=tabOrder.map((_,i)=>({x:8,y:49+i*31,w:66,h:25}));
  const content={x:80,y:44,w:233,h:127},footerBounds=[
-  {x:81,y:176,w:73,h:18},{x:159,y:176,w:73,h:18},{x:237,y:176,w:76,h:18},
+  {x:81,y:176,w:112,h:18},{x:198,y:176,w:115,h:18},
  ];
+ const footerOrder=()=>state.details()?(['back','done'] as const):(['exit','done'] as const);
+ const currentRowHeight=()=>state.details()?9.5:13.5;
+ const currentSectionHeight=()=>state.details()?5.8:8;
  let hover:PointerAction|undefined;
 
  const rect=(x:number,y:number,w:number,h:number,fill:string,stroke='#3b3b3b',radius=5,lineWidth=1)=>{
@@ -317,13 +320,18 @@ function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],sta
   return lines;
  };
  const focused=(type:PointerAction['type'],index:number)=>{
-  const zone=state.zone(),keyboard=(type==='tab'&&zone==='tabs')||(type==='row'&&zone==='rows')||(type==='footer'&&zone==='footer');
-  const selected=type==='tab'?tabOrder.indexOf(state.tab()):type==='row'?state.row():type==='footer'?state.footer():-1;
-  return (keyboard&&selected===index)||(hover?.type===type&&hover.index===index);
+  const rowType=type==='row'||type==='minus'||type==='plus'||type==='value';
+  const zone=state.zone(),keyboard=(type==='tab'&&zone==='tabs')||(rowType&&zone==='rows')||(type==='footer'&&zone==='footer');
+  const selected=type==='tab'?tabOrder.indexOf(state.tab()):rowType?state.row():type==='footer'?state.footer():-1;
+  const hovered=rowType
+   ?(hover?.index===index&&['row','minus','plus','value'].includes(hover.type))
+   :hover?.type===type&&hover.index===index;
+  return (keyboard&&selected===index)||hovered;
  };
  const rows=()=>getRows();
  const layoutFrom=(start:number)=>{
   const all=rows(),items:Array<{index:number;y:number}>=[],sections:Array<{label:string;y:number}>=[];
+  const rowHeight=currentRowHeight(),sectionHeight=currentSectionHeight();
   let y=content.y+18,activeGroup:string|undefined;
   for(let index=start;index<all.length;index++){
    const item=all[index],group=item.group;
@@ -343,32 +351,38 @@ function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],sta
   return layout;
  };
  const render=()=>{
-  const all=rows(),layout=visibleLayout(),{start}=layout;
+  const all=rows(),layout=visibleLayout(),rowHeight=currentRowHeight(),details=state.details();
   ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#090909';ctx.fillRect(0,0,canvas.width,canvas.height);
   rect(7,6,306,30,'#111','#3b3b3b',6);label('OPTIONS',15,20,9,'#aeb56e',750);label('PlayStunts DX',306,20,5.5,'#777',500,'right');
   tabOrder.forEach((tab,index)=>{const b=tabBounds[index],active=tab===state.tab(),over=focused('tab',index);rect(b.x,b.y,b.w,b.h,active?'#343a20':over?'#292d1d':'#171717',active||over?'#aeba5a':'#444',5,active||over?1.4:1);label(tabLabels[tab],b.x+b.w/2,b.y+b.h/2,5.5,active?'#fff':over?'#eee':'#aaa',active?700:600,'center');});
   rect(content.x,content.y,content.w,content.h,'#111','#3b3b3b',6);
-  const activeTab=state.tab();label(tabLabels[activeTab],content.x+8,content.y+10,6,'#888',700);
+  const activeTab=state.tab();label(details?'FORCE FEEDBACK DETAILS':tabLabels[activeTab],content.x+8,content.y+10,details?5.2:6,'#888',700);
   layout.sections.forEach(section=>{
-   label(section.label,content.x+10,section.y,3.8,'#777',750);
-   ctx.strokeStyle='#2f2f2f';ctx.lineWidth=Math.max(.5,.5*Math.min(sx(),sy()));ctx.beginPath();ctx.moveTo((content.x+52)*sx(),section.y*sy());ctx.lineTo((content.x+content.w-10)*sx(),section.y*sy());ctx.stroke();
+   label(section.label,content.x+10,section.y,details?3.15:3.8,'#777',750);
+   ctx.strokeStyle='#2f2f2f';ctx.lineWidth=Math.max(.5,.5*Math.min(sx(),sy()));ctx.beginPath();ctx.moveTo((content.x+(details?48:52))*sx(),section.y*sy());ctx.lineTo((content.x+content.w-10)*sx(),section.y*sy());ctx.stroke();
   });
   layout.items.forEach(item=>{
    const row=all[item.index],index=item.index,y=item.y,selected=focused('row',index),disabled=!!row.disabled;
    if(selected)rect(content.x+5,y-rowHeight/2+.25,content.w-10,rowHeight-.5,'#31371f','#9eaa54',4,1.2);
-   label(row.label,content.x+10,y,5.4,disabled?'#555':selected?'#fff':'#ccc',selected?650:500);
+   label(row.label,content.x+10,y,details?4.25:5.4,disabled?'#555':selected?'#fff':'#ccc',selected?650:500);
    const valueColour=disabled?'#555':row.actionOnly?'#aeb56e':selected?'#fff':'#aeb56e';
-   label(row.value,content.x+content.w-10,y,5.3,valueColour,650,'right');
+   if(row.numeric&&!disabled){
+    const minusX=content.x+content.w-61,valueX=content.x+content.w-34,plusX=content.x+content.w-9;
+    const minusHover=hover?.type==='minus'&&hover.index===index,plusHover=hover?.type==='plus'&&hover.index===index,valueHover=hover?.type==='value'&&hover.index===index;
+    rect(minusX-5.5,y-4.1,11,8.2,minusHover?'#4a522b':'#1d1d1d',minusHover?'#bac85e':'#4a4a4a',2.5,minusHover?1.2:.8);
+    rect(plusX-5.5,y-4.1,11,8.2,plusHover?'#4a522b':'#1d1d1d',plusHover?'#bac85e':'#4a4a4a',2.5,plusHover?1.2:.8);
+    if(valueHover)rect(valueX-18,y-4.1,36,8.2,'#252918','#70783e',2.5,.8);
+    label('−',minusX,y,details?4.6:5.2,minusHover?'#fff':'#bbb',700,'center');
+    label(row.value,valueX,y,details?4.15:5.0,valueHover?'#fff':valueColour,650,'center');
+    label('+',plusX,y,details?4.6:5.2,plusHover?'#fff':'#bbb',700,'center');
+   }else label(row.value,content.x+content.w-10,y,details?4.15:5.3,valueColour,650,'right');
   });
-  if(start>0)label('▲',content.x+content.w-9,content.y+8,4.5,'#666',600,'center');
-  const lastVisible=layout.items.at(-1)?.index??-1;
-  if(lastVisible<all.length-1)label('▼',content.x+content.w-9,content.y+99,4.5,'#666',600,'center');
-  const hoveredRow=hover?.type==='row'?hover.index:undefined,helpIndex=hoveredRow??(state.zone()==='rows'?state.row():undefined);
+  const hoveredRow=hover&&['row','minus','plus','value'].includes(hover.type)?hover.index:undefined,helpIndex=hoveredRow??(state.zone()==='rows'?state.row():undefined);
   const help=helpIndex!==undefined&&all[helpIndex]?(optionHelp[all[helpIndex].id]??ffbFieldById.get(all[helpIndex].id as FfbNumericRowId)?.help??tabHelp[state.tab()]):tabHelp[state.tab()];
   rect(content.x+5,content.y+102,content.w-10,18,'#0d0d0d','#292929',3,.6);
   wrapped(help,content.w-18,3.9,2).forEach((line,index)=>label(line,content.x+9,content.y+107+index*6,3.9,index===0?'#aaa':'#818181',500));
-  footerOrder.forEach((action,index)=>{const b=footerBounds[index],over=focused('footer',index);rect(b.x,b.y,b.w,b.h,over?'#3a4022':'#202020',over?'#b4c35a':'#555',4,over?1.5:1);label(footerLabels[action],b.x+b.w/2,b.y+b.h/2,5.1,over?'#fff':'#ddd',650,'center');});
-  label('↑↓ SELECT   ←→ CHANGE   ENTER: APPLY   TAB: CATEGORY',83,168,3.8,'#6f6f6f',500);
+  footerOrder().forEach((action,index)=>{const b=footerBounds[index],over=focused('footer',index);rect(b.x,b.y,b.w,b.h,over?'#3a4022':'#202020',over?'#b4c35a':'#555',4,over?1.5:1);label(footerLabels[action],b.x+b.w/2,b.y+b.h/2,5.1,over?'#fff':'#ddd',650,'center');});
+  label(details?'↑↓ SELECT   ←→ CHANGE   ENTER: EDIT   ESC: BACK':'↑↓ SELECT   ←→ CHANGE   ENTER: APPLY   TAB: CATEGORY',83,168,3.8,'#6f6f6f',500);
   if(state.confirm()){
    ctx.fillStyle='rgba(0,0,0,.72)';ctx.fillRect(0,0,canvas.width,canvas.height);rect(82,65,156,70,'#141414','#777',7,1.4);label('EXIT GAME?',160,82,8,'#eee',750,'center');label('Unsaved race progress will be lost.',160,98,4.4,'#888',500,'center');
    const choices=[{x:101,y:108,w:53,h:19,label:'CANCEL'},{x:166,y:108,w:53,h:19,label:'EXIT'}];
@@ -386,8 +400,17 @@ function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],sta
   const tab=tabBounds.findIndex(inside);if(tab>=0)return {type:'tab',index:tab};
   const foot=footerBounds.findIndex(inside);if(foot>=0)return {type:'footer',index:foot};
   if(x>=content.x+5&&x<=content.x+content.w-5&&y>=content.y+13&&y<content.y+rowRegionBottom){
-   const hit=visibleLayout().items.find(item=>y>=item.y-rowHeight/2&&y<item.y+rowHeight/2);
-   if(hit)return {type:'row',index:hit.index};
+   const rowHeight=currentRowHeight(),hit=visibleLayout().items.find(item=>y>=item.y-rowHeight/2&&y<item.y+rowHeight/2);
+   if(hit){
+    const row=rows()[hit.index];
+    if(row?.numeric&&!row.disabled){
+     const minusX=content.x+content.w-61,valueX=content.x+content.w-34,plusX=content.x+content.w-9;
+     if(x>=minusX-7&&x<=minusX+7)return {type:'minus',index:hit.index};
+     if(x>=plusX-7&&x<=plusX+7)return {type:'plus',index:hit.index};
+     if(x>=valueX-20&&x<=valueX+20)return {type:'value',index:hit.index};
+    }
+    return {type:'row',index:hit.index};
+   }
   }
   return undefined;
  };
@@ -401,9 +424,10 @@ function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],sta
 
 export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'menu'|'replay'|'exit'>{
  const ffb=await loadFfbSettings();
- let tab:Tab='gameplay',zone:FocusZone='rows',row=0,footer=2,confirm=false,confirmChoice=0;
+ let tab:Tab='gameplay',zone:FocusZone='rows',row=0,footer=1,ffbDetails=false,confirm=false,confirmChoice=0;
  const currentRows=():OptionRow[]=>{
-  const camera=(level:EnhancedChaseCameraPresetLevel,kind:EnhancedChaseCameraSetting,label:string):OptionRow=>({id:(level===1?(kind==='distance'?'close-distance':'close-height'):level===2?(kind==='distance'?'standard-distance':'standard-height'):(kind==='distance'?'far-distance':'far-height')) as RowId,label,value:String(enhancedChaseCameraPosition(level)[kind]),group:'DX / MODERN'});
+  const camera=(level:EnhancedChaseCameraPresetLevel,kind:EnhancedChaseCameraSetting,label:string):OptionRow=>({id:(level===1?(kind==='distance'?'close-distance':'close-height'):level===2?(kind==='distance'?'standard-distance':'standard-height'):(kind==='distance'?'far-distance':'far-height')) as RowId,label,value:String(enhancedChaseCameraPosition(level)[kind]),numeric:true,group:'DX / MODERN'});
+  if(ffbDetails)return ffbFields.map(field=>({id:field.id,label:field.label,value:formatFfbValue(field,ffb.values[field.id]),numeric:true,group:field.group}));
   if(tab==='gameplay'){
    return [
     {id:'open-map',label:'Open Map on Race Start',value:boolLabel(storedEnabled(mapKey,false))},
@@ -424,38 +448,31 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
    const dx=graphicsEnabled(),fov=enhancedFovWidth();
    return [
     {id:'dx-graphics',label:'DX Graphics',value:boolLabel(dx),group:'DX / MODERN'},
-    {id:'resolution',label:'Internal Resolution',value:enhancedRenderScale()===1?'Original':`${enhancedRenderScale()}×`,disabled:!dx,group:'DX / MODERN'},
+    {id:'resolution',label:'Internal Resolution',value:enhancedRenderScale()===1?'Original':`${enhancedRenderScale()}×`,disabled:!dx,numeric:true,group:'DX / MODERN'},
     {id:'background',label:'High-Res Background',value:boolLabel(enhancedBackgroundEnabled()),disabled:!dx,group:'DX / MODERN'},
     {id:'cockpit',label:'High-Res Cockpit',value:boolLabel(enhancedCockpitEnabled()),disabled:!dx,group:'DX / MODERN'},
-    {id:'fov',label:'Field of View',value:fov===0?'Original':fov===100?'Full':`${fov}%`,disabled:!dx,group:'DX / MODERN'},
+    {id:'fov',label:'Field of View',value:fov===0?'Original':fov===100?'Full':`${fov}%`,disabled:!dx,numeric:true,group:'DX / MODERN'},
     {id:'fps',label:'FPS Counter',value:boolLabel(storedEnabled(fpsKey,true)),disabled:!dx,group:'DX / MODERN'},
     camera(1,'distance','Chase Close · Distance'),camera(1,'height','Chase Close · Height'),
     camera(2,'distance','Chase Standard · Distance'),camera(2,'height','Chase Standard · Height'),
     camera(3,'distance','Chase Far · Distance'),camera(3,'height','Chase Far · Height'),
     {id:'reset-camera',label:'Chase Camera Presets',value:'Reset',actionOnly:true,group:'DX / MODERN'},
-    {id:'original-detail',label:'Original Detail Level',value:`Level ${clamp(host.settings.graphics,0,3)+1}`,group:'ORIGINAL STUNTS'},
+    {id:'original-detail',label:'Original Detail Level',value:`Level ${clamp(host.settings.graphics,0,3)+1}`,numeric:true,group:'ORIGINAL STUNTS'},
    ];
   }
   const input=desktopInputDevice(),wheel=input==='wheel';
   return [
    {id:'input-device',label:'Driving Input Device',value:inputDevices.find(item=>item.id===input)?.label??'Keyboard',group:'INPUT'},
-   {id:'deadzone',label:'Steering Deadzone',value:`${storedDeadzone()}%`,disabled:!wheel,group:'INPUT'},
-   {id:'linearity',label:'Steering Linearity',value:storedLinearity().toFixed(2),disabled:!wheel,group:'INPUT'},
+   {id:'deadzone',label:'Steering Deadzone',value:`${storedDeadzone()}%`,disabled:!wheel,numeric:true,group:'INPUT'},
+   {id:'linearity',label:'Steering Linearity',value:storedLinearity().toFixed(2),disabled:!wheel,numeric:true,group:'INPUT'},
    {id:'show-f8',label:'Show F8 Button',value:boolLabel(storedEnabled(f8Key,true)),group:'INTERFACE'},
    {id:'ffb-enabled',label:'Force Feedback',value:boolLabel(ffb.enabled),disabled:!wheel,group:'FORCE FEEDBACK'},
-   ...ffbFields.map(field=>({id:field.id,label:field.label,value:formatFfbValue(field,ffb.values[field.id]),disabled:!wheel,group:field.group} as OptionRow)),
+   {id:'ffb-details',label:'Force Feedback Details',value:'Open…',disabled:!wheel,actionOnly:true,group:'FORCE FEEDBACK'},
   ];
  };
  const clampRow=()=>{const rows=currentRows();row=Math.max(0,Math.min(Math.max(0,rows.length-1),row));};
- const presentation=createPresentation(host.canvas,currentRows,{tab:()=>tab,zone:()=>zone,row:()=>row,footer:()=>footer,confirm:()=>confirm,confirmChoice:()=>confirmChoice});
- const pointerActions:PointerAction[]=[];
- const pointerDown=(event:PointerEvent)=>{const action=presentation.actionAt(event);if(!action)return;event.preventDefault();event.stopImmediatePropagation();pointerActions.push(action);};
- const pointerMove=(event:PointerEvent)=>presentation.hoverAt(event);
- const pointerLeave=()=>presentation.clearHover();
- const wheel=(event:WheelEvent)=>{if(confirm||event.deltaY===0)return;event.preventDefault();event.stopImmediatePropagation();zone='rows';const rows=currentRows();row=Math.max(0,Math.min(rows.length-1,row+(event.deltaY>0?1:-1)));presentation.render();};
- host.canvas.addEventListener('pointerdown',pointerDown,true);host.canvas.addEventListener('pointermove',pointerMove,true);host.canvas.addEventListener('pointerleave',pointerLeave,true);host.canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
-
- const setTab=(index:number)=>{tab=tabOrder[(index+tabOrder.length)%tabOrder.length]!;row=0;zone='rows';clampRow();presentation.render();};
+ const presentation=createPresentation(host.canvas,currentRows,{tab:()=>tab,zone:()=>zone,row:()=>row,footer:()=>footer,details:()=>ffbDetails,confirm:()=>confirm,confirmChoice:()=>confirmChoice});
+ const setTab=(index:number)=>{ffbDetails=false;tab=tabOrder[(index+tabOrder.length)%tabOrder.length]!;row=0;zone='rows';footer=1;clampRow();presentation.render();};
  const setInputDevice=(device:DesktopInputDevice)=>{
   setDesktopInputDevice(device);
   host.settings.mouse=device==='mouse';
@@ -474,6 +491,7 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
  const changeRow=async(direction:number,activate=false)=>{
   const item=currentRows()[row];if(!item||item.disabled)return;
   if(item.id==='ffb-enabled'){await persistFfbEnabled(ffb,!ffb.enabled);presentation.render();return;}
+  if(item.id==='ffb-details'){if(activate){ffbDetails=true;row=0;zone='rows';footer=1;}presentation.render();return;}
   const ffbField=ffbFieldById.get(item.id as FfbNumericRowId);
   if(ffbField){await persistFfbValue(ffb,ffbField,ffb.values[ffbField.id]+(direction<0?-ffbField.step:ffbField.step));presentation.render();return;}
   switch(item.id){
@@ -517,12 +535,76 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
   }
   presentation.render();
  };
+ const numericInfo=(id:RowId)=>{
+  const field=ffbFieldById.get(id as FfbNumericRowId);
+  if(field)return {value:ffb.values[field.id],min:field.min,max:field.max,step:field.step,decimals:field.decimals,unit:field.unit};
+  if(id==='deadzone')return {value:storedDeadzone(),min:0,max:15,step:1,decimals:0,unit:'%'};
+  if(id==='linearity')return {value:storedLinearity(),min:1,max:2,step:.05,decimals:2,unit:''};
+  if(id==='fov')return {value:enhancedFovWidth(),min:0,max:100,step:5,decimals:0,unit:'%'};
+  if(id==='original-detail')return {value:clamp(host.settings.graphics,0,3)+1,min:1,max:4,step:1,decimals:0,unit:''};
+  if(id==='resolution')return {value:enhancedRenderScale(),min:Math.min(...ENHANCED_RENDER_SCALES),max:Math.max(...ENHANCED_RENDER_SCALES),step:1,decimals:0,unit:'×'};
+  const cameraMap:Partial<Record<RowId,[EnhancedChaseCameraPresetLevel,EnhancedChaseCameraSetting]>>={
+   'close-distance':[1,'distance'],'close-height':[1,'height'],'standard-distance':[2,'distance'],'standard-height':[2,'height'],'far-distance':[3,'distance'],'far-height':[3,'height'],
+  };
+  const camera=cameraMap[id];
+  if(camera){const [level,kind]=camera;return {value:enhancedChaseCameraPosition(level)[kind],min:kind==='distance'?80:20,max:kind==='distance'?1000:500,step:kind==='distance'?10:5,decimals:0,unit:''};}
+  return undefined;
+ };
+ const setNumericValue=async(id:RowId,value:number)=>{
+  const field=ffbFieldById.get(id as FfbNumericRowId);
+  if(field){await persistFfbValue(ffb,field,value);return;}
+  if(id==='deadzone'){await setDeadzone(value);return;}
+  if(id==='linearity'){await setLinearity(value);return;}
+  if(id==='fov'){setEnhancedFovWidth(clamp(value,0,100));return;}
+  if(id==='original-detail'){host.settings.graphics=clamp(Math.round(value)-1,0,3);window.localStorage.setItem(originalGraphicsKey,String(host.settings.graphics));return;}
+  if(id==='resolution'){
+   const next=ENHANCED_RENDER_SCALES.reduce((best,candidate)=>Math.abs(candidate-value)<Math.abs(best-value)?candidate:best,ENHANCED_RENDER_SCALES[0]!);
+   await setRenderScale(next);return;
+  }
+  const cameraMap:Partial<Record<RowId,[EnhancedChaseCameraPresetLevel,EnhancedChaseCameraSetting]>>={
+   'close-distance':[1,'distance'],'close-height':[1,'height'],'standard-distance':[2,'distance'],'standard-height':[2,'height'],'far-distance':[3,'distance'],'far-height':[3,'height'],
+  };
+  const camera=cameraMap[id];if(camera)setEnhancedChaseCameraPosition(camera[0],camera[1],value);
+ };
+ const editNumeric=async(index:number)=>{
+  const item=currentRows()[index];if(!item?.numeric||item.disabled)return;
+  const info=numericInfo(item.id);if(!info)return;
+  const entered=window.prompt(`${item.label}\nEnter a value from ${info.min} to ${info.max}${info.unit?' '+info.unit:''}:`,String(info.value));
+  if(entered===null)return;
+  const parsed=Number(entered.trim().replace(',','.'));
+  if(!Number.isFinite(parsed)){window.alert('Please enter a valid number.');return;}
+  await setNumericValue(item.id,parsed);presentation.render();
+ };
  const activateFooter=async(index:number):Promise<'menu'|'replay'|'exit'|undefined>=>{
-  const action=footerOrder[index];
+  const action=(ffbDetails?(['back','done'] as const):(['exit','done'] as const))[index];
   if(action==='done')return 'menu';
-  if(action==='replay'){if(await host.selectReplay())return 'replay';presentation.render();return;}
+  if(action==='back'){ffbDetails=false;row=Math.max(0,currentRows().findIndex(item=>item.id==='ffb-details'));zone='rows';footer=1;presentation.render();return;}
   confirm=true;confirmChoice=0;presentation.render();return;
  };
+ const pointerActions:PointerAction[]=[];
+ let adjustmentChain=Promise.resolve(),lastTouchIndex=-1,lastTouchAt=0;
+ const queueAdjustment=(index:number,direction:number)=>{
+  adjustmentChain=adjustmentChain.then(async()=>{row=index;zone='rows';clampRow();await changeRow(direction);}).catch(reason=>console.warn('[Modern Options] value adjustment failed:',reason));
+ };
+ const pointerDown=(event:PointerEvent)=>{const action=presentation.actionAt(event);if(!action)return;event.preventDefault();event.stopImmediatePropagation();pointerActions.push(action);};
+ const pointerUp=(event:PointerEvent)=>{
+  if(event.pointerType!=='touch')return;
+  const action=presentation.actionAt(event);if(action?.type!=='value')return;
+  const now=performance.now();
+  if(action.index===lastTouchIndex&&now-lastTouchAt<350){event.preventDefault();lastTouchIndex=-1;lastTouchAt=0;void editNumeric(action.index);}
+  else{lastTouchIndex=action.index;lastTouchAt=now;}
+ };
+ const doubleClick=(event:MouseEvent)=>{const action=presentation.actionAt(event);if(action?.type==='value'){event.preventDefault();event.stopImmediatePropagation();void editNumeric(action.index);}};
+ const pointerMove=(event:PointerEvent)=>presentation.hoverAt(event);
+ const pointerLeave=()=>presentation.clearHover();
+ const wheel=(event:WheelEvent)=>{
+  if(confirm||event.deltaY===0)return;
+  const action=presentation.actionAt(event);
+  event.preventDefault();event.stopImmediatePropagation();
+  if(action?.type==='value'){queueAdjustment(action.index,event.deltaY>0?-1:1);return;}
+  zone='rows';const rows=currentRows();row=Math.max(0,Math.min(rows.length-1,row+(event.deltaY>0?1:-1)));presentation.render();
+ };
+ host.canvas.addEventListener('pointerdown',pointerDown,true);host.canvas.addEventListener('pointerup',pointerUp,true);host.canvas.addEventListener('dblclick',doubleClick,true);host.canvas.addEventListener('pointermove',pointerMove,true);host.canvas.addEventListener('pointerleave',pointerLeave,true);host.canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
 
  presentation.render();
  try{
@@ -538,11 +620,13 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
    }
    if(pointer){
     if(pointer.type==='tab'){setTab(pointer.index);continue;}
-    if(pointer.type==='row'){zone='rows';row=pointer.index;clampRow();await changeRow(1,true);continue;}
+    if(pointer.type==='minus'||pointer.type==='plus'){zone='rows';row=pointer.index;clampRow();await changeRow(pointer.type==='minus'?-1:1);continue;}
+    if(pointer.type==='value'){zone='rows';row=pointer.index;clampRow();presentation.render();continue;}
+    if(pointer.type==='row'){zone='rows';row=pointer.index;clampRow();const item=currentRows()[row];if(!item?.numeric)await changeRow(1,true);else presentation.render();continue;}
     zone='footer';footer=pointer.index;presentation.render();const result=await activateFooter(footer);if(result)return result;continue;
    }
    const key=input.key??0;
-   if(key===27)return 'menu';
+   if(key===27){if(ffbDetails){ffbDetails=false;row=Math.max(0,currentRows().findIndex(item=>item.id==='ffb-details'));zone='rows';presentation.render();continue;}return 'menu';}
    if(key===9){setTab(tabOrder.indexOf(tab)+1);continue;}
    if(zone==='tabs'){
     if(key===0x4b00||key===0x4800){setTab(tabOrder.indexOf(tab)-1);zone='tabs';presentation.render();continue;}
@@ -551,18 +635,18 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
    }else if(zone==='rows'){
     const rows=currentRows();
     if(key===0x4800){if(row===0)zone='tabs';else row--;presentation.render();continue;}
-    if(key===0x5000){if(row>=rows.length-1){zone='footer';footer=2;}else row++;presentation.render();continue;}
+    if(key===0x5000){if(row>=rows.length-1){zone='footer';footer=1;}else row++;presentation.render();continue;}
     if(key===0x4b00){await changeRow(-1);continue;}
     if(key===0x4d00){await changeRow(1);continue;}
-    if(key===13||key===32){await changeRow(1,true);continue;}
+    if(key===13||key===32){const item=currentRows()[row];if(item?.numeric)await editNumeric(row);else await changeRow(1,true);continue;}
    }else{
     if(key===0x4800){zone='rows';row=currentRows().length-1;clampRow();presentation.render();continue;}
-    if(key===0x4b00){footer=(footer+footerOrder.length-1)%footerOrder.length;presentation.render();continue;}
-    if(key===0x4d00){footer=(footer+1)%footerOrder.length;presentation.render();continue;}
+    if(key===0x4b00){footer=(footer+1)%2;presentation.render();continue;}
+    if(key===0x4d00){footer=(footer+1)%2;presentation.render();continue;}
     if(key===13||key===32){const result=await activateFooter(footer);if(result)return result;continue;}
    }
   }
  }finally{
-  host.canvas.removeEventListener('pointerdown',pointerDown,true);host.canvas.removeEventListener('pointermove',pointerMove,true);host.canvas.removeEventListener('pointerleave',pointerLeave,true);host.canvas.removeEventListener('wheel',wheel,true);
+  host.canvas.removeEventListener('pointerdown',pointerDown,true);host.canvas.removeEventListener('pointerup',pointerUp,true);host.canvas.removeEventListener('dblclick',doubleClick,true);host.canvas.removeEventListener('pointermove',pointerMove,true);host.canvas.removeEventListener('pointerleave',pointerLeave,true);host.canvas.removeEventListener('wheel',wheel,true);
  }
 }
