@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+<defs>
+ <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#343d44"/><stop offset=".48" stop-color="#1f282e"/><stop offset="1" stop-color="#0e1317"/></linearGradient>
+ <linearGradient id="road" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#434c52"/><stop offset="1" stop-color="#171d21"/></linearGradient>
+ <linearGradient id="mount" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#273137"/><stop offset="1" stop-color="#141a1e"/></linearGradient>
+ <linearGradient id="yellow" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff72f"/><stop offset="1" stop-color="#d9b90d"/></linearGradient>
+ <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#45dcff"/><stop offset="1" stop-color="#0695c5"/></linearGradient>
+ <pattern id="checker" width="84" height="84" patternUnits="userSpaceOnUse">
+  <rect width="42" height="42" fill="#d7dce0"/><rect x="42" y="42" width="42" height="42" fill="#d7dce0"/>
+  <rect x="42" width="42" height="42" fill="#20282d"/><rect y="42" width="42" height="42" fill="#20282d"/>
+ </pattern>
+ <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#000" flood-opacity=".65"/></filter>
+ <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="2" seed="4"/><feColorMatrix values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 .06 0"/></filter>
+</defs>
+<rect width="1600" height="900" fill="url(#sky)"/>
+<g opacity=".34" transform="translate(-120,-80) rotate(-8 320 320)"><rect width="520" height="720" fill="url(#checker)"/></g>
+<g opacity=".13" transform="translate(1320,610) rotate(-9 0 0)"><rect width="420" height="360" fill="url(#checker)"/></g>
+<path d="M0 360L180 245L325 320L460 208L585 308L700 214L805 306L925 238L1040 318L1185 212L1340 306L1600 220V430H0Z" fill="url(#mount)"/>
+<path d="M0 410L210 320L360 385L525 300L680 380L845 310L1015 392L1190 315L1375 385L1600 320V470H0Z" fill="#10161a"/>
+<path d="M0 540C270 465 520 470 760 520C990 567 1240 560 1600 482V900H0Z" fill="#11171b"/>
+<path d="M560 566C780 510 1030 505 1375 520" stroke="#59656b" stroke-width="58" fill="none" opacity=".78"/>
+<path d="M560 566C780 510 1030 505 1375 520" stroke="url(#road)" stroke-width="42" fill="none"/>
+<path d="M1015 520C1048 452 1059 392 1060 324C1062 226 1110 170 1187 171C1273 173 1314 244 1311 337C1309 408 1288 461 1249 520" stroke="#4b555b" stroke-width="84" fill="none"/>
+<path d="M1015 520C1048 452 1059 392 1060 324C1062 226 1110 170 1187 171C1273 173 1314 244 1311 337C1309 408 1288 461 1249 520" stroke="#20272c" stroke-width="60" fill="none"/>
+<path d="M1070 602C1170 564 1268 549 1397 556C1470 560 1532 574 1590 596" stroke="#505b61" stroke-width="52" fill="none"/>
+<path d="M1070 602C1170 564 1268 549 1397 556C1470 560 1532 574 1590 596" stroke="#1d2429" stroke-width="36" fill="none"/>
+<g transform="translate(1010 545)" filter="url(#shadow)">
+ <path d="M0 90L76 27L245 6L370 34L418 77L389 120L76 128Z" fill="#0d1215" stroke="#68747b" stroke-width="4"/>
+ <path d="M108 35L233 19L314 39L347 72L152 74Z" fill="#303b42"/>
+ <path d="M30 88L90 78L355 78L399 96L377 113L60 119Z" fill="#182126"/>
+ <rect x="329" y="44" width="120" height="10" rx="5" fill="#11161a"/><rect x="372" y="36" width="9" height="50" fill="#11161a"/>
+ <circle cx="108" cy="119" r="34" fill="#080b0d" stroke="#465159" stroke-width="8"/>
+ <circle cx="329" cy="116" r="34" fill="#080b0d" stroke="#465159" stroke-width="8"/>
+ <rect x="32" y="88" width="24" height="10" fill="#dbe7ef"/><rect x="367" y="88" width="17" height="9" fill="#b41f20"/>
+</g>
+<g filter="url(#shadow)" transform="translate(55 36)">
+ <text x="0" y="118" font-family="Impact,Arial Black,sans-serif" font-size="112" font-style="italic" font-weight="900" fill="url(#yellow)" letter-spacing="-6">STUNTS</text>
+ <text x="590" y="118" font-family="Impact,Arial Black,sans-serif" font-size="112" font-style="italic" font-weight="900" fill="url(#cyan)" letter-spacing="-3">DX</text>
+ <text x="82" y="166" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="700" letter-spacing="10" fill="#d7dde1">TEST DRIVE  •  BUILD  •  JUMP  •  REPEAT</text>
+</g>
+<rect width="1600" height="900" filter="url(#grain)" opacity=".5"/>
+<rect y="430" width="1600" height="470" fill="#071015" opacity=".28"/>
+</svg>
