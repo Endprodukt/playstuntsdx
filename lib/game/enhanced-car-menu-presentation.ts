@@ -172,7 +172,7 @@ export function createEnhancedCarMenuPresentation(options:{
   ctx.save();ctx.beginPath();ctx.roundRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy(),4*Math.min(sx(),sy()));ctx.clip();
   ctx.fillStyle='#0a0b0a';ctx.fillRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
   if(previewCanvas){
-   const previousSmoothing=ctx.imageSmoothingEnabled;ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+   const previousSmoothing=ctx.imageSmoothingEnabled;ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='medium';
    const targetX=previewRect.x*sx(),targetY=previewRect.y*sy(),targetW=previewRect.w*sx(),targetH=previewRect.h*sy();
    // The WebGL showroom is already framed for this exact preview rectangle.
    // Copy the complete camera image once; do not crop a 320x200-style source
