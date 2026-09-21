@@ -25,8 +25,8 @@ export function createModernMainMenu(options:{
  assets:Assets;
  configuration:number[];
  track:TrackState;
- palette:readonly number[];
- materialIndices:readonly number[];
+ palette:number[];
+ materialIndices:number[];
 }){
  const {canvas}=options,ctx=canvas.getContext('2d')!;
  const menuCanvasBackground=canvas.style.background,menuCanvasZIndex=canvas.style.zIndex;
