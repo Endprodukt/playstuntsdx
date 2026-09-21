@@ -12,6 +12,17 @@ const NORMALIZED_AXES:Readonly<Record<string,readonly number[]>>={
  'GAME2.zrdu':[2],
  'GAME2.goup':[0,2],
  'GAME2.high':[0,2],
+ // Elevated/bridge pieces use the same raster-era 513..519 overlap at their
+ // tile borders. In the original integer renderer that overlap hid cracks;
+ // in WebGL it produces the faint cross-road and vertical side-wall seams
+ // visible where two bridge modules meet. Snap only coordinates already within
+ // seven source units of a tile edge, leaving the actual bridge profile intact.
+ 'GAME2.brid':[0,2],
+ 'GAME2.zbri':[0,2],
+ 'GAME2.elrd':[0,2],
+ 'GAME2.zelr':[0,2],
+ 'GAME2.elsp':[0,2],
+ 'GAME2.zesp':[0,2],
 };
 const cached=new WeakMap<Shape,Map<string,Shape>>();
 
