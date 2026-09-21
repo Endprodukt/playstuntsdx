@@ -66,7 +66,39 @@ const tabOrder:readonly Tab[]=['gameplay','video','controls'];
 const tabLabels:Record<Tab,string>={gameplay:'GAMEPLAY',video:'VIDEO',controls:'CONTROLS'};
 const footerLabels:Record<FooterAction,string>={replay:'LOAD REPLAY',exit:'EXIT GAME',done:'DONE'};
 const footerOrder:readonly FooterAction[]=['replay','exit','done'];
-const visibleRows=7;
+const optionHelp:Record<RowId,string>={
+ 'music':'Turns the original Stunts music on or off.',
+ 'sound-effects':'Turns game sound effects on or off. Per-car engine sounds are configured in Car Select or the F8 panel.',
+ 'sound-device':'Selects the emulated sound hardware. A changed device is used on the next game start.',
+ 'open-map':'Automatically opens the race map whenever a race or restart begins.',
+ 'menu-style':'Switches between the modern PlayStunts DX menus and the original Stunts menu style.',
+ 'track-editor':'Chooses the modern Bliss track editor or the original Stunts editor.',
+ 'audio-update':'Uses the newer PlayStunts DX audio update path. Disable mainly for compatibility or troubleshooting.',
+ 'dx-graphics':'Enables the enhanced PlayStunts DX 3D renderer instead of the original Stunts race renderer.',
+ 'resolution':'Sets the internal DX render resolution. Higher values sharpen 3D edges but require more GPU performance.',
+ 'background':'Uses high-resolution panorama and background artwork where an enhanced asset is available.',
+ 'cockpit':'Uses the high-resolution cockpit artwork while driving with the enhanced renderer.',
+ 'fov':'Widens the enhanced 3D view horizontally. Original keeps the classic 4:3 field of view.',
+ 'fps':'Shows or hides the frame-rate counter while DX Graphics is active.',
+ 'original-detail':'The original Stunts graphics-detail setting. It controls legacy render detail and is separate from DX internal resolution.',
+ 'input-device':'Selects the device used for driving: keyboard, joystick, mouse or wheel.',
+ 'deadzone':'Wheel only. Ignores small steering movement around the calibrated centre to prevent unwanted drift or jitter.',
+ 'linearity':'Wheel only. Higher values make steering less sensitive around centre while preserving full steering lock.',
+ 'show-f8':'Shows or hides the Options [F8] button. The F8 shortcut itself remains available.',
+ 'close-distance':'Distance of the Close enhanced chase camera behind the car.',
+ 'close-height':'Height of the Close enhanced chase camera above the car.',
+ 'standard-distance':'Distance of the Standard enhanced chase camera behind the car.',
+ 'standard-height':'Height of the Standard enhanced chase camera above the car.',
+ 'far-distance':'Distance of the Far enhanced chase camera behind the car.',
+ 'far-height':'Height of the Far enhanced chase camera above the car.',
+ 'reset-camera':'Restores all Close, Standard and Far chase-camera distances and heights to their defaults.',
+};
+const tabHelp:Record<Tab,string>={
+ gameplay:'General game, audio and menu behaviour.',
+ video:'Rendering, display quality and enhanced chase-camera settings.',
+ controls:'Driving input and wheel-response settings.',
+};
+const visibleRows=6;
 const truthy=(value:string|null,defaultValue=false)=>value===null?defaultValue:!['0','false','no','off'].includes(value.trim().toLowerCase());
 const boolLabel=(value:boolean)=>value?'On':'Off';
 const clamp=(value:number,min:number,max:number)=>Math.max(min,Math.min(max,value));
@@ -142,6 +174,18 @@ function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],sta
  const label=(value:string,x:number,y:number,size=7,colour='#eee',weight=500,align:CanvasTextAlign='left')=>{
   ctx.fillStyle=colour;ctx.font=`${weight} ${Math.max(9,size*sy())}px system-ui,Segoe UI,sans-serif`;ctx.textAlign=align;ctx.textBaseline='middle';ctx.fillText(value,x*sx(),y*sy());
  };
+ const wrapped=(value:string,maxWidth:number,size:number,maxLines=2)=>{
+  ctx.font=`500 ${Math.max(9,size*sy())}px system-ui,Segoe UI,sans-serif`;
+  const words=value.split(/\s+/).filter(Boolean),lines:string[]=[];let line='';
+  for(const word of words){
+   const next=line?line+' '+word:word;
+   if(ctx.measureText(next).width<=maxWidth*sx()){line=next;continue;}
+   if(line)lines.push(line);line=word;if(lines.length===maxLines-1)break;
+  }
+  if(line&&lines.length<maxLines)lines.push(line);
+  if(lines.length===maxLines){let last=lines[maxLines-1];while(last.length>1&&ctx.measureText(last+'…').width>maxWidth*sx())last=last.slice(0,-1);if(last!==lines[maxLines-1])lines[maxLines-1]=last+'…';}
+  return lines;
+ };
  const focused=(type:PointerAction['type'],index:number)=>{
   const zone=state.zone(),keyboard=(type==='tab'&&zone==='tabs')||(type==='row'&&zone==='rows')||(type==='footer'&&zone==='footer');
   const selected=type==='tab'?tabOrder.indexOf(state.tab()):type==='row'?state.row():type==='footer'?state.footer():-1;
@@ -167,7 +211,11 @@ function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],sta
    label(row.value,content.x+content.w-10,y,5.3,valueColour,650,'right');
   });
   if(start>0)label('▲',content.x+content.w-9,content.y+8,4.5,'#666',600,'center');
-  if(start+visibleRows<all.length)label('▼',content.x+content.w-9,content.y+content.h-7,4.5,'#666',600,'center');
+  if(start+visibleRows<all.length)label('▼',content.x+content.w-9,content.y+143,4.5,'#666',600,'center');
+  const hoveredRow=hover?.type==='row'?hover.index:undefined,helpIndex=hoveredRow??(state.zone()==='rows'?state.row():undefined);
+  const help=helpIndex!==undefined&&all[helpIndex]?optionHelp[all[helpIndex].id]:tabHelp[state.tab()];
+  rect(content.x+5,content.y+108,content.w-10,15,'#0d0d0d','#292929',3,.6);
+  wrapped(help,content.w-18,3.9,2).forEach((line,index)=>label(line,content.x+9,content.y+113+index*6,3.9,index===0?'#aaa':'#818181',500));
   footerOrder.forEach((action,index)=>{const b=footerBounds[index],over=focused('footer',index);rect(b.x,b.y,b.w,b.h,over?'#3a4022':'#202020',over?'#b4c35a':'#555',4,over?1.5:1);label(footerLabels[action],b.x+b.w/2,b.y+b.h/2,5.1,over?'#fff':'#ddd',650,'center');});
   label('↑↓ SELECT   ←→ CHANGE   ENTER APPLY   TAB CATEGORY',83,168,3.8,'#6f6f6f',500);
   if(state.confirm()){
@@ -203,6 +251,7 @@ function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],sta
 export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'menu'|'replay'|'exit'>{
  let tab:Tab='gameplay',zone:FocusZone='rows',row=0,footer=2,confirm=false,confirmChoice=0;
  const currentRows=():OptionRow[]=>{
+  const camera=(level:EnhancedChaseCameraPresetLevel,kind:EnhancedChaseCameraSetting,label:string):OptionRow=>({id:(level===1?(kind==='distance'?'close-distance':'close-height'):level===2?(kind==='distance'?'standard-distance':'standard-height'):(kind==='distance'?'far-distance':'far-height')) as RowId,label,value:String(enhancedChaseCameraPosition(level)[kind])});
   if(tab==='gameplay'){
    const audio=host.audioState(),sound=storedSoundDevice();
    return [
@@ -224,22 +273,20 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
     {id:'cockpit',label:'High-Res Cockpit',value:boolLabel(enhancedCockpitEnabled()),disabled:!dx},
     {id:'fov',label:'Field of View',value:fov===0?'Original':fov===100?'Full':`${fov}%`,disabled:!dx},
     {id:'fps',label:'FPS Counter',value:boolLabel(storedEnabled(fpsKey,true)),disabled:!dx},
-    {id:'original-detail',label:'Original Graphics Detail',value:`Level ${clamp(host.settings.graphics,0,3)+1}`},
+    {id:'original-detail',label:'Original Detail Level',value:`Level ${clamp(host.settings.graphics,0,3)+1}`},
+    camera(1,'distance','Chase Close · Distance'),camera(1,'height','Chase Close · Height'),
+    camera(2,'distance','Chase Standard · Distance'),camera(2,'height','Chase Standard · Height'),
+    camera(3,'distance','Chase Far · Distance'),camera(3,'height','Chase Far · Height'),
+    {id:'reset-camera',label:'Chase Camera Presets',value:'Reset',actionOnly:true},
    ];
   }
   const input=desktopInputDevice();
-  const camera=(level:EnhancedChaseCameraPresetLevel,kind:EnhancedChaseCameraSetting,label:string):OptionRow=>({id:(level===1?(kind==='distance'?'close-distance':'close-height'):level===2?(kind==='distance'?'standard-distance':'standard-height'):(kind==='distance'?'far-distance':'far-height')) as RowId,label,value:String(enhancedChaseCameraPosition(level)[kind])});
-  const result:OptionRow[]=[
+  return [
    {id:'input-device',label:'Driving Input Device',value:inputDevices.find(item=>item.id===input)?.label??'Keyboard'},
    {id:'deadzone',label:'Steering Deadzone',value:`${storedDeadzone()}%`,disabled:input!=='wheel'},
    {id:'linearity',label:'Steering Linearity',value:storedLinearity().toFixed(2),disabled:input!=='wheel'},
    {id:'show-f8',label:'Show F8 Button',value:boolLabel(storedEnabled(f8Key,true))},
-   camera(1,'distance','Chase Close · Distance'),camera(1,'height','Chase Close · Height'),
-   camera(2,'distance','Chase Standard · Distance'),camera(2,'height','Chase Standard · Height'),
-   camera(3,'distance','Chase Far · Distance'),camera(3,'height','Chase Far · Height'),
-   {id:'reset-camera',label:'Chase Camera Presets',value:'Reset',actionOnly:true},
   ];
-  return result;
  };
  const clampRow=()=>{const rows=currentRows();row=Math.max(0,Math.min(Math.max(0,rows.length-1),row));};
  const presentation=createPresentation(host.canvas,currentRows,{tab:()=>tab,zone:()=>zone,row:()=>row,footer:()=>footer,confirm:()=>confirm,confirmChoice:()=>confirmChoice});
