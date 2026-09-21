@@ -1,6 +1,6 @@
 mod config;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::hash_map::DefaultHasher,
     fs,
@@ -279,7 +279,7 @@ fn checked_runtime_path(path: &str) -> Result<PathBuf, String> {
     Ok(clean)
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RuntimePreparationProgress {
     stage: String,
