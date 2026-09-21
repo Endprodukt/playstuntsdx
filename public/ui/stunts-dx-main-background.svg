@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800" preserveAspectRatio="xMidYMid slice">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800" preserveAspectRatio="xMidYMid meet">
 <defs>
  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#20272d"/><stop offset=".55" stop-color="#151b20"/><stop offset="1" stop-color="#0c1115"/></linearGradient>
  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#37424a" stop-opacity=".95"/><stop offset=".62" stop-color="#1f292f" stop-opacity=".7"/><stop offset="1" stop-color="#0f1519" stop-opacity=".15"/></linearGradient>
