@@ -10,13 +10,19 @@ const defaultOutput=join(repoRoot,'training','replays','output');
 const defaultCars=join(repoRoot,'training','replays','cars');
 
 function args(){
- const result={input:defaultInput,output:defaultOutput,cars:defaultCars,game:null};
+ const result={input:defaultInput,output:defaultOutput,cars:defaultCars,game:null,physics:'mindscape-1990'};
  for(let i=2;i<process.argv.length;i++){
   const arg=process.argv[i];
   if(arg==='--input')result.input=resolve(process.argv[++i]??'');
   else if(arg==='--output')result.output=resolve(process.argv[++i]??'');
   else if(arg==='--cars')result.cars=resolve(process.argv[++i]??'');
   else if(arg==='--game')result.game=resolve(process.argv[++i]??'');
+  else if(arg==='--physics'){
+   const value=(process.argv[++i]??'').toLowerCase();
+   if(value==='bb11'||value==='broderbund-1991')result.physics='broderbund-1991';
+   else if(value==='ms1990'||value==='mindscape-1990')result.physics='mindscape-1990';
+   else throw Error('Unknown physics version: '+value+' (use bb11 or ms1990)');
+  }
   else throw Error('Unknown option: '+arg);
  }
  return result;
@@ -140,17 +146,20 @@ async function main(){
  if(!files.length){console.log('No .RPL files found in '+options.input);return;}
  const vite=await createServer({root:repoRoot,configFile:false,appType:'custom',server:{middlewareMode:true,watch:{ignored:['**/.vs/**','**/.git/**','**/node_modules/**','**/training/replays/**','**/dist/**','**/dist-desktop/**','**/src-tauri/target/**']}},logLevel:'error'});
  try{
-  const [{decodeOriginalReplayFile},{createNativeReplaySession}]=await Promise.all([
+  const [{decodeOriginalReplayFile},{createNativeReplaySession},{setPhysicsVersionRuntimeOverride}]=await Promise.all([
    vite.ssrLoadModule('/lib/game/replay-file.ts'),
    vite.ssrLoadModule('/lib/game/native-replay-session.ts'),
+   vite.ssrLoadModule('/lib/physics/physics-version.ts'),
   ]);
+  setPhysicsVersionRuntimeOverride(options.physics);
+  console.log('Physics: '+options.physics);
   const [startup,assets,records,vectors,samples,objects,points,indices,planes,wallsFile]=await Promise.all([
    readFile(join(gameRoot,'native-race-startup.bin')).then(b=>new Uint8Array(b)),
    json(gameRoot,'assets'),json(gameRoot,'route-records'),json(gameRoot,'route-vectors'),json(gameRoot,'route-sample-vectors'),
    json(gameRoot,'track-objects'),json(gameRoot,'route-point-vectors'),json(gameRoot,'route-speed-indices'),
    json(gameRoot,'collision-planes'),json(gameRoot,'collision-walls')
   ]);
-  const manifest={gameRoot,carRoot:options.cars,replays:[]};
+  const manifest={gameRoot,carRoot:options.cars,physicsVersion:options.physics,replays:[]};
   for(const name of files){
    const path=join(options.input,name),bytes=new Uint8Array(await readFile(path)),replay=decodeOriginalReplayFile(bytes),id=carId(replay.header);
    const folder=join(options.output,basename(name,extname(name)));await mkdir(folder,{recursive:true});

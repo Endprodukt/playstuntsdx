@@ -10,6 +10,7 @@ import {
  type EnhancedChaseCameraPresetLevel,type EnhancedChaseCameraSetting,
 } from './enhanced-chase-camera-settings.ts';
 import {opponentAiMode,setOpponentAiMode} from './enhanced-opponent-settings.ts';
+import {PHYSICS_VERSIONS,physicsVersion,setPhysicsVersion} from '../physics/physics-version.ts';
 
 type Tab='gameplay'|'video'|'sound'|'controls';
 type FocusZone='tabs'|'rows'|'footer';
@@ -28,7 +29,7 @@ type FfbNumericRowId=
  |'ffb-crash-min-strength'|'ffb-crash-max-strength'|'ffb-crash-speed-max'|'ffb-crash-rebound'|'ffb-crash-main-duration'|'ffb-crash-total-duration';
 
 type RowId=
- |'load-replay'|'opponent-ai'|'music'|'sound-effects'|'sound-device'|'open-map'|'menu-style'|'track-editor'|'audio-update'
+ |'load-replay'|'physics-version'|'opponent-ai'|'music'|'sound-effects'|'sound-device'|'open-map'|'menu-style'|'track-editor'|'audio-update'
  |'dx-graphics'|'resolution'|'background'|'cockpit'|'fov'|'fps'|'original-detail'
  |'input-device'|'deadzone'|'linearity'|'show-f8'|'ffb-enabled'|'ffb-details'|FfbNumericRowId
  |'close-distance'|'close-height'|'standard-distance'|'standard-height'|'far-distance'|'far-height'|'reset-camera';
@@ -129,6 +130,7 @@ const tabLabels:Record<Tab,string>={gameplay:'GAMEPLAY',video:'VIDEO',sound:'SOU
 const footerLabels:Record<FooterAction,string>={back:'BACK',exit:'EXIT GAME',done:'DONE'};
 const optionHelp:Partial<Record<RowId,string>>={
  'load-replay':'Opens the global replay browser. It includes every .RPL found recursively under Custom Tracks and loads the track embedded in the replay.',
+ 'physics-version':'Selects the original driving-physics family. BB 1.1 is the Feb 1991 competition version; MS 1.1 preserves the Dec 1990 PlayStunts reference behavior.',
  'opponent-ai':'Original keeps the exact classic opponent logic. Enhanced enables DX look-ahead, racing lines, passing, defending and recovery with driver-specific personalities.',
  'music':'Turns the original Stunts music on or off.',
  'sound-effects':'Turns game sound effects on or off. Per-car engine sounds are configured in Car Select or the F8 panel.',
@@ -434,6 +436,7 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
   if(tab==='gameplay'){
    return [
     {id:'load-replay',label:'Load Replay',value:'Open…',actionOnly:true,group:'ORIGINAL STUNTS'},
+    {id:'physics-version',label:'Physics Version',value:PHYSICS_VERSIONS.find(entry=>entry.id===physicsVersion())?.shortLabel??'MS 1.1 · Dec 1990',group:'ORIGINAL STUNTS'},
     {id:'opponent-ai',label:'Opponent AI',value:opponentAiMode()==='enhanced'?'Enhanced':'Original',group:'DX / MODERN'},
     {id:'open-map',label:'Open Map on Race Start',value:boolLabel(storedEnabled(mapKey,false))},
     {id:'menu-style',label:'Menu Style',value:storedEnabled(enhancedMenuKey,true)?'Modern':'Vanilla'},
@@ -511,6 +514,10 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
     const current=storedSoundDevice(),index=soundDevices.findIndex(entry=>entry.id===current),next=soundDevices[cycleIndex(soundDevices.length,Math.max(0,index),direction)]!.id;
     if(next==='mt32'&&!await mt32Ready()){window.alert('Roland MT-32 ROMs were not found in the MT32 folder.');break;}
     window.localStorage.setItem(soundKey,next);break;
+   }
+   case 'physics-version':{
+    const current=physicsVersion(),index=PHYSICS_VERSIONS.findIndex(entry=>entry.id===current),next=PHYSICS_VERSIONS[cycleIndex(PHYSICS_VERSIONS.length,Math.max(0,index),direction)]!.id;
+    setPhysicsVersion(next);await persistConfig('Gameplay','PhysicsVersion',next);break;
    }
    case 'opponent-ai':{
     const next=opponentAiMode()==='enhanced'?'original':'enhanced';setOpponentAiMode(next);await persistConfig('Gameplay','OpponentAI',next);break;

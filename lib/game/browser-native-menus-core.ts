@@ -73,6 +73,7 @@ import type {NativeHighScorePreparationHost} from './native-high-score-preparati
 import type {Assets,Primitive,Shape} from './types.ts';
 import {blissOriginalSceneryPreview} from './bliss-scenery-preview.ts';
 import {clearRaceMapFrame,publishRaceMapFrame} from './race-map-state.ts';
+import {physicsVersion,physicsVersionLabel} from '../physics/physics-version.ts';
 import {RACE_TELEPORT_EVENT,type RaceSpawn} from './race-spawn.ts';
 const HIRES_MAIN_MENU='/game/hires/main-menu.png';
 
@@ -561,6 +562,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    file:selection.customPath??selection.name+'.RPL',
    format:replay.format,frequencyHz:replay.frequencyHz,frames:replay.inputs.length,
    playerCar,opponent:replay.header[6],opponentCar,bytes:bytes.length,
+   physicsVersion:physicsVersion(),
   });
   replayLoading?.update('Replay decoded',`${replay.format} · ${replay.frequencyHz} Hz · ${replay.inputs.length.toLocaleString()} frames · car ${playerCar}${replay.header[6]?` · opponent ${opponentCar}`:''}`);replayLoading?.throwIfCancelled();
   await replayCarRequirements(playerCar,'Player');
@@ -576,7 +578,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   configuration.splice(0,24,...nativeBytes.subarray(0,24));
   track.raw=Array.from(encodeTrackFile(replay.track));
   track.name=String.fromCharCode(...replay.header.slice(13,22)).split('\0')[0];
-  replayLoading?.update('Replay file ready',`${replay.inputs.length.toLocaleString()} frames · ${playerCar} · embedded track ${track.name||'(unnamed)'}`);replayLoading?.throwIfCancelled();
+  replayLoading?.update('Replay file ready',`${replay.inputs.length.toLocaleString()} frames · ${playerCar} · ${physicsVersionLabel()} · embedded track ${track.name||'(unnamed)'}`);replayLoading?.throwIfCancelled();
  };
  const settings:NativeOptionsHost={...host,settings:drivingSettings,get replayPath(){return track.path;},set replayPath(path:string){track.path=path;},selectReplayGlobal:desktopTauri?selectGlobalReplay:undefined,audio:async operation=>music.control(operation),loadReplay:async selection=>{if(!enhancedMenuEnabled()){const waiting=baseline.slice();new DataView(waiting.buffer).setUint16(0x2d1a0+0x8a10,150,true);drawOriginalRaceWaiting(pixels,font,host.resources.ewai,waiting,0x2d1a0);show('race');present();}await readSelectedReplay(selection);},calibrateJoystick:async()=>{
   const saved=pixels.slice();settings.settings.joystick=true;settings.settings.mouse=false;
