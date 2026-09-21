@@ -231,8 +231,9 @@ export function createEnhancedCarMenuPresentation(options:{
   setCars(next,nextSelected,open){cars=next;selected=Math.max(0,Math.min(Math.max(0,cars.length-1),nextSelected));dropdownOpen=open;updateDropdownStart();},
   setFocus(next){const changed=focus.type!==next.type;focus=next;if(changed)render();},
   async draw(car,transmission,paint){
-   if(currentCarId!==car.id){previewZoom=1;currentCarId=car.id;}current=car;currentTransmission=transmission;currentPaint=paint;paintColours=options.paintColours?.(car)??[];previewCanvas=undefined;previewRender=undefined;previewError=false;render();
+   if(currentCarId!==car.id){previewZoom=1;currentCarId=car.id;}current=car;currentTransmission=transmission;currentPaint=paint;paintColours=[];previewCanvas=undefined;previewRender=undefined;previewError=false;render();
    try{
+    paintColours=options.paintColours?.(car)??[];
     const preview=await options.preview(car,paint);
     if(preview){previewCanvas=preview.canvas;previewRender=preview.render;paintCount=Math.max(1,preview.paintCount|0);preview.render(Math.floor(currentAngle)&1023,manualRotate?manualPitch:0,previewZoom);}
     else{previewError=true;paintCount=1;}
