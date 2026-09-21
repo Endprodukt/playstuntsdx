@@ -31,7 +31,7 @@ async function main(){
   .map(entry=>entry.name).sort();
  if(!files.length)throw Error('No .RPL files found in '+options.input);
  const results=[];
- let failures=0;
+ let failures=0,compared=0;
  for(const name of files){
   const stem=basename(name,extname(name)),folder=join(options.output,stem);
   let replayBytes,dumpBytes,actual;
@@ -60,6 +60,7 @@ async function main(){
    }
   }
   if(!mismatch&&actual.length!==expected.length)mismatch={frame:count,field:'frameCount',expected:expected.length,actual:actual.length};
+  compared++;
   if(mismatch){
    failures++;
    const result={file:name,status:'mismatch',framesCompared:count,firstMismatch:mismatch};
@@ -70,8 +71,9 @@ async function main(){
    results.push(result);console.log(`${name}: exact for ${count} frames`);
   }
  }
- const summary={reference:'Restunts BB1.1 repldump',physicsVersion:'broderbund-1991',failures,results};
+ const summary={reference:'Restunts BB1.1 repldump',physicsVersion:'broderbund-1991',compared,failures,results};
  await writeFile(join(options.output,'bb11-groundtruth-comparison.json'),JSON.stringify(summary,null,2)+'\n','utf8');
+ if(!compared)throw Error('No replay had both Restunts ground truth and PlayStunts DX telemetry to compare');
  if(failures)process.exitCode=1;
 }
 main().catch(error=>{console.error(error instanceof Error?error.stack??error.message:error);process.exitCode=1;});
