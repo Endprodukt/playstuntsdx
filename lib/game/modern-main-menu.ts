@@ -45,7 +45,7 @@ export function createModernMainMenu(options:{
  backgroundArt.decoding='async';
  backgroundArt.onload=()=>{backgroundArtReady=true;if(!closed&&!suspended)render();};
  backgroundArt.onerror=()=>{backgroundArtReady=false;};
- backgroundArt.src='/game/ui/stunts-dx-main-background.jpg';
+ backgroundArt.src='/game/ui/stunts-dx-main-background.svg';
  let closed=false,suspended=false,focus:ModernMainMenuAction='none',hover:ModernMainMenuAction='none',keyboardFocus=false;
 
  const mount=(surface:HTMLCanvasElement,kind:string)=>{
