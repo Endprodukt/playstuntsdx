@@ -48,14 +48,13 @@ async function findCaseInsensitiveFile(root,name){
   return match?join(root,match.name):null;
  }catch{return null;}
 }
-async function findCaseInsensitiveFileRecursive(root,name,depth=3){
+async function findCaseInsensitiveFileRecursive(root,name){
  const direct=await findCaseInsensitiveFile(root,name);if(direct)return direct;
- if(depth<=0)return null;
  try{
-  const entries=await readdir(root,{withFileTypes:true});
+  const entries=(await readdir(root,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name));
   for(const entry of entries){
    if(!entry.isDirectory())continue;
-   const found=await findCaseInsensitiveFileRecursive(join(root,entry.name),name,depth-1);
+   const found=await findCaseInsensitiveFileRecursive(join(root,entry.name),name);
    if(found)return found;
   }
  }catch{}
