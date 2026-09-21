@@ -26,6 +26,11 @@ from extract import resources, shape_pixels, unpack
 STUNTS_TRACK_BYTES = 1802
 MUTABLE_GAME_EXTENSIONS = {".TRK", ".RPL", ".HIG"}
 PACKED_GRAPHICS_EXTENSIONS = {".P3S", ".PVS"}
+PROGRESS_PREFIX = "PLAYSTUNTS_PROGRESS\t"
+
+
+def emit_progress(stage: str, detail: str = "") -> None:
+    print(f"{PROGRESS_PREFIX}{stage}\t{detail}", flush=True)
 
 
 def copy_portable_assets(files: dict[str, Path], output: Path) -> list[str]:
@@ -93,6 +98,7 @@ def materialize_custom_car_source(root: Path, output: Path) -> dict[str, object]
         (path for path in root.rglob("*") if path.is_file() and path.suffix.lower() == ".zip"),
         key=lambda path: str(path.relative_to(root)).casefold(),
     ) if root.is_dir() else []
+    emit_progress("Scanning custom cars", f"{len(archives)} ZIP package{'s' if len(archives) != 1 else ''}")
     loaded: list[dict[str, str]] = []
     skipped: list[dict[str, str]] = []
 
@@ -105,6 +111,7 @@ def materialize_custom_car_source(root: Path, output: Path) -> dict[str, object]
 
     for number, archive in enumerate(archives):
         relative = str(archive.relative_to(root))
+        emit_progress("Unpacking custom car package", relative)
         destination = output / "_archives" / f"{number:03d}-{archive.stem}"
         try:
             with zipfile.ZipFile(archive) as package:
@@ -215,6 +222,7 @@ def merge_custom_cars(original: Path, custom_root: Path, merged: Path) -> dict[s
         shutil.copyfile(path, merged / name)
 
     candidates = custom_car_candidates(custom_root)
+    emit_progress("Checking custom cars", f"{len(candidates)} car{'s' if len(candidates) != 1 else ''} discovered")
     index = recursive_file_index(custom_root)
     original_ids = {
         name[3:-4]
@@ -228,6 +236,7 @@ def merge_custom_cars(original: Path, custom_root: Path, merged: Path) -> dict[s
     for car_file in candidates:
         car_id = car_file.stem[3:].upper()
         relative = str(car_file.relative_to(custom_root))
+        emit_progress("Validating custom car", f"{car_id} · {relative}")
         if car_id in used_ids:
             skipped.append({"id": car_id, "file": relative, "reason": "duplicate car ID"})
             continue
@@ -242,6 +251,7 @@ def merge_custom_cars(original: Path, custom_root: Path, merged: Path) -> dict[s
         for role in ["model", "dash", "gear"]:
             shutil.copyfile(files[role], merged / files[role].name.upper())
         used_ids.add(car_id)
+        emit_progress("Custom car ready", car_id)
         loaded.append({
             "id": car_id,
             "folder": str(car_file.parent.relative_to(custom_root)),
@@ -259,12 +269,14 @@ def merge_custom_cars(original: Path, custom_root: Path, merged: Path) -> dict[s
 def merge_custom_tracks(custom_root: Path, merged: Path) -> dict[str, object]:
     """Add valid external tracks without replacing supplied or earlier files."""
     candidates = custom_track_candidates(custom_root)
+    emit_progress("Scanning custom tracks", f"{len(candidates)} track{'s' if len(candidates) != 1 else ''} discovered")
     used_names = {path.name.upper() for path in merged.iterdir() if path.is_file()}
     loaded: list[dict[str, str]] = []
     skipped: list[dict[str, str]] = []
 
     for track_file in candidates:
         relative = str(track_file.relative_to(custom_root))
+        emit_progress("Adding custom track", relative)
         name = track_file.name.upper()
         data = track_file.read_bytes()
         if len(data) < STUNTS_TRACK_BYTES or len(data) > 13802:
@@ -302,6 +314,7 @@ def extract_car_models(source: Path, output: Path) -> None:
     manifest: dict[str, object] = {}
     for car_file in sorted(source.glob("CAR*.RES")):
         car = car_file.stem[3:].upper()
+        emit_progress("Extracting 3D car model", car)
         path = car_graphics_path(source, f"ST{car}", "P3S", "3SH")
         packed = path.read_bytes()
         blob = graphics_blob(path)
@@ -327,6 +340,7 @@ def extract_cockpits(source: Path, output: Path) -> None:
     index: dict[str, object] = {}
     for carfile in sorted(source.glob("CAR*.RES")):
         car = carfile.stem[3:].upper()
+        emit_progress("Preparing cockpit", car)
         frames: dict[str, dict[str, object]] = {}
         hashes: dict[str, str] = {}
         directory = output / car
@@ -440,6 +454,8 @@ def prepare(original: Path, custom_root: Path, output: Path) -> dict[str, object
     if not original.is_dir():
         raise ValueError(f"Gamedata directory does not exist: {original}")
 
+    emit_progress("Preparing game files", "Scanning Gamedata and custom content")
+    desktop.report_progress = emit_progress
     with tempfile.TemporaryDirectory(prefix="playstuntsdx-custom-content-") as temporary:
         temporary_root = Path(temporary)
         expanded_custom = temporary_root / "custom-cars"
@@ -452,6 +468,7 @@ def prepare(original: Path, custom_root: Path, output: Path) -> dict[str, object
         desktop.extract_car_models = extract_car_models
         desktop.extract_cockpits = extract_cockpits
         desktop.extract_instrument_panel = extract_instrument_panel
+        emit_progress("Building runtime", "Creating native and enhanced game assets")
         report = desktop.prepare(merged, output)
 
     report["customCars"] = custom_car_report
@@ -459,6 +476,7 @@ def prepare(original: Path, custom_root: Path, output: Path) -> dict[str, object
     report["highRes"] = copy_high_res_assets(high_res_root, output)
     manifest = output / "desktop-preparation.json"
     manifest.write_text(json.dumps(report, indent=2) + "\n")
+    emit_progress("Runtime ready", f"{len(custom_car_report['loaded'])} custom cars · {len(custom_track_report['loaded'])} custom tracks")
     return report
 
 

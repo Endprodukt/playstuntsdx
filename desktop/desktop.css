@@ -123,6 +123,76 @@ body {
   color: #ffb4b4;
 }
 
+.desktop-startup {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(72, 82, 45, 0.16), transparent 42%),
+    #050605;
+  color: #f1f2e8;
+}
+
+.desktop-startup-card {
+  box-sizing: border-box;
+  display: grid;
+  width: min(620px, 84vw);
+  min-height: 210px;
+  align-content: center;
+  gap: 7px;
+  padding: 28px 32px;
+  border: 1px solid rgba(205, 218, 111, 0.48);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(24, 27, 23, 0.98), rgba(11, 12, 11, 0.99));
+  box-shadow: 0 28px 100px rgba(0, 0, 0, 0.72);
+  text-align: left;
+}
+
+.desktop-startup-kicker {
+  color: #9da75d;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+}
+
+.desktop-startup-card strong {
+  color: #dce77d;
+  font-size: clamp(20px, 3vw, 27px);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.desktop-startup-detail {
+  min-height: 22px;
+  overflow: hidden;
+  color: #b8bab1;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-startup-progress {
+  position: relative;
+  height: 3px;
+  margin-top: 13px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #252820;
+}
+
+.desktop-startup-progress i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 34%;
+  border-radius: inherit;
+  background: #cbd86b;
+  animation: desktop-startup-progress 1.25s ease-in-out infinite;
+}
+
+@keyframes desktop-startup-progress {
+  0% { left: -36%; }
+  55% { left: 58%; }
+  100% { left: 103%; }
+}
+
 
 /* Enhanced races may widen only the 3D view. The original 4:3 presentation
    remains the baseline at FOV 0; the live FOV setting supplies the intermediate

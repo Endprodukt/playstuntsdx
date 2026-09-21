@@ -5,11 +5,11 @@ use std::{
     collections::hash_map::DefaultHasher,
     fs,
     hash::{Hash, Hasher},
-    io::Read,
+    io::{BufRead, BufReader, Read},
     path::{Component, Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
 };
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 const REQUIRED_GAMEDATA: [&str; 6] = [
     "SETUP.EXE",
@@ -279,11 +279,26 @@ fn checked_runtime_path(path: &str) -> Result<PathBuf, String> {
     Ok(clean)
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimePreparationProgress {
+    stage: String,
+    detail: String,
+}
+
+fn runtime_progress(app: &tauri::AppHandle, stage: impl Into<String>, detail: impl Into<String>) {
+    let _ = app.emit("runtime-preparation-progress", RuntimePreparationProgress {
+        stage: stage.into(),
+        detail: detail.into(),
+    });
+}
+
 #[cfg(not(debug_assertions))]
-fn build_runtime(gamedata: &Path) -> Result<(), String> {
+fn build_runtime(app: &tauri::AppHandle, gamedata: &Path) -> Result<(), String> {
     let root = application_root()?;
     let runtime = runtime_root()?;
     let cache = root.join("Cache");
+    runtime_progress(app, "Preparing PlayStunts DX", "Custom content changed; rebuilding runtime");
     fs::create_dir_all(&cache)
         .map_err(|error| format!("Could not create {}: {error}", cache.display()))?;
     let log_path = cache.join("prepare-runtime.log");
@@ -307,15 +322,17 @@ fn build_runtime(gamedata: &Path) -> Result<(), String> {
         .arg("--custom-cars")
         .arg(root.join("Custom Cars"))
         .arg("--output")
-        .arg(&runtime);
+        .arg(&runtime)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x0800_0000);
     }
 
-    let output = match command.output() {
-        Ok(output) => output,
+    let mut child = match command.spawn() {
+        Ok(child) => child,
         Err(error) => {
             let message = format!("Could not start the PlayStunts DX runtime helper: {error}");
             let _ = fs::write(&log_path, format!("PlayStunts DX runtime preparation\n\n{message}\n"));
@@ -323,15 +340,46 @@ fn build_runtime(gamedata: &Path) -> Result<(), String> {
             return Err(format!("{message}\nDetails: {}", log_path.display()));
         }
     };
+
+    let stderr_reader = child.stderr.take().map(|stderr| std::thread::spawn(move || {
+        let mut text = String::new();
+        let _ = BufReader::new(stderr).read_to_string(&mut text);
+        text
+    }));
+
+    let mut stdout = String::new();
+    if let Some(stdout_pipe) = child.stdout.take() {
+        for line in BufReader::new(stdout_pipe).lines() {
+            let line = line.map_err(|error| format!("Could not read runtime helper progress: {error}"))?;
+            if let Some(progress) = line.strip_prefix("PLAYSTUNTS_PROGRESS\t") {
+                let mut parts = progress.splitn(2, '\t');
+                runtime_progress(
+                    app,
+                    parts.next().unwrap_or("Preparing game"),
+                    parts.next().unwrap_or(""),
+                );
+            } else {
+                stdout.push_str(&line);
+                stdout.push('\n');
+            }
+        }
+    }
+
+    let status = child
+        .wait()
+        .map_err(|error| format!("Could not finish the PlayStunts DX runtime helper: {error}"))?;
+    let stderr = stderr_reader
+        .map(|reader| reader.join().unwrap_or_else(|_| "Runtime helper stderr reader failed.".to_string()))
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let stdout = stdout.trim().to_string();
     let _ = fs::remove_file(&helper);
 
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let exit_status = output
-        .status
+    let exit_status = status
         .code()
         .map(|code| code.to_string())
-        .unwrap_or_else(|| output.status.to_string());
+        .unwrap_or_else(|| status.to_string());
     let diagnostic = format!(
         "PlayStunts DX runtime preparation\nExit status: {exit_status}\nGamedata: {}\nRuntime: {}\n\nSTDOUT\n------\n{}\n\nSTDERR\n------\n{}\n",
         gamedata.display(),
@@ -340,7 +388,7 @@ fn build_runtime(gamedata: &Path) -> Result<(), String> {
         if stderr.is_empty() { "<empty>" } else { &stderr },
     );
 
-    if !output.status.success() {
+    if !status.success() {
         let _ = fs::write(&log_path, &diagnostic);
         let _ = fs::remove_dir_all(&runtime);
         let detail = stderr
@@ -366,10 +414,11 @@ fn build_runtime(gamedata: &Path) -> Result<(), String> {
     fs::write(runtime_state_path()?, runtime_content_state(gamedata)?)
         .map_err(|error| format!("Could not save runtime content state: {error}"))?;
     let _ = fs::remove_file(&log_path);
+    runtime_progress(app, "Runtime ready", "Starting PlayStunts DX");
     Ok(())
 }
 
-fn ensure_runtime(gamedata: &Path) -> Result<(), String> {
+fn ensure_runtime(app: &tauri::AppHandle, gamedata: &Path) -> Result<(), String> {
     if cfg!(debug_assertions) {
         return Ok(());
     }
@@ -378,16 +427,17 @@ fn ensure_runtime(gamedata: &Path) -> Result<(), String> {
         if runtime_is_current(gamedata)? {
             return Ok(());
         }
-        build_runtime(gamedata)?;
+        build_runtime(app, gamedata)?;
     }
     Ok(())
 }
 
 #[tauri::command]
-fn check_gamedata() -> Result<bool, String> {
+fn check_gamedata(app: tauri::AppHandle) -> Result<bool, String> {
+    runtime_progress(&app, "Starting PlayStunts DX", "Checking original game data and custom content");
     for root in gamedata_roots() {
         if complete_gamedata(&root) {
-            ensure_runtime(&root)?;
+            ensure_runtime(&app, &root)?;
             ensure_hires_fallbacks()?;
             return Ok(true);
         }

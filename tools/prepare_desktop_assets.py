@@ -44,6 +44,11 @@ def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def report_progress(stage: str, detail: str = "") -> None:
+    """Overridden by the portable helper when startup progress is streamed."""
+    return None
+
+
 def source_files(source: Path) -> dict[str, Path]:
     result: dict[str, Path] = {}
     for file in source.iterdir():
@@ -280,6 +285,7 @@ def prepare(source: Path, output: Path) -> dict[str, object]:
     if not source.is_dir():
         raise ValueError(f"Gamedata directory does not exist: {source}")
     files = source_files(source)
+    report_progress("Reading game files", f"{len(files)} source files")
     if output.exists():
         raise ValueError(f"Runtime output already exists: {output}")
 
@@ -293,13 +299,16 @@ def prepare(source: Path, output: Path) -> dict[str, object]:
 
         runtime = staging / "Runtime"
         runtime.mkdir()
+        report_progress("Copying base runtime files", "Verifying supplied Stunts data")
         missing = copy_verified(files, runtime)
         decoded = staging / "decoded"
+        report_progress("Decoding original game data", "Building runtime assets")
         extract(normalized, decoded)
         game = runtime / "game"
         game.mkdir(exist_ok=True)
         shutil.copyfile(decoded / "assets.json", game / "assets.json")
 
+        report_progress("Preparing car graphics", "Cockpits, gauges and 3D models")
         extract_cockpits(normalized, game / "cockpit")
         extract_crash(normalized, game / "cockpit" / "crash.json")
         extract_gauges(normalized, game / "cockpit" / "gauges.json")
@@ -309,15 +318,19 @@ def prepare(source: Path, output: Path) -> dict[str, object]:
             extract_instrument_panel(normalized, game / "cockpit" / car / "panel.json", car)
 
         unpacked = staging / "unpacked"
+        report_progress("Preparing native game data", "Unpacking display modes and static tables")
         build_unpacked(normalized, unpacked)
         static_tables(unpacked, game)
+        report_progress("Preparing menus and scenery", "Menu art, scene catalogs and editor data")
         menu_assets(normalized, unpacked, game)
         auxiliary_assets(normalized, unpacked, game)
         scene_catalogs(normalized, unpacked, game)
         editor_catalogs(normalized, unpacked, game)
         presentation_core(normalized, game)
         (game / "setup-reference.json").write_text(json.dumps(setup_text((normalized / "SETUP.EXE").read_bytes()), indent=2) + "\n")
+        report_progress("Preparing audio", "Music seeds and setup media")
         music_seeds(normalized, unpacked, game)
+        report_progress("Writing runtime catalog", f"{len(files)} source files")
         make_manifests(files, game)
 
         report = {

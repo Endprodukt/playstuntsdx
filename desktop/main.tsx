@@ -29,14 +29,22 @@ const soundKey = 'playstunts-dx-sound-device';
 const graphicsKey = 'playstunts-dx-enhanced-graphics';
 const soundDevices = new Set<DesktopSoundDevice>(['off', 'pc-speaker', 'tandy', 'adlib', 'sound-blaster', 'mt32']);
 
+type RuntimePreparationProgress = { stage: string; detail: string };
 type TauriGlobal = {
   core?: {
     invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>;
+  };
+  event?: {
+    listen<T>(event: string, handler: (event: { payload: T }) => void): Promise<() => void>;
   };
 };
 
 function tauriCore() {
   return (window as typeof window & { __TAURI__?: TauriGlobal }).__TAURI__?.core;
+}
+
+function tauriEvent() {
+  return (window as typeof window & { __TAURI__?: TauriGlobal }).__TAURI__?.event;
 }
 
 function desktopSoundDevice(): DesktopSoundDevice {
@@ -65,6 +73,10 @@ function DesktopApp() {
   const [assets, setAssets] = useState<Assets | null>(null);
   const [launch, setLaunch] = useState<DesktopLaunch | null>(null);
   const [error, setError] = useState('');
+  const [startup, setStartup] = useState<RuntimePreparationProgress>({
+    stage: 'Starting PlayStunts DX',
+    detail: 'Checking game data and custom content',
+  });
   const [rolandDevice, setRolandDevice] = useState<BrowserNativeMt32Device>();
   const [rolandPower, setRolandPower] = useState<BrowserMt32Power>();
 
@@ -89,18 +101,29 @@ function DesktopApp() {
 
   useEffect(() => {
     const controller = new AbortController();
+    let unlisten: (() => void) | undefined;
 
     async function load() {
       try {
         const core = tauriCore();
+        const event = tauriEvent();
+        if (event) {
+          const remove = await event.listen<RuntimePreparationProgress>('runtime-preparation-progress', message => {
+            if (!controller.signal.aborted) setStartup(message.payload);
+          });
+          if (controller.signal.aborted) { remove(); return; }
+          unlisten = remove;
+        }
         if (core) {
           const ready = await core.invoke<boolean>('check_gamedata');
           if (controller.signal.aborted) return;
           setGamedataReady(ready);
           if (!ready) return;
           if (controller.signal.aborted) return;
+          setStartup({ stage: 'Starting game', detail: 'Loading prepared runtime and settings' });
         } else {
           setGamedataReady(true);
+          setStartup({ stage: 'Starting game', detail: 'Loading runtime and settings' });
         }
 
         // These startup jobs are independent. Start them together so the large
@@ -122,6 +145,7 @@ function DesktopApp() {
         ]).then(([loaded, setup]) => [loaded, setup] as const);
         if (controller.signal.aborted) return;
         const profile = nativeLaunchProfile(saved.selection);
+        setStartup({ stage: 'Ready', detail: 'Starting PlayStunts DX' });
         setAssets(loadedAssets);
         setLaunch({ ...profile, directory: saved.directory, track: saved.track });
       } catch (reason) {
@@ -132,7 +156,10 @@ function DesktopApp() {
     }
 
     void load();
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      unlisten?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -250,7 +277,16 @@ function DesktopApp() {
     );
   }
   if (error) return <div className="desktop-message desktop-error" role="alert">{error}</div>;
-  if (gamedataReady === null || !assets || !launch) return <div className="desktop-message" role="status">Loading PlayStunts DX…</div>;
+  if (gamedataReady === null || !assets || !launch) return (
+    <div className="desktop-message desktop-startup" role="status" aria-live="polite">
+      <div className="desktop-startup-card">
+        <div className="desktop-startup-kicker">PLAYSTUNTS DX</div>
+        <strong>{startup.stage}</strong>
+        <span className="desktop-startup-detail">{startup.detail || 'Please wait…'}</span>
+        <div className="desktop-startup-progress" aria-hidden="true"><i /></div>
+      </div>
+    </div>
+  );
 
   const soundDevice = selectedSound === 'mt32'
     ? 'mt32'
