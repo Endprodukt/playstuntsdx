@@ -46,6 +46,7 @@ const deadzoneKey='playstunts-dx-steering-deadzone-percent';
 const linearityKey='playstunts-dx-steering-linearity';
 const musicKey='playstunts-dx-music-enabled';
 const effectsKey='playstunts-dx-sound-effects-enabled';
+const originalGraphicsKey='playstunts-dx-original-graphics-level';
 
 const soundDevices:ReadonlyArray<{id:DesktopSoundDevice;label:string}>=[
  {id:'off',label:'Off'},
@@ -294,7 +295,9 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
    case 'fps':{
     const next=!storedEnabled(fpsKey,true);setBool(fpsKey,next);if(graphicsEnabled())dispatchFps();break;
    }
-   case 'original-detail':host.settings.graphics=cycleIndex(4,clamp(host.settings.graphics,0,3),direction);break;
+   case 'original-detail':{
+    host.settings.graphics=cycleIndex(4,clamp(host.settings.graphics,0,3),direction);window.localStorage.setItem(originalGraphicsKey,String(host.settings.graphics));break;
+   }
    case 'input-device':{
     const current=desktopInputDevice(),index=inputDevices.findIndex(entry=>entry.id===current),next=inputDevices[cycleIndex(inputDevices.length,Math.max(0,index),direction)]!.id;setInputDevice(next);break;
    }
