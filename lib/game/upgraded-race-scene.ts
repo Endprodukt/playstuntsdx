@@ -185,7 +185,7 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
  for(let index=0;index<256;index++){const at=index*3,red=trackMaterials.palette[at],green=trackMaterials.palette[at+1],blue=trackMaterials.palette[at+2];opaquePalette[index]=packColour(red,green,blue,255);transparentPalette[index]=packColour(red,green,blue,0);paletteCss[index]=`rgb(${red},${green},${blue})`;}
  const overlayPixels=new Uint32Array(image.data.buffer,image.data.byteOffset,64000),skyPixels=new Uint32Array(skyImage.data.buffer,skyImage.data.byteOffset,64000);
  const transporterBounds=new THREE.Box3();
- let appliedGraphicsRevision=-1,appliedOverlaySourceCamera='',appliedReplayPanelSignature=-1,orderedScene=false,worldVisibilityKey='',sceneryRevision=0,lastChaseLevel:EnhancedChaseCameraLevel=0,truckChanged=false,transporterBoundsKnown=false,lastSourceCamera='',backgroundHeightCamera='',backgroundHeight=0,tvPitchCamera='',tvPitch=0,lastBackgroundSourceFrame=-1,appliedCompatibilityEdgeScale=-1;
+ let appliedGraphicsRevision=-1,appliedOverlaySourceCamera='',appliedReplayPanelSignature=-1,orderedScene=false,worldVisibilityKey='',sceneryRevision=0,lastChaseLevel:EnhancedChaseCameraLevel=0,truckChanged=false,transporterBoundsKnown=false,lastSourceCamera='',backgroundHeightCamera='',backgroundHeight=0,tvPitchCamera='',tvPitch=0,lastBackgroundSourceFrame=-1;
  return {
   draw(canvas:HTMLCanvasElement){
    // Three.js can recover a temporarily lost WebGL context. Do not turn a
@@ -323,16 +323,6 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    // angle-bucket flicker. Original stipple holes remain open in the shader.
    const internal=enhancedRenderResolution(),internalHeight=internal.height,internalWidth=Math.max(internal.width,Math.round(internal.width*wideFactor));
    if(renderer.domElement.width!==internalWidth||renderer.domElement.height!==internalHeight)renderer.setSize(internalWidth,internalHeight,false);
-   const compatibilityEdgeScale=internal.height/200;
-   if(compatibilityEdgeScale!==appliedCompatibilityEdgeScale){
-    appliedCompatibilityEdgeScale=compatibilityEdgeScale;
-    world.traverse(node=>{
-     if(node.userData.originalEdgeVisibility!==true||!('material' in node))return;
-     const material=(node as THREE.LineSegments).material as THREE.Material&{worldUnits?:boolean;linewidth?:number};
-     if(material.linewidth===undefined)return;
-     material.worldUnits=false;material.linewidth=compatibilityEdgeScale;material.needsUpdate=true;
-    });
-   }
    const shadowCars=cars.map((models,i)=>{
     const state=i?runtime.session.state.opponent.car:runtime.session.state.player.driving.car;
     if(!upgradedCarCastsShadow(!!i,!!live[d+0x8fc8],state.grip.crash))return undefined;
