@@ -38,6 +38,45 @@ const json=async(root,name)=>JSON.parse(await readFile(join(root,name+'.json'),'
 const csvCell=value=>{const text=String(value??'');return /[",\r\n]/.test(text)?`"${text.replaceAll('"','""')}"`:text;};
 const writeCsv=(path,rows)=>writeFile(path,rows.map(row=>row.map(csvCell).join(',')).join('\n')+'\n','utf8');
 const carId=header=>String.fromCharCode(...header.subarray(0,4));
+
+async function findCaseInsensitiveFile(root,name){
+ try{
+  const entries=await readdir(root,{withFileTypes:true});
+  const match=entries.find(entry=>entry.isFile()&&entry.name.toUpperCase()===name.toUpperCase());
+  return match?join(root,match.name):null;
+ }catch{return null;}
+}
+function decodeCarSimulationResource(bytes,id){
+ if(bytes.length<14)throw Error(`CAR${id}.RES is too short`);
+ const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),size=view.getUint32(0,true),count=view.getUint16(4,true),base=6+8*count;
+ if(size!==bytes.length||base>size)throw Error(`CAR${id}.RES has an invalid resource table`);
+ const names=Array.from({length:count},(_,i)=>String.fromCharCode(...bytes.subarray(6+i*4,10+i*4)));
+ const offsets=Array.from({length:count},(_,i)=>view.getUint32(6+4*count+i*4,true));
+ const index=names.indexOf('simd');if(index<0)throw Error(`CAR${id}.RES has no simd resource`);
+ const offset=offsets[index],endOffset=Math.min(...offsets.filter(value=>value>offset),size-base);
+ const simulation=bytes.slice(base+offset,base+endOffset);
+ if(simulation.length<192)throw Error(`CAR${id}.RES simd resource is too short`);
+ const sim=new DataView(simulation.buffer,simulation.byteOffset,simulation.byteLength);
+ const word=at=>sim.getUint16(at,true);
+ const tuning={
+  id:id.toUpperCase(),gears:simulation[0],mass:word(2),braking:word(4),idleRPM:word(6),downshiftRPM:word(8),upshiftRPM:word(10),maxRPM:word(12),
+  gearRatios:Array.from({length:7},(_,i)=>word(14+i*2)),
+  gearKnobPoints:Array.from({length:7},(_,i)=>[sim.getInt16(28+i*4,true),sim.getInt16(30+i*4,true)]),
+  aeroResistance:word(56),idleTorque:simulation[58],torqueCurve:Array.from(simulation.subarray(59,163)),
+  grip:word(164),surfaceGrip:Array.from({length:6},(_,i)=>word(180+i*2)),
+  rawSimulation:Buffer.from(simulation).toString('hex'),
+ };
+ return {tuning,simulation};
+}
+async function loadPreparedCar(gameRoot,id){
+ for(const directory of ['setup-media','original-resources']){
+  const path=await findCaseInsensitiveFile(join(gameRoot,directory),`CAR${id}.RES`);
+  if(!path)continue;
+  const decoded=decodeCarSimulationResource(new Uint8Array(await readFile(path)),id);
+  return {...decoded,source:path};
+ }
+ return null;
+}
 const controls=raw=>{
  raw&=255;const drive=raw&3,steer=(raw>>2)&3;
  return {raw,throttle:drive===1?1:0,brake:drive===2?1:0,driveConflict:drive===3?1:0,steer:steer===1?1:steer===2?-1:0,steerConflict:steer===3?1:0,shiftUp:(raw&16)?1:0,shiftDown:(raw&32)?1:0};
@@ -98,10 +137,19 @@ async function main(){
     const summary={file:name,status:'skipped',reason:'First headless probe supports solo replays only',opponentSelected:replay.header[6]};
     await writeFile(join(folder,'simulation-summary.json'),JSON.stringify(summary,null,2)+'\n');manifest.replays.push(summary);continue;
    }
-   const tuning=assets.cars.find(car=>String(car.id).toUpperCase()===id.toUpperCase());
-   if(!tuning)throw Error(`${name}: car ${id} is not present in prepared assets`);
-   if(!tuning.rawSimulation)throw Error(`${name}: prepared car ${id} has no rawSimulation data`);
-   const simulation=Uint8Array.from(Buffer.from(tuning.rawSimulation,'hex'));
+   let tuning=assets.cars.find(car=>String(car.id).toUpperCase()===id.toUpperCase()),simulation,tuningSource='assets.json';
+   if(tuning?.rawSimulation)simulation=Uint8Array.from(Buffer.from(tuning.rawSimulation,'hex'));
+   else{
+    const prepared=await loadPreparedCar(gameRoot,id);
+    if(prepared){tuning=prepared.tuning;simulation=prepared.simulation;tuningSource=prepared.source;}
+   }
+   if(!tuning||!simulation){
+    const summary={file:name,status:'skipped',carId:id,reason:`Car ${id} is not installed in the prepared game data`};
+    await writeFile(join(folder,'simulation-summary.json'),JSON.stringify(summary,null,2)+'\n','utf8');
+    manifest.replays.push(summary);
+    console.log(`${name}: skipped — car ${id} is not installed`);
+    continue;
+   }
    const session=createNativeReplaySession({startup,packedOpponent:new Uint8Array(),simulation,tuning,records,vectors,samples,objects,points,indices,planes,walls:wallsFile.walls},id,bytes);
    const rows=[header],samplesOut=[],start=snapshot(session.state,replay.inputs[0]??0,replay.track,replay.frequencyHz,0);
    let maxSpeed=0,grassFrames=0,airFrames=0,slidingFrames=0,crashFrames=0;
@@ -113,7 +161,7 @@ async function main(){
    }
    const final=snapshot(session.state,0,replay.track,replay.frequencyHz,replay.inputs.length);
    const summary={
-    file:name,status:'ok',format:replay.format,frequencyHz:replay.frequencyHz,carId:id,frames:replay.inputs.length,
+    file:name,status:'ok',format:replay.format,frequencyHz:replay.frequencyHz,carId:id,tuningSource,frames:replay.inputs.length,
     durationSeconds:replay.inputs.length/replay.frequencyHz,finalRaceClock:final.raceClock,raceClockMatchesFrames:final.raceClock===replay.inputs.length,
     maxSpeedMph:maxSpeed,grassFrames,airFrames,slidingFrames,crashFrames,
     start:{x:start.x,y:start.y,z:start.z,yaw:start.yaw,speedMph:start.speedMph,route:start.route},
