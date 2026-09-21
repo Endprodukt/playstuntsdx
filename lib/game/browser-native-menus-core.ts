@@ -50,6 +50,7 @@ import {enhancedMenuEnabled,modernTrackEditorEnabled,runNativeOptions,type Nativ
 import {enhancedRenderResolution} from './enhanced-resolution-settings.ts';
 import {createEnhancedTrackMenuPresentation} from './enhanced-track-menu-presentation.ts';
 import {runModernTrackMenu,type ModernTrackMenuAction,type ModernTrackMenuHost} from './modern-track-menu-runtime.ts';
+import {runModernOptionsMenu} from './modern-options-menu.ts';
 import {runNativeTrackMenu,type NativeTrackMenuHost} from './native-track-runtime.ts';
 import {runNativeEditor,type NativeEditorHost} from './native-editor-runtime.ts';
 import {createBrowserMenuInput} from './browser-menu-input.ts';
@@ -466,13 +467,35 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   for(;;){const sample=await input.read();calibration.step(sample.joystickDirection);present();if(sample.key||sample.joystickButtons){settings.settings.joystick=calibration.finish();break;}}
   pixels.set(saved);present();
  }};
+ const applyStoredAudioPreference=(key:string,current:boolean,operation:'toggle-music'|'toggle-sound')=>{
+  const saved=window.localStorage.getItem(key);if(saved===null)return;
+  const desired=!['0','false','no','off'].includes(saved.trim().toLowerCase());
+  if(desired!==current)music.control(operation);
+ };
+ applyStoredAudioPreference('playstunts-dx-music-enabled',music.settings.musicEnabled,'toggle-music');
+ applyStoredAudioPreference('playstunts-dx-sound-effects-enabled',music.settings.soundEnabled,'toggle-sound');
  const selectMain=async()=>{
   show('main');if(!options.displayMode)return runNativeMainMenuSelection({counter:input.counter,input:input.read,release:input.release,redraw:()=>{outline=undefined;present();},selectScreen:()=>{},outline:(selection,color)=>{outline=[selection,color];present();}});
   const display=await prepareBrowserNativeMainMenu({catalog:await loadBrowserOriginalResourceCatalog()},options.displayMode,options.hercules),nativePresent=()=>{pixels.set(display.pixels());paint(display.palette,display);};
   return runNativeMainMenuSelection({counter:input.counter,input:input.read,release:input.release,redraw(){display.redraw();nativePresent();},selectScreen(){},outline(selection,color){display.outline(selection,color);nativePresent();}});
  };
  const selectOptions=async()=>{
-  show('options');focusBrowserGameCanvas(canvas);if(!options.displayMode)return runNativeOptions(settings);
+  show('options');focusBrowserGameCanvas(canvas);
+  if(enhancedMenuEnabled()){
+   const modernDialogs=createNativeDialogRuntime(settings);
+   return runModernOptionsMenu({
+    canvas,input:input.read,settings:drivingSettings,
+    audio:async operation=>music.control(operation),
+    audioState:()=>({musicEnabled:music.settings.musicEnabled,soundEnabled:music.settings.soundEnabled}),
+    calibrateJoystick:settings.calibrateJoystick,
+    async selectReplay(){
+     const selection=await modernDialogs.file(settings.replayPath,'.rpl',String.fromCharCode(...host.resources.erep).split('\0')[0],path=>{settings.replayPath=path;});
+     if(!selection)return false;
+     settings.replayPath=selection.path;await settings.loadReplay(selection);return true;
+    },
+   });
+  }
+  if(!options.displayMode)return runNativeOptions(settings);
   const display=await prepareBrowserNativeMenuDisplay({catalog:await loadBrowserOriginalResourceCatalog()},options.displayMode,options.hercules),{owner}=display,{d,mode,drawing}=owner,present=()=>{pixels.set(display.pixels());paint(display.palette,display);},word=(at:number)=>{const m=owner.memory();return m[d+at]|m[d+at+1]<<8;};
   const nativeDialogs=createNativeDisplayDialogRuntime({...settings,memory:owner.memory,d,mode,drawing,capture:retain=>captureNativeDisplayDialogBackground(owner,retain),present},0xe800,{enumerate:host.enumerate,editPath:(path,length,timeout,field)=>editNativeDisplayPath({memory:owner.memory,d,mode,drawing,present,counters:input.counters,keyboard:input.keyboard},path,length,timeout,field,0xe800)}),dialogs={file:nativeDialogs.file,dialog(resource:string,mode:number,selected=0,border=4,disabled?:ReadonlyArray<number>){return nativeDialogs.dialog(resource,mode,selected,border===4?word(0x4ec2):border===1?word(0x4ec0):border,disabled);}};
   const nativeHost:NativeOptionsHost={...settings,present,get replayPath(){return track.path;},set replayPath(path:string){track.path=path;},loadReplay:async selection=>{const high={cga:0x5e0,tandy:0x620,ega:0x45c}[mode];new DataView(owner.memory().buffer).setUint16(d+0x8a10+high,150,true);drawOriginalRaceWaitingDisplay(owner.memory(),d,mode,drawing,host.resources.ewai,0xe800);present();await readSelectedReplay(selection);},calibrateJoystick:async()=>{
