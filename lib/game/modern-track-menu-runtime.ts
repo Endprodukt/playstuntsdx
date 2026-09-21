@@ -6,6 +6,7 @@ export type ModernTrackMenuAction=
  |{type:'import'}
  |{type:'edit'}
  |{type:'done'}
+ |{type:'back'}
  |{type:'none'};
 
 export type ModernTrackMenuFocus={type:'selector'|'import'|'edit'|'done'};
@@ -59,6 +60,10 @@ export async function runModernTrackMenu(host:ModernTrackMenuHost,display:Modern
   }
   if(action.type==='track'){selected=action.index;await load(selected);return;}
   if(action.type==='done'){focus={type:'done'};display.setFocus(focus);return 'done';}
+  if(action.type==='back'){
+   if(open){open=false;focus={type:'selector'};display.setTracks(names,selected,false);display.setFocus(focus);display.render();return;}
+   return 'done';
+  }
   if(action.type==='edit'){
    focus={type:'edit'};display.setFocus(focus);
    if(await host.editTrack(host.track)==='drive')return 'drive';
