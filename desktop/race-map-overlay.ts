@@ -9,7 +9,6 @@ import {normalizeRaceHeading,requestRaceTeleport,type RaceSpawn} from '../lib/ga
 import {snapToBlissRoad} from '../lib/game/bliss-road-snap';
 import {blissEditorActive} from '../lib/game/bliss-editor-presence';
 import type {Assets} from '../lib/game/types';
-import {enhancedRenderScale} from '../lib/game/enhanced-resolution-settings';
 
 type Layer='ground'|'terrain'|'track'|'buildings'|'items'|'paths';
 type Settings={width:number;height:number;layers:Record<Layer,boolean>};
@@ -250,7 +249,6 @@ export function installDesktopRaceMap(assets:Assets){
    showBasePlane:false,
    showAnnotations:false,
    terrainSupportWhenGroundHidden:false,
-   pixelRatio:()=>enhancedRenderScale(),
    layers:{
     ground:settings.layers.ground,terrain:settings.layers.terrain,track:settings.layers.track,
     buildings:settings.layers.buildings,items:settings.layers.items,
@@ -287,7 +285,7 @@ export function installDesktopRaceMap(assets:Assets){
   });
   const bounds=canvas.getBoundingClientRect(),cssWidth=Math.max(1,Math.round(bounds.width)),cssHeight=Math.max(1,Math.round(bounds.height));
   map3d.style.width=cssWidth+'px';map3d.style.height=cssHeight+'px';
-  const pixelScale=enhancedRenderScale();
+  const pixelScale=Math.min(2,window.devicePixelRatio||1);
   const pixelWidth=Math.max(1,Math.round(cssWidth*pixelScale)),pixelHeight=Math.max(1,Math.round(cssHeight*pixelScale));
   if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;
   preview.render();
