@@ -1,11 +1,12 @@
 import type {NativeMenuCar} from './native-car-runtime.ts';
 import {originalCarAccelerationGraph} from './car-menu-raster.ts';
 import type {ModernCarMenuAction,ModernCarMenuFocus,ModernCarMenuPresentation} from './modern-car-menu-runtime.ts';
-import {engineSoundForCar,engineSoundPresetInfo,loadSoundModSettings} from './sound-mod-settings.ts';
+import {ENGINE_SOUND_PRESETS,engineSoundForCar,engineSoundPresetInfo,loadSoundModSettings} from './sound-mod-settings.ts';
 
 const selector={x:86,y:10,w:166,h:22},importButton={x:257,y:10,w:48,h:22},doneButton={x:232,y:174,w:81,h:23};
 const soundButton={x:238,y:116,w:69,h:13},transmissionButton={x:232,y:137,w:81,h:16},colourButton={x:232,y:155,w:81,h:16};
 const previewRect={x:8,y:45,w:218,h:92},infoRect={x:232,y:44,w:81,h:89};
+const autoRotateButton={x:166,y:previewRect.y+previewRect.h-7,w:48,h:6};
 const graphRect={x:8,y:143,w:72,h:49},descriptionRect={x:85,y:143,w:140,h:49};
 const dropdownRowHeight=15,dropdownRows=8;
 
@@ -17,7 +18,9 @@ export function createEnhancedCarMenuPresentation(options:{
  directPreview?:boolean;
 }):ModernCarMenuPresentation&{inPreview(event:{clientX:number;clientY:number}):boolean;beginRotate():void;rotateBy(dx:number,dy:number):void;endRotate():void;zoomBy(delta:number):void}{
  const {canvas}=options,ctx=canvas.getContext('2d')!;
- let cars:readonly NativeMenuCar[]=[],selected=0,dropdownOpen=false,dropdownStart=0,hover:ModernCarMenuAction={type:'none'},focus:ModernCarMenuFocus={type:'selector'};
+ let cars:readonly NativeMenuCar[]=[],selected=0,dropdownOpen=false,dropdownStart=0,soundOpen=false,hover:ModernCarMenuAction={type:'none'},focus:ModernCarMenuFocus={type:'selector'};
+ const autoRotateKey='playstunts-dx-car-showroom-auto-rotate';
+ let autoRotate=typeof window==='undefined'||window.localStorage.getItem(autoRotateKey)!=='false';
  let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,paintColours:readonly number[]=[],closed=false,previewCanvas:HTMLCanvasElement|undefined,previewError=false,previewErrorText='',previewRender:((angle:number,pitch?:number,zoom?:number)=>void)|undefined,animation=0,lastAnimation=0,currentAngle=0,lastTick=performance.now(),manualRotate=false,manualPitch=0,previewZoom=1,currentCarId='',returning=false,returnStarted=0,returnFromAngle=0,returnFromPitch=0;
 
  const sx=()=>canvas.width/320,sy=()=>canvas.height/200;
@@ -59,6 +62,28 @@ export function createEnhancedCarMenuPresentation(options:{
  const button=(bounds:{x:number;y:number;w:number;h:number},caption:string,type:ModernCarMenuAction['type'],size=6.4)=>{
   const active=over(type);rect(bounds.x,bounds.y,bounds.w,bounds.h,active?'#5b6330':'#232323',active?'#b4c35a':'#555',4,active?1.5:1);
   label(caption,bounds.x+bounds.w/2,bounds.y+bounds.h/2+.2,size,active?'#fff':'#e8e8e8',600,'center');
+ };
+ const checkbox=(x:number,y:number,checked:boolean,active=false)=>{
+  const size=4.8;rect(x,y-size/2,size,size,checked?'#55651f':'#171717',active?'#d8ff21':'#777',1,active?1.1:.7);
+  if(checked){
+   ctx.save();ctx.strokeStyle='#efff83';ctx.lineWidth=Math.max(1,Math.min(sx(),sy())*.8);ctx.lineCap='round';ctx.lineJoin='round';
+   ctx.beginPath();ctx.moveTo((x+1.05)*sx(),y*sy());ctx.lineTo((x+2.05)*sx(),(y+1.2)*sy());ctx.lineTo((x+4.0)*sx(),(y-1.25)*sy());ctx.stroke();ctx.restore();
+  }
+ };
+ const soundRows=()=>{
+  const rowHeight=8.5,total=ENGINE_SOUND_PRESETS.length*rowHeight+4,left=soundButton.x,right=soundButton.x+soundButton.w,bottom=soundButton.y+soundButton.h;
+  return ENGINE_SOUND_PRESETS.map((preset,index)=>({preset,index,x:left,y:bottom-total+2+index*rowHeight,w:right-left,h:rowHeight}));
+ };
+ const drawSoundDropdown=()=>{
+  if(!soundOpen)return;
+  const rows=soundRows(),top=rows[0]?.y??soundButton.y,bottom=(rows.at(-1)?.y??top)+(rows.at(-1)?.h??0);
+  rect(soundButton.x-1,top-2,soundButton.w+2,bottom-top+4,'#101010','#666',3,.8);
+  const activeId=current?engineSoundForCar(current.id,loadSoundModSettings()):'original';
+  for(const row of rows){
+   const overRow=hover.type==='sound'&&hover.index===row.index,selected=row.preset.id===activeId;
+   if(overRow||selected)rect(row.x,row.y,row.w,row.h,overRow?'#59652d':'#313717',overRow?'#c6d66a':'#717a3d',2,overRow?1.1:.6);
+   fittedLabel(row.preset.label.replace(/^Zapper /,'').replace(/^Mario Andretti /,''),row.x+3,row.y+row.h/2,row.w-6,3.8,overRow||selected?'#fff':'#ccc',overRow||selected?650:450);
+  }
  };
  const fallbackPaints=[0xe7bd32,0xd54937,0x267fa8,0xdadfdd,0x314639] as const;
  const paintRects=()=>{
@@ -110,7 +135,7 @@ export function createEnhancedCarMenuPresentation(options:{
   });
   const sound=engineSoundPresetInfo(engineSoundForCar(current.id,loadSoundModSettings())).label
    .replace(/^Zapper /,'').replace(/^Mario Andretti /,'').replace('Original Stunts','Original');
-  button(soundButton,'SOUND · '+sound,'sound',4.2);
+  button(soundButton,'SOUND · '+sound+(soundOpen?' ▴':' ▾'),'sound',4.0);
  };
  const drawGraph=()=>{
   if(!current)return;
@@ -192,8 +217,10 @@ export function createEnhancedCarMenuPresentation(options:{
   else label('LOADING CAR…',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,5,'#777',600,'center');
   rect(previewRect.x+4,previewRect.y+previewRect.h-7.5,previewRect.w-8,6.5,'rgba(8,8,8,.72)','rgba(90,90,90,.5)',2.5,.5);
   const controlsY=previewRect.y+previewRect.h-4.1;
-  mouseIcon(previewRect.x+57,controlsY,'left',.34);label('Rotate',previewRect.x+63,controlsY,3.3,'#b7b7b7',500);
-  mouseIcon(previewRect.x+121,controlsY,'wheel',.34);label('Zoom',previewRect.x+127,controlsY,3.3,'#b7b7b7',500);
+  mouseIcon(previewRect.x+48,controlsY,'left',.34);label('Rotate',previewRect.x+54,controlsY,3.3,'#b7b7b7',500);
+  mouseIcon(previewRect.x+108,controlsY,'wheel',.34);label('Zoom',previewRect.x+114,controlsY,3.3,'#b7b7b7',500);
+  const autoHover=hover.type==='autorotate';
+  checkbox(autoRotateButton.x,controlsY,autoRotate,autoHover);label('Auto rotate',autoRotateButton.x+7,controlsY,3.0,autoHover?'#fff':'#b7b7b7',500);
   ctx.restore();
  };
  const render=()=>{
@@ -209,6 +236,7 @@ export function createEnhancedCarMenuPresentation(options:{
   drawPaints();
   button(doneButton,'DONE','done',7);
   if(dropdownOpen)drawDropdown();
+  drawSoundDropdown();
   ctx.restore();
  };
 
@@ -217,11 +245,11 @@ export function createEnhancedCarMenuPresentation(options:{
   const elapsed=now-lastTick;lastTick=now;
   if(returning){
    const t=Math.max(0,Math.min(1,(now-returnStarted)/420)),ease=1-Math.pow(1-t,3);
-   const target=(returnFromAngle+elapsed*1024/12000)%1024;
+   const target=autoRotate?(returnFromAngle+elapsed*1024/12000)%1024:returnFromAngle;
    currentAngle=(returnFromAngle+(target-returnFromAngle)*ease+1024)%1024;
    manualPitch=returnFromPitch*(1-ease);
    if(t>=1){returning=false;manualPitch=0;lastTick=now;}
-  }else if(!manualRotate)currentAngle=(currentAngle+elapsed*1024/12000)%1024;
+  }else if(!manualRotate&&autoRotate)currentAngle=(currentAngle+elapsed*1024/12000)%1024;
   if(previewRender&&now-lastAnimation>=33){
    lastAnimation=now;
    try{previewRender(Math.floor(currentAngle)&1023,(manualRotate||returning)?manualPitch:0,previewZoom);render();}catch(reason){previewRender=undefined;previewError=true;previewErrorText=reason instanceof Error?`${reason.name}: ${reason.message}`:String(reason);console.error('[Modern Car Select] Rotation failed:',reason);render();}
@@ -234,6 +262,8 @@ export function createEnhancedCarMenuPresentation(options:{
  return {
   setCars(next,nextSelected,open){cars=next;selected=Math.max(0,Math.min(Math.max(0,cars.length-1),nextSelected));dropdownOpen=open;updateDropdownStart();},
   setFocus(next){const changed=focus.type!==next.type;focus=next;if(changed)render();},
+  setSoundOpen(open){soundOpen=open;render();},
+  setAutoRotate(enabled){autoRotate=enabled;if(typeof window!=='undefined')window.localStorage.setItem(autoRotateKey,String(enabled));if(!enabled&&!manualRotate){returning=false;manualPitch=0;}lastTick=performance.now();render();},
   async draw(car,transmission,paint){
    if(currentCarId!==car.id){previewZoom=1;currentCarId=car.id;}current=car;currentTransmission=transmission;currentPaint=paint;paintColours=[];previewCanvas=undefined;previewRender=undefined;previewError=false;previewErrorText='';render();
    try{paintColours=options.paintColours?.(car)??[];}catch(reason){console.warn('[Modern Car Select] Paint swatches unavailable:',reason);}
@@ -258,7 +288,12 @@ export function createEnhancedCarMenuPresentation(options:{
    }
    if(inside(selector))return {type:'selector'};
    if(inside(importButton))return {type:'import'};
-   if(inside(soundButton))return {type:'sound',direction:1};
+   if(soundOpen){
+    const row=soundRows().find(bounds=>inside(bounds));
+    if(row)return {type:'sound',index:row.index};
+   }
+   if(inside(soundButton))return {type:'sound'};
+   if(inside(autoRotateButton))return {type:'autorotate',enabled:!autoRotate};
    if(inside(transmissionButton))return {type:'transmission'};
    if(inside(colourButton)){
     const swatch=paintRects().find(bounds=>inside(bounds));
