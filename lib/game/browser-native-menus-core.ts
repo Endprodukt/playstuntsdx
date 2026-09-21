@@ -535,6 +535,20 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   const dialogs=createNativeDisplayDialogRuntime({...menuHost,memory:owner.memory,d:owner.d,mode:owner.mode,drawing:owner.drawing,capture:retain=>captureNativeDisplayDialogBackground(owner,retain),present},0xe800,{enumerate:host.enumerate,editPath:(path,length,timeout,field)=>editNativeDisplayPath({memory:owner.memory,d:owner.d,mode:owner.mode,drawing:owner.drawing,present,counters:input.counters,keyboard:input.keyboard},path,length,timeout,field,0xe800)});
   return await runNativeTrackMenu(menuHost,false,createNativeDisplayTrackPresentation(display,menuHost,dialogs.file));
  };
+ const replayCarRequirements=async(id:string,role:string)=>{
+  const car=id.trim().toUpperCase();
+  if(!car)return;
+  replayLoading?.update('Checking replay car',role+' · '+car);replayLoading?.throwIfCancelled();
+  const catalog=await loadBrowserOriginalResourceCatalog();
+  const requirements=[
+   {label:`CAR${car}.RES or CAR${car}.PRE`,files:[`CAR${car}.RES`,`CAR${car}.PRE`]},
+   {label:`ST${car}.P3S or ST${car}.3SH`,files:[`ST${car}.P3S`,`ST${car}.3SH`]},
+   {label:`STDA${car}.PVS or STDA${car}.VSH`,files:[`STDA${car}.PVS`,`STDA${car}.VSH`]},
+   {label:`STDB${car}.PVS or STDB${car}.VSH`,files:[`STDB${car}.PVS`,`STDB${car}.VSH`]},
+  ];
+  const missing=requirements.filter(requirement=>!requirement.files.some(file=>catalog.exists(file))).map(requirement=>requirement.label);
+  if(missing.length)throw Error(`Missing replay car: ${car}\nThis replay requires a car that is not installed or is incomplete.\nMissing: ${missing.join(' · ')}`);
+ };
  const readSelectedReplay=async(selection:{path:string;name:string;customPath?:string})=>{
   replayLoading?.update('Reading replay file',selection.customPath??selection.name+'.RPL');replayLoading?.throwIfCancelled();
   const bytes=selection.customPath
@@ -549,6 +563,9 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    playerCar,opponent:replay.header[6],opponentCar,bytes:bytes.length,
   });
   replayLoading?.update('Replay decoded',`${replay.format} · ${replay.frequencyHz} Hz · ${replay.inputs.length.toLocaleString()} frames · car ${playerCar}${replay.header[6]?` · opponent ${opponentCar}`:''}`);replayLoading?.throwIfCancelled();
+  await replayCarRequirements(playerCar,'Player');
+  if(replay.header[6])await replayCarRequirements(opponentCar,'Opponent');
+  replayLoading?.update('Replay cars ready',replay.header[6]?`${playerCar} · opponent ${opponentCar}`:playerCar);replayLoading?.throwIfCancelled();
   if(replay.frequencyHz!==20)throw Error(`Replay uses ${replay.frequencyHz} Hz recording. PlayStunts DX currently supports 20 Hz replay playback only.`);
   // The reconstructed native replay bank follows the original 24-byte layout.
   // Community/1991 recordings add a frequency word before the frame count, so

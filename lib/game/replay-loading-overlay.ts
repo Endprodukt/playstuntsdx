@@ -15,7 +15,7 @@ export function createReplayLoadingOverlay(canvas:HTMLCanvasElement,file:string)
  title.textContent='LOADING REPLAY';title.style.cssText='font-size:24px;font-weight:800;letter-spacing:.04em;margin-bottom:4px;';
  fileLine.textContent=file;fileLine.style.cssText='font:12px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace;color:#a9aaa4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:20px;';
  current.style.cssText='font-size:17px;font-weight:750;color:#d9e47a;margin-bottom:4px;';
- detail.style.cssText='min-height:19px;font:12px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace;color:#c7c7bd;margin-bottom:16px;';
+ detail.style.cssText='min-height:19px;font:12px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace;color:#c7c7bd;margin-bottom:16px;white-space:pre-wrap;';
  history.style.cssText='border-top:1px solid #33382e;padding-top:11px;min-height:58px;color:#858980;font-size:11px;';
  footer.style.cssText='display:flex;justify-content:flex-end;margin-top:18px;';
  back.type='button';back.textContent='BACK';back.style.cssText='min-width:108px;padding:9px 16px;border:1px solid #6e7545;border-radius:5px;background:#20231b;color:#e5e9c1;font:700 12px Archivo,system-ui,Segoe UI,sans-serif;letter-spacing:.06em;cursor:pointer;';
