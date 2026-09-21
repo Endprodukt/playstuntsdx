@@ -23,6 +23,29 @@ const trackButton:Bounds={x:218,y:169,w:82,h:16};
 
 const carId=(configuration:readonly number[])=>String.fromCharCode(...configuration.slice(0,4));
 const sceneryName=(landscape:number)=>['DESERT','TROPICAL','CITY','COUNTRY','ALPINE'][landscape]??('SCENERY '+landscape);
+let cachedModernMainBackground:HTMLImageElement|undefined;
+let cachedModernMainBackgroundPromise:Promise<HTMLImageElement>|undefined;
+export function preloadModernMainMenuBackground(){
+ if(cachedModernMainBackground)return Promise.resolve(cachedModernMainBackground);
+ if(cachedModernMainBackgroundPromise)return cachedModernMainBackgroundPromise;
+ cachedModernMainBackgroundPromise=new Promise((resolve,reject)=>{
+  const image=new Image();image.decoding='async';
+  image.onload=()=>{cachedModernMainBackground=image;resolve(image);};
+  image.onerror=()=>{cachedModernMainBackgroundPromise=undefined;reject(new Error('Modern main menu background failed to load'));};
+  image.src='/ui/stunts-dx-main-background.webp';
+ });
+ return cachedModernMainBackgroundPromise;
+}
+export function drawModernMainMenuBackground(canvas:HTMLCanvasElement,image:HTMLImageElement){
+ const context=canvas.getContext('2d')!;
+ const sourceRatio=image.naturalWidth/image.naturalHeight,targetRatio=canvas.width/canvas.height;
+ let sw=image.naturalWidth,sh=image.naturalHeight,sx=0,sy=0;
+ if(sourceRatio>targetRatio){sw=sh*targetRatio;sx=(image.naturalWidth-sw)/2;}
+ else if(sourceRatio<targetRatio){sh=sw/targetRatio;sy=(image.naturalHeight-sh)/2;}
+ context.setTransform(1,0,0,1,0,0);context.clearRect(0,0,canvas.width,canvas.height);
+ context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';
+ context.drawImage(image,sx,sy,sw,sh,0,0,canvas.width,canvas.height);
+}
 
 export function createModernMainMenu(options:{
  canvas:HTMLCanvasElement;
@@ -31,6 +54,7 @@ export function createModernMainMenu(options:{
  track:TrackState;
  palette:number[];
  materialIndices:number[];
+ backgroundArt?:HTMLImageElement;
 }){
  const {canvas}=options,ctx=canvas.getContext('2d')!;
  const menuCanvasBackground=canvas.style.background,menuCanvasZIndex=canvas.style.zIndex;
@@ -41,12 +65,12 @@ export function createModernMainMenu(options:{
  const trackSurface=document.createElement('canvas');
  let trackView:ReturnType<typeof createBlissEditor3DView>|undefined;
  let trackSignature='';
- const backgroundArt=new Image();let backgroundArtReady=false;
- backgroundArt.decoding='async';
- backgroundArt.onload=()=>{backgroundArtReady=true;if(!closed&&!suspended)render();};
- backgroundArt.onerror=()=>{backgroundArtReady=false;};
- backgroundArt.src='/ui/stunts-dx-main-background.jpg';
+ const backgroundArt=options.backgroundArt??cachedModernMainBackground;
+ let backgroundArtReady=!!backgroundArt?.complete&&!!backgroundArt.naturalWidth;
  let closed=false,suspended=false,focus:ModernMainMenuAction='none',hover:ModernMainMenuAction='none',keyboardFocus=false,carAngle=80,lastCarFrame=performance.now(),animationFrame=0;
+ if(!backgroundArtReady&&!options.backgroundArt){
+  void preloadModernMainMenuBackground().then(image=>{if(closed)return;cachedModernMainBackground=image;backgroundArtReady=true;render();}).catch(()=>{});
+ }
 
  const mount=(surface:HTMLCanvasElement,kind:string)=>{
   const parent=canvas.parentElement;if(!parent)return;
@@ -173,7 +197,7 @@ export function createModernMainMenu(options:{
   const car=renderCar(),decoded=renderTrack();
   ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  if(backgroundArtReady){
+  if(backgroundArtReady&&backgroundArt){
    ctx.save();ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
    const sourceRatio=backgroundArt.naturalWidth/backgroundArt.naturalHeight,targetRatio=canvas.width/canvas.height;
    let sw=backgroundArt.naturalWidth,sh=backgroundArt.naturalHeight,sx0=0,sy0=0;
@@ -289,6 +313,6 @@ export function createModernMainMenu(options:{
    carSurface.style.display=value?'none':'block';trackSurface.style.display=value?'none':'block';
    if(!value)render();
   },
-  close(){if(closed)return;closed=true;cancelAnimationFrame(animationFrame);backgroundArt.onload=null;backgroundArt.onerror=null;observer.disconnect();trackView?.close();trackView=undefined;carShowroom.close();carSurface.remove();trackSurface.remove();canvas.style.background=menuCanvasBackground;canvas.style.zIndex=menuCanvasZIndex;}
+  close(){if(closed)return;closed=true;cancelAnimationFrame(animationFrame);observer.disconnect();trackView?.close();trackView=undefined;carShowroom.close();carSurface.remove();trackSurface.remove();canvas.style.background=menuCanvasBackground;canvas.style.zIndex=menuCanvasZIndex;}
  };
 }
