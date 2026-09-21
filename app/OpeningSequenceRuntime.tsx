@@ -247,6 +247,10 @@ export default function OpeningSequence({assets,onBack,backLabel="← Back",soun
      document.getElementById('playstunts-editor-test-loading')?.remove();
      performanceRunning.current=false;graphics.current.chaseCamera=0;graphics.current.resetPerformance?.();
      demoCamera=restored.camera;demoRandomState=restored.randomState;retainedSession=restored.retainedSession;menuClockAt=openingInput.counter();menus.configuration.splice(0,24,...restored.configuration);menus.track.raw=restored.track;
+     // The original race runtime restores its saved DOS menu framebuffer when
+     // returning. Cover that frame immediately so Escape never exposes the old
+     // Stunts main menu before the DX menu is recreated on the next loop.
+     menus.prepareMainMenuTransition();
      if(editorTest){
       menus.setInputActive(false);
       const result=await menus.reopenTrackEditor();
