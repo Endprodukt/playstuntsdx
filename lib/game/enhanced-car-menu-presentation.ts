@@ -17,7 +17,7 @@ export function createEnhancedCarMenuPresentation(options:{
 }):ModernCarMenuPresentation&{inPreview(event:{clientX:number;clientY:number}):boolean;beginRotate():void;rotateBy(dx:number,dy:number):void;endRotate():void;zoomBy(delta:number):void}{
  const {canvas}=options,ctx=canvas.getContext('2d')!;
  let cars:readonly NativeMenuCar[]=[],selected=0,dropdownOpen=false,dropdownStart=0,hover:ModernCarMenuAction={type:'none'},focus:ModernCarMenuFocus={type:'selector'};
- let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,paintColours:readonly number[]=[],closed=false,previewCanvas:HTMLCanvasElement|undefined,previewError=false,previewRender:((angle:number,pitch?:number,zoom?:number)=>void)|undefined,animation=0,lastAnimation=0,currentAngle=0,lastTick=performance.now(),manualRotate=false,manualPitch=0,previewZoom=1,currentCarId='',returning=false,returnStarted=0,returnFromAngle=0,returnFromPitch=0;
+ let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,paintColours:readonly number[]=[],closed=false,previewCanvas:HTMLCanvasElement|undefined,previewError=false,previewErrorText='',previewRender:((angle:number,pitch?:number,zoom?:number)=>void)|undefined,animation=0,lastAnimation=0,currentAngle=0,lastTick=performance.now(),manualRotate=false,manualPitch=0,previewZoom=1,currentCarId='',returning=false,returnStarted=0,returnFromAngle=0,returnFromPitch=0;
 
  const sx=()=>canvas.width/320,sy=()=>canvas.height/200;
  const rect=(x:number,y:number,w:number,h:number,fill:string,stroke='#3b3b3b',radius=5,lineWidth=1)=>{
@@ -184,7 +184,10 @@ export function createEnhancedCarMenuPresentation(options:{
    const drawW=sourceW*scale,drawH=sourceH*scale;
    const drawX=targetX+(targetW-drawW)/2,drawY=targetY+(targetH-drawH)/2;
    ctx.drawImage(previewCanvas,sourceX,sourceY,sourceW,sourceH,drawX,drawY,drawW,drawH);ctx.imageSmoothingEnabled=previousSmoothing;
-  }else if(previewError)label('PREVIEW UNAVAILABLE',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,5,'#a77',600,'center');
+  }else if(previewError){
+   label('PREVIEW UNAVAILABLE',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2-4,5,'#a77',600,'center');
+   if(previewErrorText)fittedLabel(previewErrorText,previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2+7,previewRect.w-24,3.4,'#8e7777',450,'center');
+  }
   else label('LOADING CAR…',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,5,'#777',600,'center');
   rect(previewRect.x+4,previewRect.y+previewRect.h-13,previewRect.w-8,9,'rgba(8,8,8,.68)','rgba(90,90,90,.5)',3,.5);
   const controlsY=previewRect.y+previewRect.h-8.5;
@@ -220,7 +223,7 @@ export function createEnhancedCarMenuPresentation(options:{
   }else if(!manualRotate)currentAngle=(currentAngle+elapsed*1024/12000)%1024;
   if(previewRender&&now-lastAnimation>=33){
    lastAnimation=now;
-   try{previewRender(Math.floor(currentAngle)&1023,(manualRotate||returning)?manualPitch:0,previewZoom);render();}catch(reason){previewRender=undefined;previewError=true;console.error('[Modern Car Select] Rotation failed:',reason);render();}
+   try{previewRender(Math.floor(currentAngle)&1023,(manualRotate||returning)?manualPitch:0,previewZoom);render();}catch(reason){previewRender=undefined;previewError=true;previewErrorText=reason instanceof Error?`${reason.name}: ${reason.message}`:String(reason);console.error('[Modern Car Select] Rotation failed:',reason);render();}
   }
   animation=requestAnimationFrame(animate);
  };
@@ -231,14 +234,14 @@ export function createEnhancedCarMenuPresentation(options:{
   setCars(next,nextSelected,open){cars=next;selected=Math.max(0,Math.min(Math.max(0,cars.length-1),nextSelected));dropdownOpen=open;updateDropdownStart();},
   setFocus(next){const changed=focus.type!==next.type;focus=next;if(changed)render();},
   async draw(car,transmission,paint){
-   if(currentCarId!==car.id){previewZoom=1;currentCarId=car.id;}current=car;currentTransmission=transmission;currentPaint=paint;paintColours=[];previewCanvas=undefined;previewRender=undefined;previewError=false;render();
+   if(currentCarId!==car.id){previewZoom=1;currentCarId=car.id;}current=car;currentTransmission=transmission;currentPaint=paint;paintColours=[];previewCanvas=undefined;previewRender=undefined;previewError=false;previewErrorText='';render();
    try{paintColours=options.paintColours?.(car)??[];}catch(reason){console.warn('[Modern Car Select] Paint swatches unavailable:',reason);}
    try{
     const preview=await options.preview(car,paint);
     if(preview){previewCanvas=preview.canvas;previewRender=preview.render;paintCount=Math.max(1,preview.paintCount|0);preview.render(Math.floor(currentAngle)&1023,manualRotate?manualPitch:0,previewZoom);}
-    else{previewError=true;paintCount=1;}
+    else{previewError=true;previewErrorText='No renderable car model was produced.';paintCount=1;}
    }catch(reason){
-    previewError=true;paintCount=1;console.error('[Modern Car Select] High-res preview failed:',reason);
+    previewError=true;previewErrorText=reason instanceof Error?`${reason.name}: ${reason.message}`:String(reason);paintCount=1;console.error('[Modern Car Select] High-res preview failed:',reason);
    }
    render();return {paintCount};
   },
