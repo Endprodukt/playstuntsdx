@@ -167,13 +167,10 @@ export function createTrackModel(shape: Shape,trackMaterials:TrackMaterials,pain
   }
   if(edgeLines.length){
    const geometry=new LineSegmentsGeometry();geometry.setPositions(edgeLines);geometry.setColors(edgeLineColors);
-   // These are compatibility traces for zero-thickness native polygon edges,
-   // not physical rods/cables. Keep them screen-space: the Sep-20 world-space
-   // conversion made bridge tile boundaries appear as brown connector strokes.
-   // The race scene updates linewidth to the current internal render scale so
-   // the trace remains one native pixel after downsampling at 1x..10x.
-   const edges=new LineSegments2(geometry,new LineMaterial({vertexColors:true,linewidth:1,side:THREE.DoubleSide,toneMapped:false}));
-   edges.userData.originalEdgeVisibility=true;group.add(edges);
+   // Retain our compatibility edge traces, but give them the same physical
+   // perspective behavior as authored line primitives instead of fixed pixels.
+   // Keep both sides because the upgraded world mirrors source Z.
+   const edges=new LineSegments2(geometry,new LineMaterial({vertexColors:true,linewidth:PERSPECTIVE_TRACK_LINE_WIDTH,worldUnits:true,side:THREE.DoubleSide,toneMapped:false}));edges.userData.originalEdgeVisibility=true;group.add(edges);
   }
   // The transporter uses the same native type-12 wheels as cars. Reuse their
   // tire/cap/hub presentation and undo the car adapter's 1/400 unit scale.
