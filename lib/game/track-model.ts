@@ -8,6 +8,7 @@ import {LineSegmentsGeometry} from 'three/examples/jsm/lines/LineSegmentsGeometr
 import {LineMaterial} from 'three/examples/jsm/lines/LineMaterial.js';
 import {originalPolygonNeedsDepthSort} from './polygon-order.ts';
 import {upgradedOriginalEdgeSegments} from './upgraded-original-edge-visibility.ts';
+import {upgradedTrackSuppressBoundaryEdges} from './upgraded-track-seams.ts';
 import type {Shape} from './types.ts';
 export type TrackMaterials={indices:number[];palette:number[]}&OriginalMaterialPatterns;
 // The native material table already contains the intended road colours. These
@@ -41,7 +42,17 @@ export function createTrackModel(shape: Shape,trackMaterials:TrackMaterials,pain
   const patternMaterials:number[]=[],curbPriorities:number[]=[],roadSurfaces:number[]=[],terrainSurfaces:number[]=[],roadMarkings:number[]=[];
   const markingSurfaces=roadMarkingSurfaces(shape,paint);
   const vertices:number[]=[],colors:number[]=[],normals:number[]=[],layers:number[]=[],parentPlanes:number[]=[],lines:number[]=[],lineColors:number[]=[],edgeLines:number[]=[],edgeLineColors:number[]=[];
-  const originalEdgeSegments=upgradedOriginalEdgeSegments(shape),edgeSegmentsByPrimitive=new Map<number,typeof originalEdgeSegments>();
+  const suppressBoundaryEdges=upgradedTrackSuppressBoundaryEdges(shape);
+  const boundaryEdge=(segment:{start:number;end:number})=>{
+    if(!suppressBoundaryEdges)return false;
+    const a=shape.vertices[segment.start],b=shape.vertices[segment.end];
+    if(!a||!b)return false;
+    // A bridge-module join is a full edge lying exactly on the local tile
+    // boundary after seam normalization. Drop only that presentation outline;
+    // real authored geometry and non-boundary wall traces remain untouched.
+    return [0,2].some(axis=>Math.abs(Math.abs(a[axis])-512)<1e-6&&Math.abs(Math.abs(b[axis])-512)<1e-6&&Math.sign(a[axis])===Math.sign(b[axis]));
+  };
+  const originalEdgeSegments=upgradedOriginalEdgeSegments(shape).filter(segment=>!boundaryEdge(segment)),edgeSegmentsByPrimitive=new Map<number,typeof originalEdgeSegments>();
   for(const segment of originalEdgeSegments){const segments=edgeSegmentsByPrimitive.get(segment.primitive);if(segments)segments.push(segment);else edgeSegmentsByPrimitive.set(segment.primitive,[segment]);}
   let parentPoints:Point3[]=[];
   let parentPlane:number[]=[0,0,0,0],attachedLayer=0;
