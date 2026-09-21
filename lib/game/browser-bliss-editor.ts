@@ -1437,6 +1437,12 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    manualHexDeadline=0;manualHex='';renderPalette();renderStatus();return;
   }
 
+  if(code==='Escape'){
+   event.preventDefault();event.stopImmediatePropagation();
+   if(pasteMode){pasteMode=false;renderMap();renderStatus();return;}
+   void finish();return;
+  }
+
   const binding=keyboardBinding(event),boundAction=actionForBinding(binding);
   if(boundAction){event.preventDefault();event.stopImmediatePropagation();executeBoundAction(boundAction,event.shiftKey);return;}
   if(event.shiftKey){
@@ -1471,7 +1477,6 @@ export async function runBrowserBlissEditor(host:BrowserBlissEditorHost){
    if(upper==='O'){event.preventDefault();toggleColouringMode();return;}
   }
 
-  if(code==='Escape'){event.preventDefault();if(pasteMode){pasteMode=false;renderMap();renderStatus();return;}void finish();return;}
   if(code==='Tab'){event.preventDefault();activeArea=activeArea==='grid'?'palette':'grid';selectionAnchor=null;updateArea();return;}
   if(code==='ArrowUp'||code==='ArrowDown'||code==='ArrowLeft'||code==='ArrowRight'){
    event.preventDefault();const dx=code==='ArrowLeft'?-1:code==='ArrowRight'?1:0,dy=code==='ArrowUp'?-1:code==='ArrowDown'?1:0;
@@ -2355,11 +2360,13 @@ The editor stores Bliss metadata where supported, including creation date, editi
   closed=true;cleanup();resolveDone?.({spawn:{...spawn},carId});
  }
  async function finish(){
-  if(closed)return;
+  if(closed||modalOpen)return;
   if(core.modified){
    const choice=await confirmExitChoice();
    if(choice==='cancel')return;
    if(choice==='save'&&!await saveTrack())return;
+  }else{
+   if(!await centeredConfirm('Leave Track Editor?','Return to the main menu?','Leave Editor','Cancel'))return;
   }
   closed=true;cleanup();resolveDone?.(undefined);
  }
