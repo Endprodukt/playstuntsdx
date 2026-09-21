@@ -27,9 +27,14 @@ function confirmBackToEditorDialog(){
   const make=(label:string,value:boolean)=>{
    const b=document.createElement('button');b.type='button';b.textContent=label;
    b.style.cssText='min-width:76px;border:1px solid #555;background:#232323;color:#eee;border-radius:4px;padding:7px 12px;cursor:pointer;font:12px/1.1 system-ui,Segoe UI,sans-serif;';
+   const active=()=>{b.style.background='#4e5b2b';b.style.borderColor='#9fb454';b.style.color='#fff';};
+   const inactive=()=>{b.style.background='#232323';b.style.borderColor='#555';b.style.color='#eee';};
+   b.addEventListener('pointerenter',()=>{for(const candidate of [yes,no])inactiveButton(candidate);active();});
+   b.addEventListener('focus',()=>{for(const candidate of [yes,no])inactiveButton(candidate);active();});
    b.addEventListener('click',()=>finish(value));return b;
   };
-  const yes=make('Yes',true),no=make('No',false);yes.style.background='#4e5b2b';yes.style.borderColor='#9fb454';
+  const inactiveButton=(b:HTMLButtonElement)=>{b.style.background='#232323';b.style.borderColor='#555';b.style.color='#eee';};
+  const yes=make('Yes',true),no=make('No',false);yes.style.background='#4e5b2b';yes.style.borderColor='#9fb454';yes.style.color='#fff';
   const finish=(value:boolean)=>{window.removeEventListener('keydown',onKey,true);shade.remove();resolve(value);};
   const onKey=(event:KeyboardEvent)=>{
    if(event.code==='Escape'){event.preventDefault();event.stopPropagation();finish(false);return;}
@@ -44,6 +49,13 @@ function confirmBackToEditorDialog(){
  * saved menu state and browser OPL stream until the player returns to menus. */
 export async function runBrowserNativeManualRace(options:{context:AudioContext;data:NativeDemoData;menus:Menus;menu:NativeDemoMenuState&{mouse?:boolean;joystick?:boolean};spawn?:RaceSpawn;editorTest?:boolean;signal:AbortSignal;displayMode?:NativeBrowserDisplayMode;hercules?:boolean;mt32Output?:Mt32StereoOutput;replay?:NativeSelectedReplay;stopMusic():void;onStage?:(stage:'loading'|'race'|'results'|'seeking')=>void;onFrame?:(frame:number,mode:number,clock:number,blocked:number)=>void}){
  if(options.data.soundDevice?.kind==='mt32'&&!options.mt32Output)throw Error('Roland race requires an initialized synthesizer output');
+ const editorButtonHover=(event:PointerEvent)=>{
+  const button=(event.target as Element|null)?.closest?.('button');if(!(button instanceof HTMLButtonElement))return;
+  if(button.textContent?.trim().toUpperCase()!=='BACK TO EDITOR')return;
+  if(event.type==='pointerover'){button.style.background='#30371d';button.style.borderColor='#d6e16a';button.style.color='#fff';}
+  else{button.style.background='';button.style.borderColor='';button.style.color='';}
+ };
+ if(options.editorTest){document.addEventListener('pointerover',editorButtonHover,true);document.addEventListener('pointerout',editorButtonHover,true);}
  let rolandAudio:ReturnType<typeof createBrowserMt32RaceAudio>|undefined;
  const {context,menus,signal}=options;let pcAudio:ReturnType<typeof createBrowserPcSpeakerRaceAudio>|undefined;
  const deviceData=options.data.soundDevice?.kind==='pc-speaker'?{...options.data,soundDevice:{kind:'pc-speaker' as const,port61:()=>pcAudio?.port61??0}}:options.data.soundDevice?.kind==='tandy'?{...options.data,soundDevice:{...options.data.soundDevice,port61:()=>pcAudio?.port61??0}}:options.data;
@@ -97,5 +109,8 @@ export async function runBrowserNativeManualRace(options:{context:AudioContext;d
    const previous=presentation;presentation=await preparePresentation();previous.close();rolandAudio?.resume();
   }
   return runtime.releaseMenuState();
- }finally{window.removeEventListener('playstunts-dx-sound-mod-settings-changed',onSoundSettingsChanged);if(soundSettingsTimer)window.clearInterval(soundSettingsTimer);presentation?.close();audio?.close();options.stopMusic();menus.setInputActive(false);}
+ }finally{
+  if(options.editorTest){document.removeEventListener('pointerover',editorButtonHover,true);document.removeEventListener('pointerout',editorButtonHover,true);}
+  window.removeEventListener('playstunts-dx-sound-mod-settings-changed',onSoundSettingsChanged);if(soundSettingsTimer)window.clearInterval(soundSettingsTimer);presentation?.close();audio?.close();options.stopMusic();menus.setInputActive(false);
+ }
 }
