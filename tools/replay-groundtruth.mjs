@@ -72,6 +72,29 @@ async function findCar(gameRoot,carsRoot,id){
  for(const root of [carsRoot,join(repoRoot,'Custom Cars'),join(gameRoot,'setup-media')]){const found=await findRecursive(root,[filename]);if(found)return found;}
  return null;
 }
+async function stageCarBundle(carResPath,workspace){
+ const packageRoot=dirname(carResPath),staged=[];
+ const walk=async directory=>{
+  const entries=(await readdir(directory,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name));
+  for(const entry of entries){
+   const source=join(directory,entry.name);
+   if(entry.isDirectory()){await walk(source);continue;}
+   if(!entry.isFile())continue;
+   const target=join(workspace,entry.name);
+   await cp(source,target,{force:true});
+   staged.push(entry.name);
+  }
+ };
+ await walk(packageRoot);
+ return staged;
+}
+async function reusableGroundTruth(dumpPath,sourcePath,expectedBytes){
+ if(!await exists(dumpPath)||!await exists(sourcePath))return false;
+ try{
+  const [bytes,source]=await Promise.all([readFile(dumpPath),readFile(sourcePath,'utf8').then(JSON.parse)]);
+  return bytes.length===expectedBytes&&source.core==='original';
+ }catch{return false;}
+}
 function runExternalDosbox(dosbox,workspace){
  const result=spawnSync(dosbox,['-c',`mount c "${workspace}"`,'-c','c:','-c','REPLDUMP.EXE INPUT','-c','exit'],{stdio:'inherit',windowsHide:true});
  if(result.error)throw result.error;if(result.status!==0)throw Error('DOSBox/repldump exited with code '+result.status);
@@ -169,12 +192,15 @@ async function main(){
  if(!options.convertOnly){repldump=await ensureRepldump(options.tools);console.log('Restunts tool: '+repldump);console.log(options.dosbox?'DOS backend: external '+options.dosbox:'DOS backend: bundled Node emulator');}
  const manifest={source:'restunts-repldump',replays:[]};
  for(const name of files){
-  const replayPath=join(options.input,name),stem=basename(name,extname(name)),out=join(options.output,stem),dumpPath=join(out,'restunts-state.bin');await mkdir(out,{recursive:true});
-  if(!options.convertOnly){
+  const replayPath=join(options.input,name),stem=basename(name,extname(name)),out=join(options.output,stem),dumpPath=join(out,'restunts-state.bin'),sourcePath=join(out,'restunts-source.json');await mkdir(out,{recursive:true});
+  const replayBytesForReuse=new Uint8Array(await readFile(replayPath)),decodedForReuse=decodeReplayBytes(replayBytesForReuse,name),expectedDumpBytes=2+decodedForReuse.frameCount*RESTUNTS_GAMESTATE_BYTES;
+  const reuse=!options.convertOnly&&await reusableGroundTruth(dumpPath,sourcePath,expectedDumpBytes);
+  if(reuse)console.log(name+': reusing existing original-core ground-truth dump');
+  if(!options.convertOnly&&!reuse){
    const replayBytes=new Uint8Array(await readFile(replayPath)),decoded=decodeReplayBytes(replayBytes,name),workspace=join(options.work,stem);await rm(workspace,{recursive:true,force:true});await mkdir(workspace,{recursive:true});await copyDirectoryContents(join(gameRoot,'setup-media'),workspace);
-   const car=await findCar(gameRoot,options.cars,decoded.header.carId);if(!car){const skipped={file:name,status:'skipped',reason:`Missing CAR${decoded.header.carId}.RES`};manifest.replays.push(skipped);console.log(name+': skipped — '+skipped.reason);continue;}await cp(car,join(workspace,`CAR${decoded.header.carId}.RES`),{force:true});
-   if(decoded.header.opponentSelected){const opponent=await findCar(gameRoot,options.cars,decoded.header.opponentCarId);if(!opponent){const skipped={file:name,status:'skipped',reason:`Missing CAR${decoded.header.opponentCarId}.RES for opponent`};manifest.replays.push(skipped);console.log(name+': skipped — '+skipped.reason);continue;}await cp(opponent,join(workspace,`CAR${decoded.header.opponentCarId}.RES`),{force:true});}
-   await Promise.all([cp(repldump,join(workspace,'REPLDUMP.EXE'),{force:true}),cp(replayPath,join(workspace,'INPUT.RPL'),{force:true})]);console.log(name+': running Restunts ground-truth replay...');const dump=await runGroundTruthDos(workspace,2+decoded.frameCount*RESTUNTS_GAMESTATE_BYTES,options.dosbox);await Promise.all([writeFile(dumpPath,dump.bytes),writeFile(join(out,'restunts-source.json'),JSON.stringify({core:dump.core,legacyOutput:dump.filename,tool:repldump},null,2)+'\n','utf8')]);console.log(name+`: legacy repldump core = ${dump.core} (${dump.filename})`);
+   const car=await findCar(gameRoot,options.cars,decoded.header.carId);if(!car){const skipped={file:name,status:'skipped',reason:`Missing CAR${decoded.header.carId}.RES`};manifest.replays.push(skipped);console.log(name+': skipped — '+skipped.reason);continue;}const stagedPlayerFiles=await stageCarBundle(car,workspace);console.log(name+`: staged ${stagedPlayerFiles.length} files from custom-car package ${dirname(car)}`);
+   if(decoded.header.opponentSelected){const opponent=await findCar(gameRoot,options.cars,decoded.header.opponentCarId);if(!opponent){const skipped={file:name,status:'skipped',reason:`Missing CAR${decoded.header.opponentCarId}.RES for opponent`};manifest.replays.push(skipped);console.log(name+': skipped — '+skipped.reason);continue;}await stageCarBundle(opponent,workspace);}
+   await Promise.all([cp(repldump,join(workspace,'REPLDUMP.EXE'),{force:true}),cp(replayPath,join(workspace,'INPUT.RPL'),{force:true})]);console.log(name+': running Restunts ground-truth replay...');const dump=await runGroundTruthDos(workspace,2+decoded.frameCount*RESTUNTS_GAMESTATE_BYTES,options.dosbox);await Promise.all([writeFile(dumpPath,dump.bytes),writeFile(sourcePath,JSON.stringify({core:dump.core,legacyOutput:dump.filename,tool:repldump,carPackage:dirname(car),stagedFiles:stagedPlayerFiles},null,2)+'\n','utf8')]);console.log(name+`: legacy repldump core = ${dump.core} (${dump.filename})`);
   }
   if(!await exists(dumpPath)){console.log(name+': no restunts-state.bin to convert');continue;}
   const summary=await convertDump(replayPath,dumpPath,out);manifest.replays.push({status:'ok',...summary});console.log(`${name}: ${summary.frames} ground-truth frames, max ${summary.maxSpeedMph.toFixed(1)} mph, crash ${summary.firstCrashFrame??'none'}`);
