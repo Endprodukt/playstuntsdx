@@ -8,7 +8,7 @@ export type ModernCarMenuAction=
  |{type:'import'}
  |{type:'sound';direction?:-1|1}
  |{type:'transmission'}
- |{type:'colour'}
+ |{type:'colour';index?:number}
  |{type:'done'}
  |{type:'none'};
 
@@ -72,7 +72,7 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
    focus={type:'transmission'};transmission=transmission?0:1;await sync();return;
   }
   if(action.type==='colour'){
-   focus={type:'colour'};paint=(paint+1)%paintCount;await sync();return;
+   focus={type:'colour'};paint=action.index===undefined?(paint+1)%paintCount:Math.max(0,Math.min(paintCount-1,action.index));await sync();return;
   }
   if(action.type==='import'&&host.importCar){
    focus={type:'import'};display.setFocus(focus);
