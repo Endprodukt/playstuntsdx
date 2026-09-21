@@ -15,7 +15,7 @@ async function confirmModernExit(canvas:HTMLCanvasElement,input:ReturnType<typeo
  let selected=0,pointerChoice=-1,pointerActivate=false;
  const sx=()=>canvas.width/320,sy=()=>canvas.height/200,buttons=[{x:103,y:111,w:51,h:19},{x:166,y:111,w:51,h:19}];
  const draw=()=>{
-  context.setTransform(1,0,0,1,0,0);context.drawImage(saved,0,0);context.fillStyle='rgba(0,0,0,.72)';context.fillRect(0,0,canvas.width,canvas.height);
+  context.setTransform(1,0,0,1,0,0);context.clearRect(0,0,canvas.width,canvas.height);context.drawImage(saved,0,0);context.fillStyle='rgba(0,0,0,.72)';context.fillRect(0,0,canvas.width,canvas.height);
   const rect=(x:number,y:number,w:number,h:number,fill:string,stroke:string,radius=5,lineWidth=1)=>{
    const X=x*sx(),Y=y*sy(),W=w*sx(),H=h*sy(),R=Math.max(2,Math.min(radius*sx(),radius*sy()));
    context.beginPath();context.roundRect(X,Y,W,H,R);context.fillStyle=fill;context.fill();context.strokeStyle=stroke;context.lineWidth=Math.max(lineWidth,Math.min(sx(),sy()));context.stroke();
@@ -48,7 +48,7 @@ async function confirmModernExit(canvas:HTMLCanvasElement,input:ReturnType<typeo
    if(key===0x4b00||key===0x4d00||key===0x4800||key===0x5000){selected^=1;draw();continue;}
    if(key===13||key===32)return selected===1?1:0;
   }
- }finally{canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerdown',pointerDown,true);context.setTransform(1,0,0,1,0,0);context.drawImage(saved,0,0);}
+ }finally{canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerdown',pointerDown,true);context.setTransform(1,0,0,1,0,0);context.clearRect(0,0,canvas.width,canvas.height);context.drawImage(saved,0,0);}
 }
 /** Main2D16..2D4E: original exit confirmation after Escape from the opening.
  * The current opening framebuffer remains the background in every display. */
