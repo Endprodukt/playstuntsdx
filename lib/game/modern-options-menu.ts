@@ -28,7 +28,7 @@ type FfbNumericRowId=
  |'ffb-crash-min-strength'|'ffb-crash-max-strength'|'ffb-crash-speed-max'|'ffb-crash-rebound'|'ffb-crash-main-duration'|'ffb-crash-total-duration';
 
 type RowId=
- |'opponent-ai'|'music'|'sound-effects'|'sound-device'|'open-map'|'menu-style'|'track-editor'|'audio-update'
+ |'load-replay'|'opponent-ai'|'music'|'sound-effects'|'sound-device'|'open-map'|'menu-style'|'track-editor'|'audio-update'
  |'dx-graphics'|'resolution'|'background'|'cockpit'|'fov'|'fps'|'original-detail'
  |'input-device'|'deadzone'|'linearity'|'show-f8'|'ffb-enabled'|'ffb-details'|FfbNumericRowId
  |'close-distance'|'close-height'|'standard-distance'|'standard-height'|'far-distance'|'far-height'|'reset-camera';
@@ -128,6 +128,7 @@ const tabOrder:readonly Tab[]=['gameplay','video','sound','controls'];
 const tabLabels:Record<Tab,string>={gameplay:'GAMEPLAY',video:'VIDEO',sound:'SOUND',controls:'CONTROLS'};
 const footerLabels:Record<FooterAction,string>={back:'BACK',exit:'EXIT GAME',done:'DONE'};
 const optionHelp:Partial<Record<RowId,string>>={
+ 'load-replay':'Opens the global replay browser. It includes every .RPL found recursively under Custom Tracks and loads the track embedded in the replay.',
  'opponent-ai':'Original keeps the exact classic opponent logic. Enhanced enables DX look-ahead, racing lines, passing, defending and recovery with driver-specific personalities.',
  'music':'Turns the original Stunts music on or off.',
  'sound-effects':'Turns game sound effects on or off. Per-car engine sounds are configured in Car Select or the F8 panel.',
@@ -432,6 +433,7 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
   if(ffbDetails)return ffbFields.map(field=>({id:field.id,label:field.label,value:formatFfbValue(field,ffb.values[field.id]),numeric:true,group:field.group}));
   if(tab==='gameplay'){
    return [
+    {id:'load-replay',label:'Load Replay',value:'Open…',actionOnly:true,group:'ORIGINAL STUNTS'},
     {id:'opponent-ai',label:'Opponent AI',value:opponentAiMode()==='enhanced'?'Enhanced':'Original',group:'DX / MODERN'},
     {id:'open-map',label:'Open Map on Race Start',value:boolLabel(storedEnabled(mapKey,false))},
     {id:'menu-style',label:'Menu Style',value:storedEnabled(enhancedMenuKey,true)?'Modern':'Vanilla'},
@@ -491,8 +493,9 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
   const [level,kind]=entry,current=enhancedChaseCameraPosition(level)[kind],step=kind==='distance'?10:5;
   setEnhancedChaseCameraPosition(level,kind,current+(direction<0?-step:step));
  };
- const changeRow=async(direction:number,activate=false)=>{
+ const changeRow=async(direction:number,activate=false):Promise<'replay'|undefined>=>{
   const item=currentRows()[row];if(!item||item.disabled)return;
+  if(item.id==='load-replay'){if(activate&&await host.selectReplay())return 'replay';presentation.render();return;}
   if(item.id==='ffb-enabled'){await persistFfbEnabled(ffb,!ffb.enabled);presentation.render();return;}
   if(item.id==='ffb-details'){if(activate){ffbDetails=true;row=0;zone='rows';footer=1;}presentation.render();return;}
   const ffbField=ffbFieldById.get(item.id as FfbNumericRowId);
@@ -628,7 +631,7 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
     if(pointer.type==='tab'){setTab(pointer.index);continue;}
     if(pointer.type==='minus'||pointer.type==='plus'){zone='rows';row=pointer.index;clampRow();await changeRow(pointer.type==='minus'?-1:1);continue;}
     if(pointer.type==='value'){zone='rows';row=pointer.index;clampRow();presentation.render();continue;}
-    if(pointer.type==='row'){zone='rows';row=pointer.index;clampRow();const item=currentRows()[row];if(!item?.numeric)await changeRow(1,true);else presentation.render();continue;}
+    if(pointer.type==='row'){zone='rows';row=pointer.index;clampRow();const item=currentRows()[row];if(!item?.numeric){const result=await changeRow(1,true);if(result)return result;}else presentation.render();continue;}
     zone='footer';footer=pointer.index;presentation.render();const result=await activateFooter(footer);if(result)return result;continue;
    }
    const key=input.key??0;
@@ -644,7 +647,7 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
     if(key===0x5000){if(row>=rows.length-1){zone='footer';footer=1;}else row++;presentation.render();continue;}
     if(key===0x4b00){await changeRow(-1);continue;}
     if(key===0x4d00){await changeRow(1);continue;}
-    if(key===13||key===32){const item=currentRows()[row];if(item?.numeric)await editNumeric(row);else await changeRow(1,true);continue;}
+    if(key===13||key===32){const item=currentRows()[row];if(item?.numeric)await editNumeric(row);else {const result=await changeRow(1,true);if(result)return result;}continue;}
    }else{
     if(key===0x4800){zone='rows';row=currentRows().length-1;clampRow();presentation.render();continue;}
     if(key===0x4b00){footer=(footer+1)%2;presentation.render();continue;}

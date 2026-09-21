@@ -99,12 +99,14 @@ function inputDeviceWithWheel(original:ReadonlyArray<number>){
  return result;
 }
 
+export interface NativeReplaySelection {path:string;name:string;customPath?:string}
 export interface NativeOptionsHost extends NativeDialogHost {
  settings:OriginalOptionSettings;
  audio(operation:'pause-audio'|'resume-audio'|'toggle-music'|'toggle-sound'):Promise<number>;
  calibrateJoystick():Promise<void>;
  replayPath:string;
- loadReplay(selection:{path:string;name:string}):Promise<void>;
+ selectReplayGlobal?():Promise<NativeReplaySelection|undefined>;
+ loadReplay(selection:NativeReplaySelection):Promise<void>;
 }
 export interface NativeOptionsPresentation {
  dialogs:ReturnType<typeof createNativeDialogRuntime>;
@@ -114,7 +116,7 @@ export interface NativeOptionsPresentation {
 export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOptionsPresentation):Promise<'menu'|'replay'|'exit'>{
  const dialogs=display?.dialogs??createNativeDialogRuntime(host),flow=originalOptionsFlow(host.settings);
  if(display)display.background();else drawOriginalOptionsBackground(host.pixels,host.font,host.resources);host.present();
- let step=flow.next(),selection:{path:string;name:string}|undefined;
+ let step=flow.next(),selection:NativeReplaySelection|undefined;
  while(!step.done){
   const request=step.value;let result=0;
   if(request.type==='options'){
@@ -183,8 +185,8 @@ export async function runNativeOptions(host:NativeOptionsHost,display?:NativeOpt
    }
   }
   else if(request.type==='select-replay'){
-   selection=await dialogs.file(host.replayPath,'.rpl',String.fromCharCode(...host.resources.erep).split('\0')[0],path=>{host.replayPath=path;});
-   if(selection){host.replayPath=selection.path;result=1;}
+   selection=host.selectReplayGlobal?await host.selectReplayGlobal():await dialogs.file(host.replayPath,'.rpl',String.fromCharCode(...host.resources.erep).split('\0')[0],path=>{host.replayPath=path;});
+   if(selection){if(!selection.customPath)host.replayPath=selection.path;result=1;}
   }else if(request.type==='load-replay'){
    if(!selection)throw Error('Original replay dispatch requires a selected file');
    await host.loadReplay(selection);

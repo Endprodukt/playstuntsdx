@@ -413,6 +413,78 @@ fn checked_track_filename(name: &str) -> Result<String, String> {
     Ok(format!("{stem}.TRK"))
 }
 
+fn collect_custom_replays(directory: &Path, root: &Path, output: &mut Vec<String>) -> Result<(), String> {
+    if !directory.is_dir() {
+        return Ok(());
+    }
+    let mut entries = fs::read_dir(directory)
+        .map_err(|error| format!("Could not scan {}: {error}", directory.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not scan {}: {error}", directory.display()))?;
+    entries.sort_by_key(|entry| entry.file_name().to_string_lossy().to_lowercase());
+    for entry in entries {
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("Could not inspect {}: {error}", path.display()))?;
+        if file_type.is_dir() {
+            collect_custom_replays(&path, root, output)?;
+        } else if file_type.is_file()
+            && path
+                .extension()
+                .map(|extension| extension.to_string_lossy().eq_ignore_ascii_case("rpl"))
+                .unwrap_or(false)
+        {
+            let relative = path
+                .strip_prefix(root)
+                .map_err(|error| format!("Could not relativize {}: {error}", path.display()))?;
+            output.push(relative.to_string_lossy().replace('\\', "/"));
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn list_custom_replays() -> Result<Vec<String>, String> {
+    let root = application_root()?.join("Custom Tracks");
+    let mut replays = Vec::new();
+    collect_custom_replays(&root, &root, &mut replays)?;
+    replays.sort_by_key(|value| value.to_ascii_lowercase());
+    Ok(replays)
+}
+
+fn checked_custom_replay_path(relative: &str) -> Result<PathBuf, String> {
+    let input = Path::new(relative.trim());
+    if input.as_os_str().is_empty()
+        || input.is_absolute()
+        || input.components().any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err("Replay path must stay inside Custom Tracks.".to_string());
+    }
+    if !input
+        .extension()
+        .map(|extension| extension.to_string_lossy().eq_ignore_ascii_case("rpl"))
+        .unwrap_or(false)
+    {
+        return Err("Replay path must reference an .RPL file.".to_string());
+    }
+    let root = fs::canonicalize(application_root()?.join("Custom Tracks"))
+        .map_err(|error| format!("Could not open Custom Tracks: {error}"))?;
+    let path = fs::canonicalize(root.join(input))
+        .map_err(|error| format!("Could not open custom replay {}: {error}", input.display()))?;
+    if !path.starts_with(&root) || !path.is_file() {
+        return Err("Replay path must reference a file inside Custom Tracks.".to_string());
+    }
+    Ok(path)
+}
+
+#[tauri::command]
+fn read_custom_replay(path: String) -> Result<Vec<u8>, String> {
+    let replay = checked_custom_replay_path(&path)?;
+    fs::read(&replay)
+        .map_err(|error| format!("Could not read custom replay {}: {error}", replay.display()))
+}
+
 fn find_custom_track(directory: &Path, filename: &str) -> Result<Option<PathBuf>, String> {
     if !directory.is_dir() {
         return Ok(None);
@@ -909,6 +981,8 @@ pub fn run() {
             custom_track_exists,
             read_custom_track,
             write_custom_track,
+            list_custom_replays,
+            read_custom_replay,
             write_track_shot,
             import_custom_car_package,
             bliss_http_get,
