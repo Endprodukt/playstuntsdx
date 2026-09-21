@@ -172,27 +172,21 @@ export function createEnhancedCarMenuPresentation(options:{
   ctx.save();ctx.beginPath();ctx.roundRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy(),4*Math.min(sx(),sy()));ctx.clip();
   ctx.fillStyle='#0a0b0a';ctx.fillRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
   if(previewCanvas){
-   // The WebGL preview already carries MSAA. A second bilinear resample here
-   // visibly softens the low-poly edges, especially at 4x and higher render sizes.
-   const previousSmoothing=ctx.imageSmoothingEnabled;ctx.imageSmoothingEnabled=false;
+   const previousSmoothing=ctx.imageSmoothingEnabled;ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
    const targetX=previewRect.x*sx(),targetY=previewRect.y*sy(),targetW=previewRect.w*sx(),targetH=previewRect.h*sy();
-   // The car itself occupies the upper showroom portion of the original
-   // 320x200 frame. Crop that logical showroom window first, then scale it
-   // uniformly into the modern preview so the car stays undistorted and centered.
-   const sourceX=0,sourceY=0,sourceW=previewCanvas.width,sourceH=Math.round(previewCanvas.height*0.58);
-   const scale=Math.min(targetW/sourceW,targetH/sourceH);
-   const drawW=sourceW*scale,drawH=sourceH*scale;
-   const drawX=targetX+(targetW-drawW)/2,drawY=targetY+(targetH-drawH)/2;
-   ctx.drawImage(previewCanvas,sourceX,sourceY,sourceW,sourceH,drawX,drawY,drawW,drawH);ctx.imageSmoothingEnabled=previousSmoothing;
+   // The WebGL showroom is already framed for this exact preview rectangle.
+   // Copy the complete camera image once; do not crop a 320x200-style source
+   // or enlarge it again, which was the main cause of the soft-looking car/grid.
+   ctx.drawImage(previewCanvas,0,0,previewCanvas.width,previewCanvas.height,targetX,targetY,targetW,targetH);ctx.imageSmoothingEnabled=previousSmoothing;
   }else if(previewError){
    label('PREVIEW UNAVAILABLE',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2-4,5,'#a77',600,'center');
    if(previewErrorText)fittedLabel(previewErrorText,previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2+7,previewRect.w-24,3.4,'#8e7777',450,'center');
   }
   else label('LOADING CAR…',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,5,'#777',600,'center');
-  rect(previewRect.x+4,previewRect.y+previewRect.h-13,previewRect.w-8,9,'rgba(8,8,8,.68)','rgba(90,90,90,.5)',3,.5);
-  const controlsY=previewRect.y+previewRect.h-8.5;
-  mouseIcon(previewRect.x+57,controlsY,'left');label('Rotate',previewRect.x+64,controlsY,3.7,'#b7b7b7',500);
-  mouseIcon(previewRect.x+121,controlsY,'wheel');label('Zoom',previewRect.x+128,controlsY,3.7,'#b7b7b7',500);
+  rect(previewRect.x+4,previewRect.y+previewRect.h-7.5,previewRect.w-8,6.5,'rgba(8,8,8,.72)','rgba(90,90,90,.5)',2.5,.5);
+  const controlsY=previewRect.y+previewRect.h-4.1;
+  mouseIcon(previewRect.x+57,controlsY,'left',.34);label('Rotate',previewRect.x+63,controlsY,3.3,'#b7b7b7',500);
+  mouseIcon(previewRect.x+121,controlsY,'wheel',.34);label('Zoom',previewRect.x+127,controlsY,3.3,'#b7b7b7',500);
   ctx.restore();
  };
  const render=()=>{
