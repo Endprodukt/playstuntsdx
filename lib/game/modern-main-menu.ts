@@ -41,11 +41,11 @@ export function createModernMainMenu(options:{
  const trackSurface=document.createElement('canvas');
  let trackView:ReturnType<typeof createBlissEditor3DView>|undefined;
  let trackSignature='';
- const headerArt=new Image();let headerArtReady=false;
- headerArt.decoding='async';
- headerArt.onload=()=>{headerArtReady=true;if(!closed&&!suspended)render();};
- headerArt.onerror=()=>{headerArtReady=false;};
- headerArt.src='/game/ui/stunts-dx-main-header.jpg';
+ const backgroundArt=new Image();let backgroundArtReady=false;
+ backgroundArt.decoding='async';
+ backgroundArt.onload=()=>{backgroundArtReady=true;if(!closed&&!suspended)render();};
+ backgroundArt.onerror=()=>{backgroundArtReady=false;};
+ backgroundArt.src='/game/ui/stunts-dx-main-background.jpg';
  let closed=false,suspended=false,focus:ModernMainMenuAction='none',hover:ModernMainMenuAction='none',keyboardFocus=false;
 
  const mount=(surface:HTMLCanvasElement,kind:string)=>{
@@ -116,7 +116,6 @@ export function createModernMainMenu(options:{
  const button=(bounds:Bounds,caption:string,action:ModernMainMenuAction,size=6.1)=>{
   const selected=active(action);
   rect(bounds.x,bounds.y,bounds.w,bounds.h,selected?'#d8cf36':'#273039',selected?'#fff28a':'#778693',3,selected?1.45:1);
-  ctx.fillStyle=selected?'#fff268':'#475967';ctx.fillRect(bounds.x*sx(),bounds.y*sy(),2.2*sx(),bounds.h*sy());
   line(bounds.x+2,bounds.y+1,bounds.x+bounds.w-1,bounds.y+1,selected?'#fff8a8':'#9aa5ad',.45);
   icon(action,bounds.x+8,bounds.y+bounds.h/2,selected);
   label(caption,bounds.x+15,bounds.y+bounds.h/2+.2,size,selected?'#17191a':'#edf1f4',850,'left',true);
@@ -174,25 +173,28 @@ export function createModernMainMenu(options:{
   const car=renderCar(),decoded=renderTrack();
   ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  const background=ctx.createLinearGradient(0,0,0,canvas.height);
-  background.addColorStop(0,'#31363a');background.addColorStop(.28,'#272c30');background.addColorStop(1,'#171b1e');ctx.fillStyle=background;ctx.fillRect(0,0,canvas.width,canvas.height);
-  checkerFlag(250,47,.72,false,.075);checkerFlag(32,150,.68,true,.055);
-  ctx.fillStyle='rgba(255,255,255,.018)';for(let y=45;y<200;y+=7)ctx.fillRect(0,y*sy(),canvas.width,sy());
-
-  // Actual raster artwork generated from the approved concept: brush-logo,
-  // checkered flag, loop/ramp and car imagery. It is part of the in-game menu,
-  // not just a mockup shown outside the game.
-  if(headerArtReady){
+  if(backgroundArtReady){
    ctx.save();ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
-   ctx.drawImage(headerArt,0,0,headerArt.naturalWidth,headerArt.naturalHeight,0,0,canvas.width,43*sy());
-   const fade=ctx.createLinearGradient(0,29*sy(),0,44*sy());fade.addColorStop(0,'rgba(18,21,23,0)');fade.addColorStop(1,'rgba(18,21,23,.95)');ctx.fillStyle=fade;ctx.fillRect(0,28*sy(),canvas.width,17*sy());ctx.restore();
+   ctx.drawImage(backgroundArt,0,0,backgroundArt.naturalWidth,backgroundArt.naturalHeight,0,0,canvas.width,canvas.height);
+   // Darken the lower UI field just enough for the panels to read while
+   // leaving the loop, car and checker artwork visible around them.
+   const shade=ctx.createLinearGradient(0,38*sy(),0,canvas.height);
+   shade.addColorStop(0,'rgba(14,17,19,.06)');
+   shade.addColorStop(.38,'rgba(14,17,19,.28)');
+   shade.addColorStop(1,'rgba(9,11,12,.58)');
+   ctx.fillStyle=shade;ctx.fillRect(0,38*sy(),canvas.width,canvas.height-38*sy());
+   ctx.restore();
   }else{
-   const top=ctx.createLinearGradient(0,0,canvas.width,0);top.addColorStop(0,'#252a2e');top.addColorStop(1,'#15191c');ctx.fillStyle=top;ctx.fillRect(0,0,canvas.width,43*sy());
-   checkerFlag(9,2,.75,false,.18);label('STUNTS DX',13,20,15,'#e2d52f',900,'left',true);
+   const background=ctx.createLinearGradient(0,0,0,canvas.height);
+   background.addColorStop(0,'#31363a');background.addColorStop(.28,'#272c30');background.addColorStop(1,'#171b1e');
+   ctx.fillStyle=background;ctx.fillRect(0,0,canvas.width,canvas.height);
+   checkerFlag(250,47,.72,false,.075);checkerFlag(32,150,.68,true,.055);
+   ctx.fillStyle='rgba(255,255,255,.018)';for(let y=45;y<200;y+=7)ctx.fillRect(0,y*sy(),canvas.width,sy());
+   label('STUNTS DX',13,20,15,'#e2d52f',900,'left',true);
   }
-  line(0,43,320,43,'#8997a2',1);
+  line(0,43,320,43,'rgba(160,176,187,.82)',1);
 
-  rect(7,45,82,148,'rgba(22,27,31,.95)','#697985',4);
+  rect(7,45,82,148,'rgba(20,24,28,.88)','#697985',4);
   label('MAIN MENU',13,50,5.2,'#d9e2e8',850);
   button(driveButton,'RACE','drive',6.8);
   button(opponentButton,'OPPONENT','opponent',5.5);
@@ -203,7 +205,7 @@ export function createModernMainMenu(options:{
   label('ENTER  SELECT',13,179,3.8,'#d0d0d0',650);
   label('ESC  EXIT',13,186,3.8,'#c0c0c0',650);
 
-  rect(94,45,105,148,'rgba(22,27,31,.95)','#697985',4);
+  rect(94,45,105,148,'rgba(20,24,28,.88)','#697985',4);
   label('CURRENT CAR',101,50,5.1,'#d9e2e8',850);
   fitToWidth(car.name??car.id,101,59,91,6.4,'#e6d23e',850,true);
   ctx.clearRect(carPreview.x*sx(),carPreview.y*sy(),carPreview.w*sx(),carPreview.h*sy());
@@ -214,7 +216,7 @@ export function createModernMainMenu(options:{
   label('IDLE RPM',101,160,3.7,'#aebbc4',650);label(String(car.idleRPM??'?'),193,160,4.1,'#edf2f5',760,'right');
   button(carButton,'CHANGE CAR','car',5.1);
 
-  rect(204,45,109,148,'rgba(22,27,31,.95)','#697985',4);
+  rect(204,45,109,148,'rgba(20,24,28,.88)','#697985',4);
   label('SELECTED TRACK',211,50,5.1,'#d9e2e8',850);
   fitToWidth(options.track.name||'UNTITLED',211,59,94,6.4,'#e6d23e',850,true);
   ctx.clearRect(trackPreview.x*sx(),trackPreview.y*sy(),trackPreview.w*sx(),trackPreview.h*sy());
@@ -268,6 +270,6 @@ export function createModernMainMenu(options:{
    carSurface.style.display=value?'none':'block';trackSurface.style.display=value?'none':'block';
    if(!value)render();
   },
-  close(){if(closed)return;closed=true;headerArt.onload=null;headerArt.onerror=null;observer.disconnect();trackView?.close();trackView=undefined;carShowroom.close();carSurface.remove();trackSurface.remove();canvas.style.background=menuCanvasBackground;canvas.style.zIndex=menuCanvasZIndex;}
+  close(){if(closed)return;closed=true;backgroundArt.onload=null;backgroundArt.onerror=null;observer.disconnect();trackView?.close();trackView=undefined;carShowroom.close();carSurface.remove();trackSurface.remove();canvas.style.background=menuCanvasBackground;canvas.style.zIndex=menuCanvasZIndex;}
  };
 }
