@@ -450,9 +450,7 @@ fn check_gamedata_blocking(app: &tauri::AppHandle) -> Result<bool, String> {
 
 #[tauri::command]
 async fn check_gamedata(app: tauri::AppHandle) -> Result<bool, String> {
-    tauri::async_runtime::spawn_blocking(move || check_gamedata_blocking(&app))
-        .await
-        .map_err(|error| format!("Game-data preparation task failed: {error}"))?
+    check_gamedata_blocking(&app)
 }
 
 fn checked_track_filename(name: &str) -> Result<String, String> {
