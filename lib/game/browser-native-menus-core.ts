@@ -610,11 +610,31 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    let focus:ModernMainMenuAction='none',dialogOpen=false;
    const select=(action:ModernMainMenuAction)=>action==='drive'?0:action==='car'?1:action==='opponent'?2:action==='track'?3:action==='options'?4:action==='editor'?-3:action==='replays'?-4:undefined;
    const pointerDown=(event:PointerEvent)=>{
-    if(dialogOpen||event.button!==0)return;
+    if(dialogOpen)return;
+    if(modern.previewPointerDown(event)){
+     event.preventDefault();event.stopImmediatePropagation();
+     try{canvas.setPointerCapture(event.pointerId);}catch{}
+     modern.clearHover();return;
+    }
+    if(event.button!==0)return;
     const action=modern.actionAt(event);if(action==='none')return;
     event.preventDefault();event.stopImmediatePropagation();actions.push(action);
    };
-   const pointerMove=(event:PointerEvent)=>{if(!dialogOpen)modern.hoverAt(event);};
+   const pointerMove=(event:PointerEvent)=>{
+    if(dialogOpen)return;
+    if(modern.previewPointerMove(event)){event.preventDefault();event.stopImmediatePropagation();return;}
+    modern.hoverAt(event);
+   };
+   const pointerUp=(event:PointerEvent)=>{
+    if(modern.previewPointerUp(event)){
+     event.preventDefault();event.stopImmediatePropagation();
+     try{canvas.releasePointerCapture(event.pointerId);}catch{}
+    }
+   };
+   const wheel=(event:WheelEvent)=>{
+    if(dialogOpen)return;
+    if(modern.previewWheel(event)){event.preventDefault();event.stopImmediatePropagation();}
+   };
    const pointerLeave=()=>{if(!dialogOpen)modern.clearHover();};
    const requestExit=async()=>{
     dialogOpen=true;modern.setSuspended(true);
@@ -628,7 +648,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
      dialogOpen=false;modern.setSuspended(false);focusBrowserGameCanvas(canvas);
     }
    };
-   canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerleave',pointerLeave,true);
+   canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});canvas.addEventListener('pointerleave',pointerLeave,true);
    modern.setFocus('none');
    try{
     for(;;){
@@ -657,7 +677,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
      }
     }
    }finally{
-    canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerleave',pointerLeave,true);modern.close();
+    canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerup',pointerUp,true);canvas.removeEventListener('pointercancel',pointerUp,true);canvas.removeEventListener('wheel',wheel,true);canvas.removeEventListener('pointerleave',pointerLeave,true);modern.close();
    }
   }
   if(!options.displayMode)return runNativeMainMenuSelection({counter:input.counter,input:input.read,release:input.release,redraw:()=>{outline=undefined;present();},selectScreen:()=>{},outline:(selection,color)=>{outline=[selection,color];present();}});
