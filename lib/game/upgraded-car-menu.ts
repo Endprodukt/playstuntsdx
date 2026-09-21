@@ -76,7 +76,10 @@ export function createUpgradedCarMenu(palette:number[],indices:number[],options:
  * ratio, avoiding the old full-screen render -> crop -> rescale blur chain. */
 export function createModernCarShowroom(palette:number[],indices:number[]){
  const renderer=new THREE.WebGLRenderer({antialias:true,logarithmicDepthBuffer:true,powerPreference:'high-performance'});
- renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=false;renderer.toneMapping=THREE.ACESFilmicToneMapping;
+ // Car Select supplies an explicit supersampled render size from the shared
+ // Enhanced Render Scale (1/2/4/6/8/10x). Keep pixelRatio at 1 here so a 10x
+ // selection really means 10x, not 20x on a high-DPI display.
+ renderer.setPixelRatio(1);renderer.shadowMap.enabled=false;renderer.toneMapping=THREE.ACESFilmicToneMapping;
 
  const scene=new THREE.Scene();scene.background=new THREE.Color(0x101b25);scene.fog=new THREE.Fog(0x101b25,16,36);
  const camera=new THREE.PerspectiveCamera(36,1,.05,100);
