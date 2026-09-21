@@ -26,11 +26,21 @@ const NORMALIZED_AXES:Readonly<Record<string,readonly number[]>>={
  'GAME2.zesp':[0,2],
 };
 const cached=new WeakMap<Shape,Map<string,Shape>>();
+const suppressBoundaryEdges=new WeakSet<Shape>();
+const BRIDGE_CHAIN_SHAPES=new Set(['GAME2.brid','GAME2.zbri','GAME2.elrd','GAME2.zelr','GAME2.elsp','GAME2.zesp']);
+
+/** These continuous elevated modules need their raster-era overlap normalized,
+ * but they must not then receive the compatibility one-pixel outline at the
+ * exact +/-512 join. That outline is presentation-only and otherwise draws the
+ * dotted brown cross-road / side-wall seams seen between bridge tiles. */
+export function upgradedTrackSuppressBoundaryEdges(shape:Shape){return suppressBoundaryEdges.has(shape);}
 
 export function upgradedTrackSeamShape(shape:Shape,shapeName:string):Shape{
  const axes=NORMALIZED_AXES[shapeName];if(!axes)return shape;
  let variants=cached.get(shape);if(!variants){variants=new Map();cached.set(shape,variants);}
  const previous=variants.get(shapeName);if(previous)return previous;
  const vertices=shape.vertices.map(vertex=>vertex.map((coordinate,axis)=>axes.includes(axis)&&Math.abs(coordinate)>=513&&Math.abs(coordinate)<=519?Math.sign(coordinate)*512:coordinate) as [number,number,number]);
- const normalized={...shape,vertices};variants.set(shapeName,normalized);return normalized;
+ const normalized={...shape,vertices};
+ if(BRIDGE_CHAIN_SHAPES.has(shapeName))suppressBoundaryEdges.add(normalized);
+ variants.set(shapeName,normalized);return normalized;
 }
