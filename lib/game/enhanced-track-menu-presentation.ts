@@ -3,10 +3,10 @@ import type {Assets} from './types.ts';
 import type {BlissTrack} from './bliss-track.ts';
 import type {NativeMenuTrack} from './native-track-runtime.ts';
 import type {BlissEditor3DView} from './bliss-editor-3d.ts';
-import type {ModernTrackMenuAction,ModernTrackMenuPresentation} from './modern-track-menu-runtime.ts';
+import type {ModernTrackMenuAction,ModernTrackMenuFocus,ModernTrackMenuPresentation} from './modern-track-menu-runtime.ts';
 import {enhancedRenderResolution} from './enhanced-resolution-settings.ts';
 
-type PreviewFactory=(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,options:{initialCamera:{position:[number,number,number];target:[number,number,number];fov:number};transparentBackground:boolean;showGround:boolean})=>BlissEditor3DView;
+type PreviewFactory=(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,options:{initialCamera:{position:[number,number,number];target:[number,number,number];fov:number};transparentBackground:boolean;showGround:boolean;showBasePlane?:boolean;pixelRatio?:number|(()=>number)})=>BlissEditor3DView;
 
 export type EnhancedTrackMenuPresentation=ModernTrackMenuPresentation&{
  active(active:boolean):void;
@@ -39,7 +39,7 @@ export function createEnhancedTrackMenuPresentation(options:{
  const syncPreviewResolution=()=>{const internal=enhancedRenderResolution();if(previewCanvas.width!==internal.width)previewCanvas.width=internal.width;if(previewCanvas.height!==internal.height)previewCanvas.height=internal.height;};
  syncPreviewResolution();
  let preview:BlissEditor3DView|undefined,signature='',track:NativeMenuTrack|undefined,score:ReadonlyArray<number>|null=null,enabled=true;
- let tracks:string[]=[],selectedTrack=0,dropdownOpen=false,dropdownStart=0,hoverAction:ModernTrackMenuAction={type:'none'};
+ let tracks:string[]=[],selectedTrack=0,dropdownOpen=false,dropdownStart=0,hoverAction:ModernTrackMenuAction={type:'none'},focusAction:ModernTrackMenuFocus={type:'selector'};
 
  const sx=()=>canvas.width/320,sy=()=>canvas.height/200;
  const rect=(x:number,y:number,w:number,h:number,fill:string,stroke='#3b3b3b',radius=5,lineWidth=1)=>{
@@ -57,11 +57,11 @@ export function createEnhancedTrackMenuPresentation(options:{
   const next=trackSignature(track);
   if(preview&&signature===next)return preview;
   const decoded=options.decodeTrack(Uint8Array.from(track.raw));
-  if(!preview)preview=options.createPreview(previewCanvas,options.assets,decoded,{initialCamera:options.originalCamera,transparentBackground:true,showGround:true});
+  if(!preview)preview=options.createPreview(previewCanvas,options.assets,decoded,{initialCamera:options.originalCamera,transparentBackground:true,showGround:true,showBasePlane:false,pixelRatio:1});
   else{preview.update(decoded);preview.resetView();}
   signature=next;return preview;
  };
- const hovered=(type:ModernTrackMenuAction['type'])=>hoverAction.type===type;
+ const hovered=(type:ModernTrackMenuAction['type'])=>hoverAction.type===type||focusAction.type===type;
  const button=(bounds:{x:number;y:number;w:number;h:number},caption:string,type:ModernTrackMenuAction['type'])=>{
   const over=hovered(type);
   rect(bounds.x,bounds.y,bounds.w,bounds.h,over?'#5b6330':'#232323',over?'#b4c35a':'#555',4,over?1.5:1);
@@ -166,6 +166,7 @@ export function createEnhancedTrackMenuPresentation(options:{
  return {
   async draw(nextTrack,nextScore){track=nextTrack;score=nextScore;signature='';if(options.previewEnabled)ensurePreview();render();},
   setTracks(names,nextSelected,open){tracks=[...names];selectedTrack=Math.max(0,Math.min(Math.max(0,tracks.length-1),nextSelected));dropdownOpen=open;updateDropdownStart();},
+  setFocus(next){const changed=focusAction.type!==next.type;focusAction=next;if(changed)render();},
   hit,
   actionAt(event){const r=canvas.getBoundingClientRect();return hit((event.clientX-r.left)*320/r.width,(event.clientY-r.top)*200/r.height);},
   hoverAt(event){
