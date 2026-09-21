@@ -21,7 +21,7 @@ type RowId=
  |'input-device'|'deadzone'|'linearity'|'show-f8'
  |'close-distance'|'close-height'|'standard-distance'|'standard-height'|'far-distance'|'far-height'|'reset-camera';
 
-interface OptionRow {id:RowId;label:string;value:string;disabled?:boolean;actionOnly?:boolean}
+interface OptionRow {id:RowId;label:string;value:string;disabled?:boolean;actionOnly?:boolean;group?:'DX / MODERN'|'ORIGINAL STUNTS'}
 interface PointerAction {type:'tab'|'row'|'footer'|'confirm';index:number}
 
 export interface ModernOptionsMenuHost {
@@ -98,7 +98,7 @@ const tabHelp:Record<Tab,string>={
  video:'Rendering, display quality and enhanced chase-camera settings.',
  controls:'Driving input and wheel-response settings.',
 };
-const visibleRows=6;
+const rowHeight=13.5,sectionHeight=8,rowRegionBottom=101;
 const truthy=(value:string|null,defaultValue=false)=>value===null?defaultValue:!['0','false','no','off'].includes(value.trim().toLowerCase());
 const boolLabel=(value:boolean)=>value?'On':'Off';
 const clamp=(value:number,min:number,max:number)=>Math.max(min,Math.min(max,value));
@@ -192,26 +192,47 @@ function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],sta
   return (keyboard&&selected===index)||(hover?.type===type&&hover.index===index);
  };
  const rows=()=>getRows();
- const rowStart=()=>{
-  const all=rows(),selected=state.row();
-  return Math.max(0,Math.min(Math.max(0,all.length-visibleRows),selected-Math.floor(visibleRows/2)));
+ const layoutFrom=(start:number)=>{
+  const all=rows(),items:Array<{index:number;y:number}>=[],sections:Array<{label:string;y:number}>=[];
+  let y=content.y+18,activeGroup:string|undefined;
+  for(let index=start;index<all.length;index++){
+   const item=all[index],group=item.group;
+   if(group&&group!==activeGroup){
+    if(y+sectionHeight+rowHeight>content.y+rowRegionBottom)break;
+    sections.push({label:group,y:y+sectionHeight/2});y+=sectionHeight;activeGroup=group;
+   }else if(!group)activeGroup=undefined;
+   if(y+rowHeight>content.y+rowRegionBottom)break;
+   items.push({index,y:y+rowHeight/2});y+=rowHeight;
+  }
+  return {start,items,sections};
+ };
+ const visibleLayout=()=>{
+  const selected=Math.max(0,Math.min(Math.max(0,rows().length-1),state.row()));
+  let start=Math.max(0,selected-2),layout=layoutFrom(start);
+  while(start<selected&&!layout.items.some(item=>item.index===selected)){start++;layout=layoutFrom(start);}
+  return layout;
  };
  const render=()=>{
-  const all=rows(),start=rowStart(),visible=all.slice(start,start+visibleRows);
+  const all=rows(),layout=visibleLayout(),{start}=layout;
   ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#090909';ctx.fillRect(0,0,canvas.width,canvas.height);
   rect(7,6,306,30,'#111','#3b3b3b',6);label('OPTIONS',15,20,9,'#aeb56e',750);label('PlayStunts DX',306,20,5.5,'#777',500,'right');
   tabOrder.forEach((tab,index)=>{const b=tabBounds[index],active=tab===state.tab(),over=focused('tab',index);rect(b.x,b.y,b.w,b.h,active?'#343a20':over?'#292d1d':'#171717',active||over?'#aeba5a':'#444',5,active||over?1.4:1);label(tabLabels[tab],b.x+b.w/2,b.y+b.h/2,5.5,active?'#fff':over?'#eee':'#aaa',active?700:600,'center');});
   rect(content.x,content.y,content.w,content.h,'#111','#3b3b3b',6);
   const activeTab=state.tab();label(tabLabels[activeTab],content.x+8,content.y+10,6,'#888',700);
-  visible.forEach((row,visibleIndex)=>{
-   const index=start+visibleIndex,y=content.y+20+visibleIndex*14.5,selected=focused('row',index),disabled=!!row.disabled;
-   if(selected)rect(content.x+5,y-6.5,content.w-10,13,'#31371f','#9eaa54',4,1.2);
+  layout.sections.forEach(section=>{
+   label(section.label,content.x+10,section.y,3.8,'#777',750);
+   ctx.strokeStyle='#2f2f2f';ctx.lineWidth=Math.max(.5,.5*Math.min(sx(),sy()));ctx.beginPath();ctx.moveTo((content.x+52)*sx(),section.y*sy());ctx.lineTo((content.x+content.w-10)*sx(),section.y*sy());ctx.stroke();
+  });
+  layout.items.forEach(item=>{
+   const row=all[item.index],index=item.index,y=item.y,selected=focused('row',index),disabled=!!row.disabled;
+   if(selected)rect(content.x+5,y-rowHeight/2+.25,content.w-10,rowHeight-.5,'#31371f','#9eaa54',4,1.2);
    label(row.label,content.x+10,y,5.4,disabled?'#555':selected?'#fff':'#ccc',selected?650:500);
    const valueColour=disabled?'#555':row.actionOnly?'#aeb56e':selected?'#fff':'#aeb56e';
    label(row.value,content.x+content.w-10,y,5.3,valueColour,650,'right');
   });
   if(start>0)label('▲',content.x+content.w-9,content.y+8,4.5,'#666',600,'center');
-  if(start+visibleRows<all.length)label('▼',content.x+content.w-9,content.y+143,4.5,'#666',600,'center');
+  const lastVisible=layout.items.at(-1)?.index??-1;
+  if(lastVisible<all.length-1)label('▼',content.x+content.w-9,content.y+99,4.5,'#666',600,'center');
   const hoveredRow=hover?.type==='row'?hover.index:undefined,helpIndex=hoveredRow??(state.zone()==='rows'?state.row():undefined);
   const help=helpIndex!==undefined&&all[helpIndex]?optionHelp[all[helpIndex].id]:tabHelp[state.tab()];
   rect(content.x+5,content.y+108,content.w-10,15,'#0d0d0d','#292929',3,.6);
@@ -234,9 +255,9 @@ function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],sta
   }
   const tab=tabBounds.findIndex(inside);if(tab>=0)return {type:'tab',index:tab};
   const foot=footerBounds.findIndex(inside);if(foot>=0)return {type:'footer',index:foot};
-  if(x>=content.x+5&&x<=content.x+content.w-5&&y>=content.y+13&&y<content.y+101){
-   const start=rowStart(),index=start+Math.floor((y-(content.y+13))/14.5);
-   if(index>=0&&index<rows().length)return {type:'row',index};
+  if(x>=content.x+5&&x<=content.x+content.w-5&&y>=content.y+13&&y<content.y+rowRegionBottom){
+   const hit=visibleLayout().items.find(item=>y>=item.y-rowHeight/2&&y<item.y+rowHeight/2);
+   if(hit)return {type:'row',index:hit.index};
   }
   return undefined;
  };
@@ -251,7 +272,7 @@ function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],sta
 export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'menu'|'replay'|'exit'>{
  let tab:Tab='gameplay',zone:FocusZone='rows',row=0,footer=2,confirm=false,confirmChoice=0;
  const currentRows=():OptionRow[]=>{
-  const camera=(level:EnhancedChaseCameraPresetLevel,kind:EnhancedChaseCameraSetting,label:string):OptionRow=>({id:(level===1?(kind==='distance'?'close-distance':'close-height'):level===2?(kind==='distance'?'standard-distance':'standard-height'):(kind==='distance'?'far-distance':'far-height')) as RowId,label,value:String(enhancedChaseCameraPosition(level)[kind])});
+  const camera=(level:EnhancedChaseCameraPresetLevel,kind:EnhancedChaseCameraSetting,label:string):OptionRow=>({id:(level===1?(kind==='distance'?'close-distance':'close-height'):level===2?(kind==='distance'?'standard-distance':'standard-height'):(kind==='distance'?'far-distance':'far-height')) as RowId,label,value:String(enhancedChaseCameraPosition(level)[kind]),group:'DX / MODERN'});
   if(tab==='gameplay'){
    const audio=host.audioState(),sound=storedSoundDevice();
    return [
@@ -267,17 +288,17 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
   if(tab==='video'){
    const dx=graphicsEnabled(),fov=enhancedFovWidth();
    return [
-    {id:'dx-graphics',label:'DX Graphics',value:boolLabel(dx)},
-    {id:'resolution',label:'Internal Resolution',value:enhancedRenderScale()===1?'Original':`${enhancedRenderScale()}×`,disabled:!dx},
-    {id:'background',label:'High-Res Background',value:boolLabel(enhancedBackgroundEnabled()),disabled:!dx},
-    {id:'cockpit',label:'High-Res Cockpit',value:boolLabel(enhancedCockpitEnabled()),disabled:!dx},
-    {id:'fov',label:'Field of View',value:fov===0?'Original':fov===100?'Full':`${fov}%`,disabled:!dx},
-    {id:'fps',label:'FPS Counter',value:boolLabel(storedEnabled(fpsKey,true)),disabled:!dx},
-    {id:'original-detail',label:'Original Detail Level',value:`Level ${clamp(host.settings.graphics,0,3)+1}`},
+    {id:'dx-graphics',label:'DX Graphics',value:boolLabel(dx),group:'DX / MODERN'},
+    {id:'resolution',label:'Internal Resolution',value:enhancedRenderScale()===1?'Original':`${enhancedRenderScale()}×`,disabled:!dx,group:'DX / MODERN'},
+    {id:'background',label:'High-Res Background',value:boolLabel(enhancedBackgroundEnabled()),disabled:!dx,group:'DX / MODERN'},
+    {id:'cockpit',label:'High-Res Cockpit',value:boolLabel(enhancedCockpitEnabled()),disabled:!dx,group:'DX / MODERN'},
+    {id:'fov',label:'Field of View',value:fov===0?'Original':fov===100?'Full':`${fov}%`,disabled:!dx,group:'DX / MODERN'},
+    {id:'fps',label:'FPS Counter',value:boolLabel(storedEnabled(fpsKey,true)),disabled:!dx,group:'DX / MODERN'},
     camera(1,'distance','Chase Close · Distance'),camera(1,'height','Chase Close · Height'),
     camera(2,'distance','Chase Standard · Distance'),camera(2,'height','Chase Standard · Height'),
     camera(3,'distance','Chase Far · Distance'),camera(3,'height','Chase Far · Height'),
-    {id:'reset-camera',label:'Chase Camera Presets',value:'Reset',actionOnly:true},
+    {id:'reset-camera',label:'Chase Camera Presets',value:'Reset',actionOnly:true,group:'DX / MODERN'},
+    {id:'original-detail',label:'Original Detail Level',value:`Level ${clamp(host.settings.graphics,0,3)+1}`,group:'ORIGINAL STUNTS'},
    ];
   }
   const input=desktopInputDevice();
