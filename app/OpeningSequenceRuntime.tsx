@@ -181,7 +181,8 @@ export default function OpeningSequence({assets,onBack,backLabel="← Back",soun
    }
    return skipped;
    }
-   let openingKey=await playOpening();
+   const captureOpeningExitFrame=(key:number|undefined)=>{if(originalOpeningExitDecision(key??0)!=='confirm')return undefined;const saved=document.createElement('canvas');saved.width=element.width;saved.height=element.height;saved.getContext('2d')!.drawImage(element,0,0);return saved;};
+   let openingKey=await playOpening(),openingExitFrame=captureOpeningExitFrame(openingKey);
    if(disposed)return;
    openingInput.setActive(false);
    menus=await createBrowserNativeMenus({settings:{mouse:false,joystick:false,graphics:0},graphics:graphics.current,canvas:element,assets,music,audioContext:runAudio,displayMode,hercules,signal:demoAbort.signal,track:{name:'DEFAULT',path:directory,raw:initialTrack??[...assets.tracks.find(t=>t.name==='DEFAULT')!.raw]},onScreen:screen=>{if(!disposed)setStatus(screen==='main'?'Original main menu':screen==='editor'?'Original track editor':screen==='race'?'Stunts':screen==='results'?'Race results':screen==='replay'?'Replay':'Original '+screen+' menu');}});
@@ -192,12 +193,12 @@ export default function OpeningSequence({assets,onBack,backLabel="← Back",soun
     if(disposed)return;openingInput.setActive(false);
     if(originalOpeningExitDecision(openingKey??0)==='confirm'){
      menus.setInputActive(false);setStatus('Exit Stunts?');
-     if(originalOpeningExitDecision(27,await confirmBrowserOpeningExit(element,demoAbort.signal,openingDisplay))==='exit'){onBack();return;}
-     openingInput.setActive(true);openingKey=await playOpening();continue;
+     if(originalOpeningExitDecision(27,await confirmBrowserOpeningExit(element,demoAbort.signal,openingDisplay,openingExitFrame))==='exit'){onBack();return;}
+     openingInput.setActive(true);openingKey=await playOpening();openingExitFrame=captureOpeningExitFrame(openingKey);continue;
     }
     menus.setInputActive(true);music.play('slct');
     const transition=queuedTransition??await menus.run();queuedTransition=undefined;menus.setInputActive(false);if(disposed)return;
-    if(transition.type==='intro'){openingInput.setActive(true);openingKey=await playOpening();continue;}
+    if(transition.type==='intro'){openingInput.setActive(true);openingKey=await playOpening();openingExitFrame=captureOpeningExitFrame(openingKey);continue;}
     if(transition.type==='exit'){onBack();return;}
     if(transition.type==='demo'){
      setStatus('Loading original demonstration');
