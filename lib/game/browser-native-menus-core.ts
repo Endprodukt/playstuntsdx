@@ -273,12 +273,12 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
      const scale=enhancedRenderResolution().width/320;
      return {width:Math.max(1,Math.round(218*scale)),height:Math.max(1,Math.round(92*scale))};
     };
-    const renderAngle=(angle:number,pitch=0,zoom=1)=>{
+    const renderAngle=(angle:number,pitch=0,zoom=1.18)=>{
      const size=previewSize();syncModernShowroomBounds();
      modernShowroom!.draw(shape,raceShape,safePaint,size.width,size.height,{angle,pitch,zoom});
     };
     const size=previewSize();
-    const rendered=modernShowroom.draw(shape,raceShape,safePaint,size.width,size.height,{angle:0,pitch:0,zoom:1});
+    const rendered=modernShowroom.draw(shape,raceShape,safePaint,size.width,size.height,{angle:0,pitch:0,zoom:1.18});
     return {canvas:rendered,paintCount,render:renderAngle};
    };
    const modern=createEnhancedCarMenuPresentation({canvas,palette,preview:modernPreview,directPreview:true,paintColours:car=>{const shape=options.assets.shapes['ST'+car.id]?.car0;return shape?showroomPaintColours(shape,materials):[];}});
@@ -639,7 +639,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
       }
       const selected=select(clicked);if(selected!==undefined)return {selection:selected,idleExpired:0};
      }
-     const key=sample.key??0;
+     const key=sample.keyboardKey??0;
      if(key===27){
       if(await requestExit())return {selection:-2,idleExpired:0};
       continue;
