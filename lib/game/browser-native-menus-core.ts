@@ -1,5 +1,4 @@
 import {bundledTrackReplays} from './bundled-track-replays.ts';
-import showroomMaterials from '../../public/game/track-materials.json';
 import {createUpgradedCarMenu} from './upgraded-car-menu';
 import {createOriginalCarMenuModel} from './car-menu-model.ts';
 import type {createUpgradedRaceScene} from './upgraded-race-scene';
@@ -88,7 +87,7 @@ function showroomPrimitiveArea(shape:Shape,primitive:Primitive){
  return Math.hypot(cross[0],cross[1],cross[2]);
 }
 
-function showroomPaintColours(shape:Shape){
+function showroomPaintColours(shape:Shape,source:{indices:readonly number[];palette:readonly number[]}){
  let body:Primitive|undefined,bestArea=-1;
  for(const primitive of shape.primitives??[]){
   if(primitive.type<3||primitive.type>10||!primitive.materials?.length||primitive.materials.length<2||new Set(primitive.materials).size<2)continue;
@@ -96,8 +95,8 @@ function showroomPaintColours(shape:Shape){
  }
  const count=Math.max(1,Number.isFinite(shape.paintCount)?shape.paintCount|0:1);
  return Array.from({length:count},(_,paint)=>{
-  const materials=body?.materials??[],slot=Math.max(0,Math.min(paint,Math.max(0,materials.length-1))),material=materials[slot]??0,index=showroomMaterials.indices[material]??0,at=index*3;
-  return ((showroomMaterials.palette[at]??0)<<16)|((showroomMaterials.palette[at+1]??0)<<8)|(showroomMaterials.palette[at+2]??0);
+  const materials=body?.materials??[],slot=Math.max(0,Math.min(paint,Math.max(0,materials.length-1))),material=materials[slot]??0,index=source.indices[material]??0,at=index*3;
+  return ((source.palette[at]??0)<<16)|((source.palette[at+1]??0)<<8)|(source.palette[at+2]??0);
  });
 }
 type TextResources={resources:NativeDialogHost['resources']};
@@ -113,7 +112,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  const json=async<T>(name:string):Promise<T>=>{const r=await fetch('/game/'+name+'.json');if(!r.ok)throw Error('Original menu resource could not load: '+name);return r.json() as Promise<T>;};
  const binary=async(name:string)=>{const r=await fetch('/game/'+name);if(!r.ok)throw Error('Original menu resource could not load: '+name);return new Uint8Array(await r.arrayBuffer());};
  const [misc,mainText,trackText,materials,font,smallFont,baseline,ground,panoramas,opponentArt,carArt,objects,records,errorKeys,scores]=await Promise.all([
-  json<TextResources>('misc-dialog-text'),json<TextResources>('main-dialog-text'),json<TextResources>('track-menu-text'),json<{palette:number[]}>('track-materials'),binary('fontdef.fnt'),binary('fontn.fnt'),binary('native-render-resources.bin'),json<{resources:NativeTrackMenuHost['groundModels']}>('overview-ground-models'),json<NativeTrackMenuHost['panoramas']>('menu-panorama-art'),json<{resources:NativeOpponentHost['art'];descriptions:NativeOpponentHost['descriptions']}>('opponent-menu-art'),json<{resources:NativeCarMenuHost['art'];descriptions:NativeCarMenuHost['descriptions']}>('car-menu-art'),json<ScreenResources['objects']>('track-objects'),json<RouteResources['records']>('route-records'),json<{keys:string[]}>('editor-error-keys'),json<Record<string,{file:string}>>('high-scores/manifest'),
+  json<TextResources>('misc-dialog-text'),json<TextResources>('main-dialog-text'),json<TextResources>('track-menu-text'),json<{palette:number[];indices:number[]}>('track-materials'),binary('fontdef.fnt'),binary('fontn.fnt'),binary('native-render-resources.bin'),json<{resources:NativeTrackMenuHost['groundModels']}>('overview-ground-models'),json<NativeTrackMenuHost['panoramas']>('menu-panorama-art'),json<{resources:NativeOpponentHost['art'];descriptions:NativeOpponentHost['descriptions']}>('opponent-menu-art'),json<{resources:NativeCarMenuHost['art'];descriptions:NativeCarMenuHost['descriptions']}>('car-menu-art'),json<ScreenResources['objects']>('track-objects'),json<RouteResources['records']>('route-records'),json<{keys:string[]}>('editor-error-keys'),json<Record<string,{file:string}>>('high-scores/manifest'),
  ]);
 
  const mainMenuArt=await binary('main-menu-art.bin');
@@ -215,11 +214,11 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     model.render(target,0,safePaint);
     if(!modelMemory)return null;
     if(!modernShowroom){
-     try{modernShowroom=createUpgradedCarMenu(palette,showroomMaterials.indices,{environment:!modernShowroomFallback});}
+     try{modernShowroom=createUpgradedCarMenu(palette,materials.indices,{environment:!modernShowroomFallback});}
      catch(reason){
       console.warn('[Modern Car Select] Showroom renderer creation failed; using plain 3D preview:',reason);
       modernShowroomFallback=true;
-      modernShowroom=createUpgradedCarMenu(palette,showroomMaterials.indices,{environment:false});
+      modernShowroom=createUpgradedCarMenu(palette,materials.indices,{environment:false});
      }
     }
     // The original showroom projection is authored for the 320x200 Stunts
@@ -242,7 +241,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
       if(modernShowroomFallback)throw reason;
       console.warn('[Modern Car Select] Showroom environment failed; falling back to plain 3D preview:',reason);
       modernShowroom?.close();modernShowroomFallback=true;
-      modernShowroom=createUpgradedCarMenu(palette,showroomMaterials.indices,{environment:false});
+      modernShowroom=createUpgradedCarMenu(palette,materials.indices,{environment:false});
       rendered=modernShowroom.draw(memory,snapshot.width,snapshot.height,{pitch,zoom});
      }
      snapshotContext.clearRect(0,0,snapshot.width,snapshot.height);snapshotContext.imageSmoothingEnabled=true;snapshotContext.imageSmoothingQuality='high';snapshotContext.drawImage(rendered,0,0,snapshot.width,snapshot.height);
@@ -250,7 +249,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     renderAngle(0);
     return {canvas:snapshot,paintCount,render:renderAngle};
    };
-   const modern=createEnhancedCarMenuPresentation({canvas,palette,preview:modernPreview,paintColours:car=>{const shape=options.assets.shapes['ST'+car.id]?.car0;return shape?showroomPaintColours(shape):[];}});
+   const modern=createEnhancedCarMenuPresentation({canvas,palette,preview:modernPreview,paintColours:car=>{const shape=options.assets.shapes['ST'+car.id]?.car0;return shape?showroomPaintColours(shape,materials):[];}});
    const pickZip=()=>new Promise<File|null>(resolve=>{
     const picker=document.createElement('input');picker.type='file';picker.accept='.zip,application/zip';picker.style.display='none';
     const finish=(file:File|null)=>{picker.remove();resolve(file);};
@@ -319,7 +318,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    const preview=document.createElement('canvas');preview.width=canvas.width;preview.height=canvas.height;const previewContext=preview.getContext('2d')!;
    const base=document.createElement('canvas');base.width=320;base.height=200;const baseContext=base.getContext('2d')!,baseImage=baseContext.createImageData(320,200);
    let modelMemory:Uint8Array|undefined,showroom:ReturnType<typeof createUpgradedCarMenu>|undefined,failed=false;
-   const presentCar=()=>{paint();if(options.graphics){options.graphics.refresh=presentCar;if(options.graphics.enabled&&modelMemory&&!failed){try{showroom??=createUpgradedCarMenu(palette,showroomMaterials.indices);previewContext.setTransform(1,0,0,1,0,0);previewContext.imageSmoothingEnabled=false;previewContext.drawImage(base,0,0,preview.width,preview.height);const internal=enhancedRenderResolution();previewContext.drawImage(showroom.draw(modelMemory,internal.width,internal.height),0,0,preview.width,preview.height);if(showroom.lastBuildMilliseconds!==undefined)canvas.dataset.upgradedCarBuildMs=showroom.lastBuildMilliseconds.toFixed(1);}catch{failed=true;showroom?.close();showroom=undefined;options.graphics.notice?.('Upgraded car preview unavailable; original graphics remain active.');return;}context.save();context.beginPath();context.rect(0,0,canvas.width,95*canvas.height/200);context.clip();context.drawImage(preview,0,0);context.restore();}}};
+   const presentCar=()=>{paint();if(options.graphics){options.graphics.refresh=presentCar;if(options.graphics.enabled&&modelMemory&&!failed){try{showroom??=createUpgradedCarMenu(palette,materials.indices);previewContext.setTransform(1,0,0,1,0,0);previewContext.imageSmoothingEnabled=false;previewContext.drawImage(base,0,0,preview.width,preview.height);const internal=enhancedRenderResolution();previewContext.drawImage(showroom.draw(modelMemory,internal.width,internal.height),0,0,preview.width,preview.height);if(showroom.lastBuildMilliseconds!==undefined)canvas.dataset.upgradedCarBuildMs=showroom.lastBuildMilliseconds.toFixed(1);}catch{failed=true;showroom?.close();showroom=undefined;options.graphics.notice?.('Upgraded car preview unavailable; original graphics remain active.');return;}context.save();context.beginPath();context.rect(0,0,canvas.width,95*canvas.height/200);context.clip();context.drawImage(preview,0,0);context.restore();}}};
    carHost.captureModel=(memory,background)=>{
     for(let i=0;i<64000;i++){const c=background[i]*3;baseImage.data.set([palette[c],palette[c+1],palette[c+2],255],i*4);}baseContext.putImageData(baseImage,0,0);
     modelMemory=memory;
