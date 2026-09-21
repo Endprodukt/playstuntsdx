@@ -61,7 +61,7 @@ import {editNativePath} from './native-path-entry.ts';
 import {expandEditorArt} from './editor-art-expand.ts';
 import {drawOriginalDialog} from './dialog-raster.ts';
 import {createOriginalJoystickCalibration} from './joystick-calibration.ts';
-import {decodeOriginalReplayFile} from './replay-file.ts';
+import {decodeOriginalReplayFile,encodeOriginalReplayFile} from './replay-file.ts';
 import {encodeTrackFile} from './track-file.ts';
 import {pickModernReplay,type ModernReplayChoice} from './modern-replay-picker.ts';
 import type {createNativeMusic} from './native-music.ts';
@@ -538,10 +538,23 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   const bytes=selection.customPath
    ?Uint8Array.from(await (tauriCore?.invoke<number[]>('read_custom_replay',{path:selection.customPath})??Promise.reject(Error('Custom replay access requires the desktop runtime'))))
    :await files.read(selection.path,selection.name,'.rpl');
-  selectedReplay={bytes:bytes.slice(),name:selection.name,path:selection.customPath?'':selection.path};
-  replay=decodeOriginalReplayFile(bytes);configuration.splice(0,24,...replay.header);
+  replay=decodeOriginalReplayFile(bytes);
+  const playerCar=String.fromCharCode(...replay.header.subarray(0,4)),opponentCar=replay.header[6]?String.fromCharCode(...replay.header.subarray(7,11)):'none';
+  console.info('[Replay Load]',{
+   file:selection.customPath??selection.name+'.RPL',
+   format:replay.format,frequencyHz:replay.frequencyHz,frames:replay.inputs.length,
+   playerCar,opponent:replay.header[6],opponentCar,bytes:bytes.length,
+  });
+  if(replay.frequencyHz!==20)throw Error(`Replay uses ${replay.frequencyHz} Hz recording. PlayStunts DX currently supports 20 Hz replay playback only.`);
+  // The reconstructed native replay bank follows the original 24-byte layout.
+  // Community/1991 recordings add a frequency word before the frame count, so
+  // normalize both external layouts before handing the bytes to native memory.
+  const nativeBytes=encodeOriginalReplayFile({...replay,format:'old24',frequencyHz:20});
+  const runtimeName=(selection.name.replace(/[^a-z0-9_-]/gi,'').slice(0,8)||'REPLAY').toUpperCase();
+  selectedReplay={bytes:nativeBytes,name:runtimeName,path:selection.customPath?'':selection.path};
+  configuration.splice(0,24,...nativeBytes.subarray(0,24));
   track.raw=Array.from(encodeTrackFile(replay.track));
-  track.name=String.fromCharCode(...configuration.slice(13,22)).split('\0')[0];
+  track.name=String.fromCharCode(...replay.header.slice(13,22)).split('\0')[0];
  };
  const settings:NativeOptionsHost={...host,settings:drivingSettings,get replayPath(){return track.path;},set replayPath(path:string){track.path=path;},selectReplayGlobal:desktopTauri?selectGlobalReplay:undefined,audio:async operation=>music.control(operation),loadReplay:async selection=>{const waiting=baseline.slice();new DataView(waiting.buffer).setUint16(0x2d1a0+0x8a10,150,true);drawOriginalRaceWaiting(pixels,font,host.resources.ewai,waiting,0x2d1a0);show('race');present();await readSelectedReplay(selection);},calibrateJoystick:async()=>{
   const saved=pixels.slice();settings.settings.joystick=true;settings.settings.mouse=false;
