@@ -41,6 +41,11 @@ export function createModernMainMenu(options:{
  const trackSurface=document.createElement('canvas');
  let trackView:ReturnType<typeof createBlissEditor3DView>|undefined;
  let trackSignature='';
+ const headerArt=new Image();let headerArtReady=false;
+ headerArt.decoding='async';
+ headerArt.onload=()=>{headerArtReady=true;if(!closed&&!suspended)render();};
+ headerArt.onerror=()=>{headerArtReady=false;};
+ headerArt.src='/game/ui/stunts-dx-main-header.jpg';
  let closed=false,suspended=false,focus:ModernMainMenuAction='none',hover:ModernMainMenuAction='none',keyboardFocus=false;
 
  const mount=(surface:HTMLCanvasElement,kind:string)=>{
@@ -80,35 +85,42 @@ export function createModernMainMenu(options:{
  const active=(action:ModernMainMenuAction)=>activeAction()===action;
 
  const icon=(action:ModernMainMenuAction,x:number,y:number,selected:boolean)=>{
-  const c=selected?'#303030':'#d8d8d8',s=Math.min(sx(),sy());
+  const c=selected?'#17191a':'#d7e0e7',s=Math.min(sx(),sy()),X=x*sx(),Y=y*sy(),u=sy();
   ctx.save();ctx.strokeStyle=c;ctx.fillStyle=c;ctx.lineWidth=Math.max(1.2*s,1);ctx.lineCap='round';ctx.lineJoin='round';
-  const X=x*sx(),Y=y*sy(),u=sy();
   if(action==='drive'){
-   ctx.beginPath();ctx.moveTo(X-3*u,Y+3*u);ctx.lineTo(X+3*u,Y-3*u);ctx.moveTo(X-3*u,Y-3*u);ctx.lineTo(X+3*u,Y+3*u);ctx.stroke();
+   // Proper little checkered flag, matching the reference menu language.
+   ctx.beginPath();ctx.moveTo(X-4.3*u,Y+4*u);ctx.lineTo(X-2.8*u,Y-4*u);ctx.stroke();
+   const cell=1.7*u;for(let r=0;r<3;r++)for(let col=0;col<4;col++)if((r+col)%2===0)ctx.fillRect(X-2.7*u+col*cell,Y-4*u+r*cell,cell,cell);
   }else if(action==='opponent'){
-   ctx.beginPath();ctx.arc(X,Y,3*u,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.moveTo(X-4*u,Y+4*u);ctx.lineTo(X+4*u,Y+4*u);ctx.stroke();
+   // Helmet silhouette.
+   ctx.beginPath();ctx.arc(X-1*u,Y,4.1*u,Math.PI*.9,Math.PI*1.95);ctx.lineTo(X+3.6*u,Y+1.2*u);ctx.lineTo(X+.5*u,Y+1.2*u);ctx.lineTo(X-.5*u,Y+4*u);ctx.lineTo(X-4*u,Y+4*u);ctx.closePath();ctx.fill();
+   ctx.fillStyle=selected?'#d6d36b':'#27313a';ctx.fillRect(X-.3*u,Y-1.3*u,3.6*u,1.35*u);
   }else if(action==='editor'){
-   ctx.beginPath();ctx.moveTo(X-4*u,Y+3*u);ctx.lineTo(X+4*u,Y-4*u);ctx.moveTo(X-3*u,Y-4*u);ctx.lineTo(X+3*u,Y+3*u);ctx.stroke();
+   // Stunts ramp/loop style editor mark.
+   ctx.beginPath();ctx.moveTo(X-4.6*u,Y+3.4*u);ctx.lineTo(X+2.8*u,Y-4*u);ctx.lineTo(X+2.8*u,Y+3.4*u);ctx.closePath();ctx.stroke();
+   ctx.beginPath();ctx.moveTo(X-.8*u,Y+2.5*u);ctx.lineTo(X+2*u,Y-.3*u);ctx.stroke();
   }else if(action==='replays'){
-   ctx.beginPath();ctx.arc(X,Y,4*u,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.moveTo(X-1*u,Y-2*u);ctx.lineTo(X+3*u,Y);ctx.lineTo(X-1*u,Y+2*u);ctx.closePath();ctx.fill();
+   ctx.beginPath();ctx.arc(X,Y,4.2*u,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.moveTo(X-1.1*u,Y-2.3*u);ctx.lineTo(X+2.7*u,Y);ctx.lineTo(X-1.1*u,Y+2.3*u);ctx.closePath();ctx.fill();
   }else if(action==='options'){
-   ctx.beginPath();for(let i=0;i<8;i++){const a=i*Math.PI/4,r=i%2?3*u:4*u;const px=X+Math.cos(a)*r,py=Y+Math.sin(a)*r;i?ctx.lineTo(px,py):ctx.moveTo(px,py);}ctx.closePath();ctx.stroke();ctx.beginPath();ctx.arc(X,Y,1.4*u,0,Math.PI*2);ctx.stroke();
+   ctx.save();ctx.translate(X,Y);for(let i=0;i<8;i++){ctx.rotate(Math.PI/4);ctx.fillRect(-.9*u,-4.9*u,1.8*u,2*u);}ctx.beginPath();ctx.arc(0,0,3.5*u,0,Math.PI*2);ctx.fill();ctx.fillStyle=selected?'#d6d36b':'#27313a';ctx.beginPath();ctx.arc(0,0,1.3*u,0,Math.PI*2);ctx.fill();ctx.restore();
   }else if(action==='exit'){
-   ctx.strokeRect(X-3*u,Y-4*u,5*u,8*u);ctx.beginPath();ctx.moveTo(X,Y);ctx.lineTo(X+5*u,Y);ctx.moveTo(X+3*u,Y-2*u);ctx.lineTo(X+5*u,Y);ctx.lineTo(X+3*u,Y+2*u);ctx.stroke();
+   ctx.strokeRect(X-3.9*u,Y-4*u,5*u,8*u);ctx.beginPath();ctx.moveTo(X-1*u,Y);ctx.lineTo(X+4.4*u,Y);ctx.moveTo(X+2.2*u,Y-2.1*u);ctx.lineTo(X+4.4*u,Y);ctx.lineTo(X+2.2*u,Y+2.1*u);ctx.stroke();
+   ctx.beginPath();ctx.moveTo(X-3.9*u,Y-4*u);ctx.lineTo(X-5*u,Y-3*u);ctx.lineTo(X-5*u,Y+3*u);ctx.lineTo(X-3.9*u,Y+4*u);ctx.closePath();ctx.fill();
   }else if(action==='car'){
-   ctx.beginPath();ctx.moveTo(X-5*u,Y+2*u);ctx.lineTo(X-3*u,Y-1*u);ctx.lineTo(X+2*u,Y-2*u);ctx.lineTo(X+5*u,Y+2*u);ctx.closePath();ctx.stroke();ctx.beginPath();ctx.arc(X-3*u,Y+3*u,1.2*u,0,Math.PI*2);ctx.arc(X+3*u,Y+3*u,1.2*u,0,Math.PI*2);ctx.fill();
+   ctx.beginPath();ctx.moveTo(X-4.7*u,Y+1.2*u);ctx.lineTo(X-3*u,Y-1.7*u);ctx.lineTo(X+1.9*u,Y-2.4*u);ctx.lineTo(X+4.5*u,Y+1.2*u);ctx.closePath();ctx.fill();ctx.fillStyle=selected?'#d6d36b':'#27313a';ctx.beginPath();ctx.arc(X-2.8*u,Y+2.4*u,1.25*u,0,Math.PI*2);ctx.arc(X+2.7*u,Y+2.4*u,1.25*u,0,Math.PI*2);ctx.fill();
   }else if(action==='track'){
-   ctx.beginPath();ctx.moveTo(X-4*u,Y+4*u);ctx.lineTo(X-1*u,Y-4*u);ctx.lineTo(X+2*u,Y+1*u);ctx.lineTo(X+5*u,Y-3*u);ctx.stroke();
+   ctx.beginPath();ctx.moveTo(X-4.7*u,Y+3.8*u);ctx.lineTo(X-1*u,Y-4*u);ctx.lineTo(X+1.9*u,Y+1.6*u);ctx.lineTo(X+4.6*u,Y-2.8*u);ctx.stroke();
   }
   ctx.restore();
  };
  const button=(bounds:Bounds,caption:string,action:ModernMainMenuAction,size=6.1)=>{
   const selected=active(action);
-  rect(bounds.x,bounds.y,bounds.w,bounds.h,selected?'#d6d36b':'#555759',selected?'#efeaa0':'#7c7d7e',3,selected?1.4:1);
-  ctx.fillStyle=selected?'#b9b75f':'#6c6e70';ctx.fillRect(bounds.x*sx(),bounds.y*sy(),2*sx(),bounds.h*sy());
+  rect(bounds.x,bounds.y,bounds.w,bounds.h,selected?'#d8cf36':'#273039',selected?'#fff28a':'#778693',3,selected?1.45:1);
+  ctx.fillStyle=selected?'#fff268':'#475967';ctx.fillRect(bounds.x*sx(),bounds.y*sy(),2.2*sx(),bounds.h*sy());
+  line(bounds.x+2,bounds.y+1,bounds.x+bounds.w-1,bounds.y+1,selected?'#fff8a8':'#9aa5ad',.45);
   icon(action,bounds.x+8,bounds.y+bounds.h/2,selected);
-  label(caption,bounds.x+15,bounds.y+bounds.h/2+.2,size,selected?'#2e2e2e':'#f0f0f0',800,'left',true);
-  label('›',bounds.x+bounds.w-6,bounds.y+bounds.h/2,size+1.5,selected?'#2e2e2e':'#d6d6d6',800,'center');
+  label(caption,bounds.x+15,bounds.y+bounds.h/2+.2,size,selected?'#17191a':'#edf1f4',850,'left',true);
+  label('›',bounds.x+bounds.w-6,bounds.y+bounds.h/2,size+1.5,selected?'#17191a':'#cbd8e1',850,'center');
  };
 
  const syncBounds=()=>{
@@ -163,22 +175,25 @@ export function createModernMainMenu(options:{
   ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);
 
   const background=ctx.createLinearGradient(0,0,0,canvas.height);
-  background.addColorStop(0,'#686a6c');background.addColorStop(.35,'#5c5e60');background.addColorStop(1,'#484a4c');ctx.fillStyle=background;ctx.fillRect(0,0,canvas.width,canvas.height);
-  checkerFlag(246,6,.72,false,.08);checkerFlag(36,151,.62,true,.065);
-  ctx.fillStyle='rgba(255,255,255,.025)';for(let y=0;y<200;y+=8)ctx.fillRect(0,y*sy(),canvas.width,sy());
-  rect(6,5,308,34,'rgba(75,77,79,.92)','#808284',4);
-  line(7,40,313,40,'#8e9091');
+  background.addColorStop(0,'#31363a');background.addColorStop(.28,'#272c30');background.addColorStop(1,'#171b1e');ctx.fillStyle=background;ctx.fillRect(0,0,canvas.width,canvas.height);
+  checkerFlag(250,47,.72,false,.075);checkerFlag(32,150,.68,true,.055);
+  ctx.fillStyle='rgba(255,255,255,.018)';for(let y=45;y<200;y+=7)ctx.fillRect(0,y*sy(),canvas.width,sy());
 
-  // Placeholder wordmark treatment until the exact supplied STUNTS DX logo is
-  // wired in. It intentionally keeps the original-style italic silhouette.
-  label('STUNTS',13.5,21.5,16,'#2f3031',900,'left',true);
-  label('STUNTS',12,20,16,'#eeeeea',900,'left',true);
-  label('DX',78,20,13,'#d7d66f',900,'left',true);
-  label('DRIVE  •  BUILD  •  JUMP  •  REPEAT',150,15,4.1,'#d1d1d1',700);
-  label('STUNTS DX',150,25,4,'#aeb0b1',700);
+  // Actual raster artwork generated from the approved concept: brush-logo,
+  // checkered flag, loop/ramp and car imagery. It is part of the in-game menu,
+  // not just a mockup shown outside the game.
+  if(headerArtReady){
+   ctx.save();ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+   ctx.drawImage(headerArt,0,0,headerArt.naturalWidth,headerArt.naturalHeight,0,0,canvas.width,43*sy());
+   const fade=ctx.createLinearGradient(0,29*sy(),0,44*sy());fade.addColorStop(0,'rgba(18,21,23,0)');fade.addColorStop(1,'rgba(18,21,23,.95)');ctx.fillStyle=fade;ctx.fillRect(0,28*sy(),canvas.width,17*sy());ctx.restore();
+  }else{
+   const top=ctx.createLinearGradient(0,0,canvas.width,0);top.addColorStop(0,'#252a2e');top.addColorStop(1,'#15191c');ctx.fillStyle=top;ctx.fillRect(0,0,canvas.width,43*sy());
+   checkerFlag(9,2,.75,false,.18);label('STUNTS DX',13,20,15,'#e2d52f',900,'left',true);
+  }
+  line(0,43,320,43,'#8997a2',1);
 
-  rect(7,45,82,148,'#505254','#7b7d7e',4);
-  label('MAIN MENU',13,50,5.2,'#dedede',800);
+  rect(7,45,82,148,'rgba(22,27,31,.95)','#697985',4);
+  label('MAIN MENU',13,50,5.2,'#d9e2e8',850);
   button(driveButton,'RACE','drive',6.8);
   button(opponentButton,'OPPONENT','opponent',5.5);
   button(editorButton,'TRACK EDITOR','editor',5.1);
@@ -188,32 +203,32 @@ export function createModernMainMenu(options:{
   label('ENTER  SELECT',13,179,3.8,'#d0d0d0',650);
   label('ESC  EXIT',13,186,3.8,'#c0c0c0',650);
 
-  rect(94,45,105,148,'#505254','#7b7d7e',4);
-  label('CURRENT CAR',101,50,5.1,'#e5e5e5',800);
-  fitToWidth(car.name??car.id,101,59,91,6.1,'#e1df7c',800,true);
+  rect(94,45,105,148,'rgba(22,27,31,.95)','#697985',4);
+  label('CURRENT CAR',101,50,5.1,'#d9e2e8',850);
+  fitToWidth(car.name??car.id,101,59,91,6.4,'#e6d23e',850,true);
   ctx.clearRect(carPreview.x*sx(),carPreview.y*sy(),carPreview.w*sx(),carPreview.h*sy());
-  line(101,132,193,132,'#858788',1.2);
-  label('GEARS',101,139,3.7,'#c1c1c1',650);label(String(car.gears??'?'),193,139,4.1,'#f0f0f0',750,'right');
-  label('WEIGHT',101,146,3.7,'#c1c1c1',650);label(`${car.mass??'?'} KG`,193,146,4.1,'#f0f0f0',750,'right');
-  label('MAX RPM',101,153,3.7,'#c1c1c1',650);label(String(car.maxRPM??'?'),193,153,4.1,'#f0f0f0',750,'right');
-  label('IDLE RPM',101,160,3.7,'#c1c1c1',650);label(String(car.idleRPM??'?'),193,160,4.1,'#f0f0f0',750,'right');
+  line(101,132,193,132,'#7f909c',1.2);
+  label('GEARS',101,139,3.7,'#aebbc4',650);label(String(car.gears??'?'),193,139,4.1,'#edf2f5',760,'right');
+  label('WEIGHT',101,146,3.7,'#aebbc4',650);label(`${car.mass??'?'} KG`,193,146,4.1,'#edf2f5',760,'right');
+  label('MAX RPM',101,153,3.7,'#aebbc4',650);label(String(car.maxRPM??'?'),193,153,4.1,'#edf2f5',760,'right');
+  label('IDLE RPM',101,160,3.7,'#aebbc4',650);label(String(car.idleRPM??'?'),193,160,4.1,'#edf2f5',760,'right');
   button(carButton,'CHANGE CAR','car',5.1);
 
-  rect(204,45,109,148,'#505254','#7b7d7e',4);
-  label('SELECTED TRACK',211,50,5.1,'#e5e5e5',800);
-  fitToWidth(options.track.name||'UNTITLED',211,59,94,6.1,'#e1df7c',800,true);
+  rect(204,45,109,148,'rgba(22,27,31,.95)','#697985',4);
+  label('SELECTED TRACK',211,50,5.1,'#d9e2e8',850);
+  fitToWidth(options.track.name||'UNTITLED',211,59,94,6.4,'#e6d23e',850,true);
   ctx.clearRect(trackPreview.x*sx(),trackPreview.y*sy(),trackPreview.w*sx(),trackPreview.h*sy());
-  line(211,132,305,132,'#858788',1.2);
+  line(211,132,305,132,'#7f909c',1.2);
   const roadCells=Array.from(decoded.track).filter(value=>value!==0).length;
   const terrainCells=Array.from(decoded.terrain).filter(value=>value!==0).length;
-  label('SCENERY',211,142,3.7,'#c1c1c1',650);label(sceneryName(decoded.landscape),305,142,4.1,'#f0f0f0',750,'right');
-  label('TRACK PIECES',211,150,3.7,'#c1c1c1',650);label(String(roadCells),305,150,4.1,'#f0f0f0',750,'right');
-  label('TERRAIN TILES',211,158,3.7,'#c1c1c1',650);label(String(terrainCells),305,158,4.1,'#f0f0f0',750,'right');
+  label('SCENERY',211,142,3.7,'#aebbc4',650);label(sceneryName(decoded.landscape),305,142,4.1,'#edf2f5',760,'right');
+  label('TRACK PIECES',211,150,3.7,'#aebbc4',650);label(String(roadCells),305,150,4.1,'#edf2f5',760,'right');
+  label('TERRAIN TILES',211,158,3.7,'#aebbc4',650);label(String(terrainCells),305,158,4.1,'#edf2f5',760,'right');
   button(trackButton,'CHANGE TRACK','track',5);
 
-  line(7,196,313,196,'#808283');
-  label('STUNTS DX',8,198,3.4,'#c9c9c9',700);
-  label('DRIVE · BUILD · REPLAY · CREATE',312,198,3.4,'#c9c9c9',700,'right');
+  line(7,196,313,196,'#657681');
+  label('STUNTS DX',8,198,3.4,'#9db0bc',700);
+  label('SAME ROADS. BIGGER POSSIBILITIES.',312,198,3.4,'#9db0bc',700,'right');
   ctx.restore();
   carSurface.style.display='block';trackSurface.style.display='block';
  };
@@ -253,6 +268,6 @@ export function createModernMainMenu(options:{
    carSurface.style.display=value?'none':'block';trackSurface.style.display=value?'none':'block';
    if(!value)render();
   },
-  close(){if(closed)return;closed=true;observer.disconnect();trackView?.close();trackView=undefined;carShowroom.close();carSurface.remove();trackSurface.remove();canvas.style.background=menuCanvasBackground;canvas.style.zIndex=menuCanvasZIndex;}
+  close(){if(closed)return;closed=true;headerArt.onload=null;headerArt.onerror=null;observer.disconnect();trackView?.close();trackView=undefined;carShowroom.close();carSurface.remove();trackSurface.remove();canvas.style.background=menuCanvasBackground;canvas.style.zIndex=menuCanvasZIndex;}
  };
 }
