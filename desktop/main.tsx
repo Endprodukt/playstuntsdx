@@ -34,17 +34,10 @@ type TauriGlobal = {
   core?: {
     invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>;
   };
-  event?: {
-    listen<T>(event: string, handler: (event: { payload: T }) => void): Promise<() => void>;
-  };
 };
 
 function tauriCore() {
   return (window as typeof window & { __TAURI__?: TauriGlobal }).__TAURI__?.core;
-}
-
-function tauriEvent() {
-  return (window as typeof window & { __TAURI__?: TauriGlobal }).__TAURI__?.event;
 }
 
 function desktopSoundDevice(): DesktopSoundDevice {
@@ -101,25 +94,29 @@ function DesktopApp() {
 
   useEffect(() => {
     const controller = new AbortController();
-    let unlisten: (() => void) | undefined;
+    let progressTimer = 0;
 
     async function load() {
       try {
         const core = tauriCore();
-        const event = tauriEvent();
-        if (event) {
-          const remove = await event.listen<RuntimePreparationProgress>('runtime-preparation-progress', message => {
-            if (!controller.signal.aborted) setStartup(message.payload);
-          });
-          if (controller.signal.aborted) { remove(); return; }
-          unlisten = remove;
-        }
         if (core) {
+          const updateProgress = async () => {
+            try {
+              const next = await core.invoke<RuntimePreparationProgress>('runtime_preparation_status');
+              if (!controller.signal.aborted) setStartup(next);
+            } catch {
+              // The status surface is best-effort; startup errors still come
+              // from check_gamedata with the full diagnostic.
+            }
+          };
+          await updateProgress();
+          progressTimer = window.setInterval(() => { void updateProgress(); }, 100);
           const ready = await core.invoke<boolean>('check_gamedata');
+          window.clearInterval(progressTimer);
+          progressTimer = 0;
           if (controller.signal.aborted) return;
           setGamedataReady(ready);
           if (!ready) return;
-          if (controller.signal.aborted) return;
           setStartup({ stage: 'Starting game', detail: 'Loading prepared runtime and settings' });
         } else {
           setGamedataReady(true);
@@ -152,13 +149,15 @@ function DesktopApp() {
         if (!controller.signal.aborted) {
           setError(reason instanceof Error ? reason.message : String(reason));
         }
+      } finally {
+        if (progressTimer) window.clearInterval(progressTimer);
       }
     }
 
     void load();
     return () => {
       controller.abort();
-      unlisten?.();
+      if (progressTimer) window.clearInterval(progressTimer);
     };
   }, []);
 

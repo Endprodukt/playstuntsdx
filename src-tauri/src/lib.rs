@@ -9,7 +9,7 @@ use std::{
     path::{Component, Path, PathBuf},
     process::{Command, Stdio},
 };
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 const REQUIRED_GAMEDATA: [&str; 6] = [
     "SETUP.EXE",
@@ -286,19 +286,49 @@ struct RuntimePreparationProgress {
     detail: String,
 }
 
-fn runtime_progress(app: &tauri::AppHandle, stage: impl Into<String>, detail: impl Into<String>) {
-    let _ = app.emit("runtime-preparation-progress", RuntimePreparationProgress {
+fn runtime_progress_path() -> Result<PathBuf, String> {
+    Ok(application_root()?.join("Cache").join("runtime-preparation.json"))
+}
+
+fn runtime_progress(stage: impl Into<String>, detail: impl Into<String>) {
+    let progress = RuntimePreparationProgress {
         stage: stage.into(),
         detail: detail.into(),
-    });
+    };
+    let path = match runtime_progress_path() {
+        Ok(path) => path,
+        Err(_) => return,
+    };
+    if let Some(parent) = path.parent() {
+        if fs::create_dir_all(parent).is_err() {
+            return;
+        }
+    }
+    if let Ok(json) = serde_json::to_vec(&progress) {
+        let _ = fs::write(path, json);
+    }
+}
+
+#[tauri::command]
+fn runtime_preparation_status() -> Result<RuntimePreparationProgress, String> {
+    let path = runtime_progress_path()?;
+    match fs::read(&path) {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map_err(|error| format!("Could not read runtime preparation status: {error}")),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(RuntimePreparationProgress {
+            stage: "Starting PlayStunts DX".to_string(),
+            detail: "Checking game data and custom content".to_string(),
+        }),
+        Err(error) => Err(format!("Could not read runtime preparation status: {error}")),
+    }
 }
 
 #[cfg(not(debug_assertions))]
-fn build_runtime(app: &tauri::AppHandle, gamedata: &Path) -> Result<(), String> {
+fn build_runtime(gamedata: &Path) -> Result<(), String> {
     let root = application_root()?;
     let runtime = runtime_root()?;
     let cache = root.join("Cache");
-    runtime_progress(app, "Preparing PlayStunts DX", "Custom content changed; rebuilding runtime");
+    runtime_progress("Preparing PlayStunts DX", "Custom content changed; rebuilding runtime");
     fs::create_dir_all(&cache)
         .map_err(|error| format!("Could not create {}: {error}", cache.display()))?;
     let log_path = cache.join("prepare-runtime.log");
@@ -354,7 +384,6 @@ fn build_runtime(app: &tauri::AppHandle, gamedata: &Path) -> Result<(), String> 
             if let Some(progress) = line.strip_prefix("PLAYSTUNTS_PROGRESS\t") {
                 let mut parts = progress.splitn(2, '\t');
                 runtime_progress(
-                    app,
                     parts.next().unwrap_or("Preparing game"),
                     parts.next().unwrap_or(""),
                 );
@@ -414,29 +443,30 @@ fn build_runtime(app: &tauri::AppHandle, gamedata: &Path) -> Result<(), String> 
     fs::write(runtime_state_path()?, runtime_content_state(gamedata)?)
         .map_err(|error| format!("Could not save runtime content state: {error}"))?;
     let _ = fs::remove_file(&log_path);
-    runtime_progress(app, "Runtime ready", "Starting PlayStunts DX");
+    runtime_progress("Runtime ready", "Starting PlayStunts DX");
     Ok(())
 }
 
-fn ensure_runtime(app: &tauri::AppHandle, gamedata: &Path) -> Result<(), String> {
+fn ensure_runtime(gamedata: &Path) -> Result<(), String> {
     if cfg!(debug_assertions) {
         return Ok(());
     }
     #[cfg(not(debug_assertions))]
     {
         if runtime_is_current(gamedata)? {
+            runtime_progress("Runtime cache ready", "No custom-content changes detected");
             return Ok(());
         }
-        build_runtime(app, gamedata)?;
+        build_runtime(gamedata)?;
     }
     Ok(())
 }
 
-fn check_gamedata_blocking(app: &tauri::AppHandle) -> Result<bool, String> {
-    runtime_progress(app, "Starting PlayStunts DX", "Checking original game data and custom content");
+fn check_gamedata_blocking() -> Result<bool, String> {
+    runtime_progress("Starting PlayStunts DX", "Checking original game data and custom content");
     for root in gamedata_roots() {
         if complete_gamedata(&root) {
-            ensure_runtime(app, &root)?;
+            ensure_runtime(&root)?;
             ensure_hires_fallbacks()?;
             return Ok(true);
         }
@@ -449,8 +479,8 @@ fn check_gamedata_blocking(app: &tauri::AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
-async fn check_gamedata(app: tauri::AppHandle) -> Result<bool, String> {
-    check_gamedata_blocking(&app)
+async fn check_gamedata() -> Result<bool, String> {
+    check_gamedata_blocking()
 }
 
 fn checked_track_filename(name: &str) -> Result<String, String> {
@@ -1029,6 +1059,7 @@ pub fn run() {
             toggle_fullscreen,
             exit_game,
             check_gamedata,
+            runtime_preparation_status,
             runtime_file_exists,
             read_runtime_file,
             write_runtime_file,
