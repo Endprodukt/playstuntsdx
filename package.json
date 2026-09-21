@@ -21,7 +21,9 @@
     "test": "python3 -m unittest discover -s tools -p \"test_*.py\"",
     "typecheck": "tsc --noEmit",
     "assets:check": "python3 tools/check_assets.py",
-    "assets:extract": "python3 tools/extract.py"
+    "assets:extract": "python3 tools/extract.py",
+    "replay:inspect": "node tools/replay-dataset.mjs",
+    "replay:inspect:test": "node --test tools/test-replay-dataset.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

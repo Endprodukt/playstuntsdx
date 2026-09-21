@@ -30,3 +30,9 @@ __pycache__/
 .venv-portable/
 src-tauri/generated/
 src-tauri/target/
+
+# Local replay-analysis samples and generated datasets
+training/replays/input/*
+!training/replays/input/.gitkeep
+training/replays/output/*
+!training/replays/output/.gitkeep
