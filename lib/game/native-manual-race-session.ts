@@ -5,6 +5,7 @@ import {createNativeRaceSession} from './native-race-session.ts';
 import type {NativeDemoData,NativeDemoMenuState} from './native-demo-runtime.ts';
 import {desktopInputDevice} from './desktop-wheel-input.ts';
 import {resetAnalogWheelRaceInput} from './analog-wheel-race-input.ts';
+import {decodeOriginalCarTuning} from './car-tuning-from-simulation.ts';
 
 function applyDesktopRaceInput(memory:Uint8Array,d:number,menu:{mouse?:boolean;joystick?:boolean}){
  const wheelSelected=desktopInputDevice()==='wheel';
@@ -54,16 +55,16 @@ function createAllocatedManualSession(data:NativeDemoData,prepared:Awaited<Retur
  // crashes the player's car after frame 80 (~4 seconds at the original 20 Hz).
  memory[d+0xa42a]=1;
  const view=new DataView(memory.buffer,memory.byteOffset,memory.byteLength),length=view.getUint16(d+0x8fd8,true),bank=view.getUint16(d+0x9c40,true)+view.getUint16(d+0x9c42,true)*16;
- const car=(at:number)=>{
-  const id=String.fromCharCode(...memory.slice(d+at,d+at+4)),tuning=data.cars.find(car=>car.id===id);
-  if(!tuning)throw Error('Original car simulation is missing: '+id);
-  const simulation=Uint8Array.from(tuning.rawSimulation.match(/../g)!.map(byte=>parseInt(byte,16)));return {tuning,simulation};
+ const car=(idAt:number,simulationAt:number)=>{
+  const id=String.fromCharCode(...memory.slice(d+idAt,d+idAt+4)),simulation=memory.slice(d+simulationAt,d+simulationAt+776);
+  // The original resource loader has already resolved CAR<id>.RES and copied
+  // its SIMD record into live race memory. Prefer prepared asset metadata when
+  // available, but derive physics directly from that loaded SIMD for community
+  // cars that are present in setup-media yet absent from assets.cars.
+  const tuning=data.cars.find(car=>String(car.id).toUpperCase()===id.toUpperCase())??decodeOriginalCarTuning(simulation);
+  return {tuning,simulation};
  };
- const player=car(0x8fc2),opponentSelected=memory[d+0x8fc8],opponent=opponentSelected?car(0x8fc9):{...player};
- // Resource initialization owns these records, including the retained inactive
- // opponent. Loading another player car must not replace that unused record.
- player.simulation=memory.slice(d+0xa46a,d+0xa46a+776);
- opponent.simulation=memory.slice(d+0x9c52,d+0x9c52+776);
+ const player=car(0x8fc2,0xa46a),opponentSelected=memory[d+0x8fc8],opponent=opponentSelected?car(0x8fc9,0x9c52):{...player};
  if(opponentSelected&&!prepared.opponentPath)throw Error('Original opponent did not find a driving route');
  const session=createNativeRaceSession({...data,...player,opponent,startup:memory,raw:prepared.raw,packedOpponent:new Uint8Array()}, {opponentSelected,preparedOpponentPath:prepared.opponentPath??undefined,replayInputs:length?memory.slice(bank,bank+length):undefined,deferSimulationEntry:true,produceAudio:true,preparedSimulationMemory:true,preparedTrackMemory:true});
  return {session,initialWrites:prepared.initialWrites,raw:prepared.raw,trackAddress:prepared.trackAddress,opponentPath:prepared.opponentPath};
