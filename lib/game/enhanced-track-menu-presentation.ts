@@ -35,9 +35,35 @@ export function createEnhancedTrackMenuPresentation(options:{
  previewEnabled:boolean;
 }):EnhancedTrackMenuPresentation{
  const {canvas}=options,ctx=canvas.getContext('2d')!;
- const previewCanvas=document.createElement('canvas');
- const syncPreviewResolution=()=>{const internal=enhancedRenderResolution();if(previewCanvas.width!==internal.width)previewCanvas.width=internal.width;if(previewCanvas.height!==internal.height)previewCanvas.height=internal.height;};
- syncPreviewResolution();
+ const previewCanvas=document.createElement('canvas'),menuCanvasBackground=canvas.style.background,menuCanvasZIndex=canvas.style.zIndex;
+ canvas.style.background='transparent';canvas.style.zIndex='1';
+ let previewMounted=false;
+ const mountPreview=()=>{
+  if(previewMounted)return;
+  const parent=canvas.parentElement;if(!parent)return;
+  previewCanvas.classList.add('modern-track-preview-canvas');previewCanvas.setAttribute('aria-hidden','true');
+  for(const [property,value] of [
+   ['position','absolute'],['pointer-events','none'],['display','block'],['transform','none'],
+   ['max-width','none'],['max-height','none'],['margin','0'],['padding','0'],['border','0'],
+   ['background','#0b0d0a'],['z-index','0'],['border-radius','4px'],
+  ] as const)previewCanvas.style.setProperty(property,value,'important');
+  parent.insertBefore(previewCanvas,canvas);previewMounted=true;
+ };
+ const syncPreviewBounds=()=>{
+  if(!previewMounted)return;
+  const parent=canvas.parentElement;if(!parent)return;
+  const canvasRect=canvas.getBoundingClientRect(),parentRect=parent.getBoundingClientRect();
+  const scaleX=canvasRect.width/320,scaleY=canvasRect.height/200;
+  previewCanvas.style.setProperty('left',`${canvasRect.left-parentRect.left+previewRect.x*scaleX}px`,'important');
+  previewCanvas.style.setProperty('top',`${canvasRect.top-parentRect.top+previewRect.y*scaleY}px`,'important');
+  previewCanvas.style.setProperty('width',`${previewRect.w*scaleX}px`,'important');
+  previewCanvas.style.setProperty('height',`${previewRect.h*scaleY}px`,'important');
+ };
+ const previewPixelRatio=()=>{
+  const scale=enhancedRenderResolution().width/320,targetWidth=previewRect.w*scale,cssWidth=previewCanvas.clientWidth||previewRect.w;
+  return Math.max(1,targetWidth/Math.max(1,cssWidth));
+ };
+ mountPreview();syncPreviewBounds();
  let preview:BlissEditor3DView|undefined,signature='',track:NativeMenuTrack|undefined,score:ReadonlyArray<number>|null=null,enabled=true;
  let tracks:string[]=[],selectedTrack=0,dropdownOpen=false,dropdownStart=0,hoverAction:ModernTrackMenuAction={type:'none'},focusAction:ModernTrackMenuFocus={type:'selector'};
 
@@ -52,12 +78,12 @@ export function createEnhancedTrackMenuPresentation(options:{
  const fit=(value:string,max=23)=>value.length<=max?value:value.slice(0,Math.max(1,max-1))+'…';
  const trackSignature=(value:NativeMenuTrack)=>value.name+'/'+value.raw.length+'/'+value.raw.slice(0,1802).reduce((hash,byte,index)=>(Math.imul(hash^byte,16777619)+index)>>>0,2166136261);
  const ensurePreview=()=>{
-  syncPreviewResolution();
+  syncPreviewBounds();
   if(!track)throw Error('Modern track menu requires an active track');
   const next=trackSignature(track);
   if(preview&&signature===next)return preview;
   const decoded=options.decodeTrack(Uint8Array.from(track.raw));
-  if(!preview)preview=options.createPreview(previewCanvas,options.assets,decoded,{initialCamera:options.originalCamera,transparentBackground:true,showGround:true,showBasePlane:false,pixelRatio:1});
+  if(!preview)preview=options.createPreview(previewCanvas,options.assets,decoded,{initialCamera:options.originalCamera,transparentBackground:true,showGround:true,showBasePlane:false,pixelRatio:previewPixelRatio});
   else{preview.update(decoded);preview.resetView();}
   signature=next;return preview;
  };
@@ -113,10 +139,14 @@ export function createEnhancedTrackMenuPresentation(options:{
 
   rect(7,44,220,153,'#111','#3b3b3b',6);
   ctx.save();ctx.beginPath();ctx.roundRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy(),4*Math.min(sx(),sy()));ctx.clip();
-  ctx.fillStyle='#0b0d0a';ctx.fillRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
   if(options.previewEnabled){
-   const view=ensurePreview();view.render();ctx.drawImage(previewCanvas,previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
-  }else label('3D PREVIEW DISABLED',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,8,'#777',600,'center');
+   syncPreviewBounds();previewCanvas.style.display=enabled?'block':'none';
+   ctx.clearRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
+   const view=ensurePreview();view.render();
+  }else{
+   previewCanvas.style.display='none';ctx.fillStyle='#0b0d0a';ctx.fillRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
+   label('3D PREVIEW DISABLED',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,8,'#777',600,'center');
+  }
   ctx.restore();
 
   rect(232,44,81,126,'#111','#3b3b3b',6);
@@ -188,7 +218,7 @@ export function createEnhancedTrackMenuPresentation(options:{
    return {type:'track',index:(selectedTrack+direction+tracks.length)%tracks.length};
   },
   render,
-  active(active){enabled=active;if(active)render();},
+  active(active){enabled=active;previewCanvas.style.display=active&&options.previewEnabled?'block':'none';if(active){syncPreviewBounds();render();}},
   inPreview(event){
    if(dropdownOpen)return false;
    const r=canvas.getBoundingClientRect(),x=(event.clientX-r.left)*320/r.width,y=(event.clientY-r.top)*200/r.height;
@@ -197,6 +227,6 @@ export function createEnhancedTrackMenuPresentation(options:{
   orbit(dx,dy){if(options.previewEnabled){ensurePreview().orbit(dx,dy);render();}},
   pan(dx,dy){if(options.previewEnabled){ensurePreview().pan(dx,dy);render();}},
   dolly(delta,x,y){if(options.previewEnabled){ensurePreview().dolly(delta,x,y);render();}},
-  close(){preview?.close();preview=undefined;previewCanvas.width=previewCanvas.height=1;}
+  close(){preview?.close();preview=undefined;previewCanvas.remove();previewMounted=false;previewCanvas.width=previewCanvas.height=1;canvas.style.background=menuCanvasBackground;canvas.style.zIndex=menuCanvasZIndex;}
  };
 }
