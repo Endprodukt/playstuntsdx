@@ -390,7 +390,7 @@ fn build_runtime(gamedata: &Path) -> Result<(), String> {
             if count == 0 {
                 break;
             }
-            while matches!(bytes.last(), Some(b'\n') | Some(b'\r')) {
+            while matches!(bytes.last(), Some(byte) if *byte == b'\n' || *byte == b'\r') {
                 bytes.pop();
             }
             let line = String::from_utf8_lossy(&bytes);
