@@ -32,7 +32,7 @@ export function preloadModernMainMenuBackground(){
   const image=new Image();image.decoding='async';
   image.onload=()=>{cachedModernMainBackground=image;resolve(image);};
   image.onerror=()=>{cachedModernMainBackgroundPromise=undefined;reject(new Error('Modern main menu background failed to load'));};
-  image.src='/ui/stunts-dx-main-background.svg';
+  image.src='/ui/stunts-dx-main-background.jpg';
  });
  return cachedModernMainBackgroundPromise;
 }
@@ -67,7 +67,7 @@ export function createModernMainMenu(options:{
  let trackSignature='';
  const backgroundArt=options.backgroundArt??cachedModernMainBackground;
  let backgroundArtReady=!!backgroundArt?.complete&&!!backgroundArt.naturalWidth;
- let closed=false,suspended=false,focus:ModernMainMenuAction='none',hover:ModernMainMenuAction='none',keyboardFocus=false,carAngle=80,lastCarFrame=performance.now(),animationFrame=0;
+ let closed=false,suspended=false,focus:ModernMainMenuAction='none',hover:ModernMainMenuAction='none',keyboardFocus=false,carAngle=80,lastCarFrame=performance.now(),animationFrame=0,previewDrag:'car'|'track'|null=null,previewPointer=-1,previewX=0,previewY=0;
  if(!backgroundArtReady&&!options.backgroundArt){
   void preloadModernMainMenuBackground().then(image=>{if(closed)return;cachedModernMainBackground=image;backgroundArtReady=true;render();}).catch(()=>{});
  }
@@ -276,6 +276,33 @@ export function createModernMainMenu(options:{
   return 'none';
  };
 
+ const menuPoint=(event:{clientX:number;clientY:number})=>{
+  const r=canvas.getBoundingClientRect();
+  return {x:(event.clientX-r.left)*320/r.width,y:(event.clientY-r.top)*200/r.height};
+ };
+ const previewPointerDown=(event:PointerEvent)=>{
+  const point=menuPoint(event);
+  if(inside(point.x,point.y,carPreview)){previewDrag='car';previewPointer=event.pointerId;previewX=event.clientX;previewY=event.clientY;return true;}
+  if(inside(point.x,point.y,trackPreview)){previewDrag='track';previewPointer=event.pointerId;previewX=event.clientX;previewY=event.clientY;return true;}
+  return false;
+ };
+ const previewPointerMove=(event:PointerEvent)=>{
+  if(previewDrag===null||event.pointerId!==previewPointer)return false;
+  const dx=event.clientX-previewX,dy=event.clientY-previewY;previewX=event.clientX;previewY=event.clientY;
+  if(previewDrag==='car'){carAngle=(carAngle-dx*3.5+1024)%1024;renderCar();}
+  else trackView?.orbit(dx,dy);
+  return true;
+ };
+ const previewPointerUp=(event:PointerEvent)=>{
+  if(previewDrag===null||event.pointerId!==previewPointer)return false;
+  previewDrag=null;previewPointer=-1;return true;
+ };
+ const previewWheel=(event:WheelEvent)=>{
+  const point=menuPoint(event);
+  if(!inside(point.x,point.y,trackPreview))return false;
+  trackView?.dolly(event.deltaY,event.clientX,event.clientY);return true;
+ };
+
  const captureBackground=()=>{
   const shot=document.createElement('canvas');shot.width=canvas.width;shot.height=canvas.height;
   const out=shot.getContext('2d')!;out.drawImage(canvas,0,0);
@@ -308,6 +335,10 @@ export function createModernMainMenu(options:{
    const index=Math.max(0,actions.indexOf(focus));focus=actions[(index+direction+actions.length)%actions.length];render();return focus;
   },
   captureBackground,
+  previewPointerDown,
+  previewPointerMove,
+  previewPointerUp,
+  previewWheel,
   setSuspended(value:boolean){
    suspended=value;
    carSurface.style.display=value?'none':'block';trackSurface.style.display=value?'none':'block';
