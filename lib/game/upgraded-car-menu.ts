@@ -2,8 +2,8 @@ import {readOriginalMaterialPatterns} from './original-material-pattern';
 import * as THREE from 'three';
 import {createCarModel} from './car-model';
 import {applyUpgradedCarMaterials,addUpgradedCarStudyLights,setUpgradedCarGroundContactPanels} from './upgraded-car-materials';
-import {createUpgradedRetroLighting,RETRO_SUN} from './upgraded-retro-lighting';
-import {SHOWROOM_SUN,SHOWROOM_SHADOW_WORLD_SCALE} from './showroom-lighting';
+import {RETRO_SUN} from './upgraded-retro-lighting';
+import {SHOWROOM_SUN} from './showroom-lighting';
 import {readUpgradedShape} from './upgraded-submission';
 import {rotateZXY,transpose} from '../physics/rotation';
 import {vecTransform} from '../physics/math';
@@ -16,14 +16,20 @@ export function createUpgradedCarMenu(palette:number[],indices:number[],options:
  renderer.toneMapping=THREE.ACESFilmicToneMapping;
  const scene=new THREE.Scene(),world=new THREE.Group();world.scale.z=-1;scene.add(world);
  if(environment){scene.background=new THREE.Color(0x101b25);scene.fog=new THREE.Fog(0x101b25,16*400,36*400);}
- addUpgradedCarStudyLights(scene,environment?SHOWROOM_SUN:RETRO_SUN);
- const retroLighting=environment?createUpgradedRetroLighting({sunDirection:SHOWROOM_SUN,worldScale:SHOWROOM_SHADOW_WORLD_SCALE*400}):undefined;
- const floor=environment?new THREE.Mesh(new THREE.PlaneGeometry(100*400,100*400),new THREE.MeshBasicMaterial({color:0x172731,toneMapped:false})):undefined;
- if(floor){floor.rotation.x=-Math.PI/2;floor.userData.retroDistanceColour=false;world.add(floor);retroLighting!.apply(floor,true,false);}
+ const lights=addUpgradedCarStudyLights(scene,environment?SHOWROOM_SUN:RETRO_SUN);
+ if(environment){
+  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  lights.sun.castShadow=true;lights.sun.shadow.mapSize.set(2048,2048);
+  lights.sun.shadow.camera.near=1;lights.sun.shadow.camera.far=12000;
+  lights.sun.shadow.camera.left=-1800;lights.sun.shadow.camera.right=1800;lights.sun.shadow.camera.top=1800;lights.sun.shadow.camera.bottom=-1800;
+  lights.sun.shadow.bias=-.00015;scene.add(lights.sun.target);
+ }
+ const floor=environment?new THREE.Mesh(new THREE.PlaneGeometry(100*400,100*400),new THREE.MeshStandardMaterial({color:0x172731,roughness:1,metalness:0,toneMapped:false})):undefined;
+ if(floor){floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;world.add(floor);}
  const grid=environment?new THREE.GridHelper(40*400,40,0x47606a,0x243942):undefined;
  if(grid){grid.userData.originalEdgeVisibility=true;for(const material of Array.isArray(grid.material)?grid.material:[grid.material])material.toneMapped=false;world.add(grid);}
  const camera=new THREE.PerspectiveCamera();camera.near=1;camera.far=30000;
- let model:THREE.Group|undefined,bank:Uint8Array|undefined,lastPaint=-1,lastBuildMilliseconds:number|undefined,floorDirty=true,renderWidth=0,renderHeight=0,shadowsEnabled=environment;
+ let model:THREE.Group|undefined,bank:Uint8Array|undefined,lastPaint=-1,lastBuildMilliseconds:number|undefined,floorDirty=true,renderWidth=0,renderHeight=0;
  const roadContactY=(car:THREE.Group)=>{
   car.updateMatrixWorld(true);
   const tires:THREE.Mesh[]=[];car.traverse(node=>{if(node instanceof THREE.Mesh&&node.userData.originalWheelPart==='tire')tires.push(node);});
@@ -40,7 +46,12 @@ export function createUpgradedCarMenu(palette:number[],indices:number[],options:
   const zoom=Math.max(.6,Math.min(1.9,rotation?.zoom??1)),yaw=word(0xb00e)*Math.PI/512;
   model!.scale.setScalar(400);model!.position.set(0,-840,2880);model!.rotation.order='YXZ';model!.rotation.set(0,yaw,0);
   if(floorDirty&&floor&&grid){
-   const contact=roadContactY(model!);floor.position.y=contact;grid.position.y=contact+.002*400;floorDirty=false;
+   const contact=roadContactY(model!);floor.position.y=contact;grid.position.y=contact+.002*400;
+   const shadowTarget=new THREE.Vector3(0,contact+350,2880);
+   lights.sun.target.position.copy(shadowTarget);
+   lights.sun.position.copy(shadowTarget).addScaledVector(SHOWROOM_SUN,5000);
+   lights.sun.target.updateMatrixWorld(true);lights.sun.updateMatrixWorld(true);
+   floorDirty=false;
   }
   model!.rotation.set(rotation?.pitch??0,yaw,rotation?.roll??0);
   const inverse=transpose(rotateZXY(0,-46,0,true)),forward=vecTransform([0,0,16384],inverse),up=vecTransform([0,16384,0],inverse);
@@ -48,13 +59,9 @@ export function createUpgradedCarMenu(palette:number[],indices:number[],options:
   const [cx,cy,fx,fy]=[0,1,2,3].map(i=>word(0x4b88+i*2)),zoomFx=fx*zoom,zoomFy=fy*zoom;
   camera.projectionMatrix.makePerspective(-cx/zoomFx,(320-cx)/zoomFx,cy/zoomFy,-(200-cy)/zoomFy,1,30000);camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
   if(renderWidth!==width||renderHeight!==height){renderer.setSize(width,height,false);renderWidth=width;renderHeight=height;}
-  if(shadowsEnabled&&retroLighting){
-   try{retroLighting.drawShadows(renderer,[model!],scene);}
-   catch(reason){shadowsEnabled=false;console.warn('[Modern Car Select] Showroom shadows disabled after render failure:',reason);}
-  }
   renderer.render(scene,camera);
   // Dispose the previous car only after the replacement has acquired the
   // shared GPU programs. This prevents every menu change recompiling them.
   disposeModel(retired);if(buildStarted!==undefined)lastBuildMilliseconds=performance.now()-buildStarted;return renderer.domElement;
- },get lastBuildMilliseconds(){return lastBuildMilliseconds;},close(){disposeModel(model);retroLighting?.dispose();if(floor){floor.geometry.dispose();for(const material of Array.isArray(floor.material)?floor.material:[floor.material])material.dispose();}if(grid){grid.geometry.dispose();for(const material of Array.isArray(grid.material)?grid.material:[grid.material])material.dispose();}renderer.dispose();renderer.forceContextLoss();}};
+ },get lastBuildMilliseconds(){return lastBuildMilliseconds;},close(){disposeModel(model);if(floor){floor.geometry.dispose();for(const material of Array.isArray(floor.material)?floor.material:[floor.material])material.dispose();}if(grid){grid.geometry.dispose();for(const material of Array.isArray(grid.material)?grid.material:[grid.material])material.dispose();}renderer.dispose();renderer.forceContextLoss();}};
 }
