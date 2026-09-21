@@ -185,8 +185,15 @@ export default function OpeningSequence({assets,onBack,backLabel="← Back",soun
    let openingKey=await playOpening(),openingExitFrame=captureOpeningExitFrame(openingKey);
    if(disposed)return;
    openingInput.setActive(false);
+   // Keep the exact frame the player saw when they skipped the opening on
+   // screen while menu resources are loading. Otherwise a refresh can briefly
+   // expose the underlying 320x200 Mindscape frame before the HD main menu is
+   // ready, which looks like a second title screen and invites a second click.
+   const openingFreeze=document.createElement('canvas');openingFreeze.width=element.width;openingFreeze.height=element.height;openingFreeze.getContext('2d')!.drawImage(element,0,0);
+   if((openingKey??0)!==0&&originalOpeningExitDecision(openingKey??0)!=='confirm')graphics.current.refresh=()=>{context.setTransform(1,0,0,1,0,0);context.drawImage(openingFreeze,0,0,element.width,element.height);};
    menus=await createBrowserNativeMenus({settings:{mouse:false,joystick:false,graphics:0},graphics:graphics.current,canvas:element,assets,music,audioContext:runAudio,displayMode,hercules,signal:demoAbort.signal,track:{name:'DEFAULT',path:directory,raw:initialTrack??[...assets.tracks.find(t=>t.name==='DEFAULT')!.raw]},onScreen:screen=>{if(!disposed)setStatus(screen==='main'?'Original main menu':screen==='editor'?'Original track editor':screen==='race'?'Stunts':screen==='results'?'Race results':screen==='replay'?'Replay':'Original '+screen+' menu');}});
    if(disposed){menus.close();return;}
+   graphics.current.refresh=undefined;
    element.dataset.openingComplete='true';
    let queuedTransition:NativeMenuTransition|undefined;
    for(;;){
