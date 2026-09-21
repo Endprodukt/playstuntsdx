@@ -22,7 +22,7 @@ import type {NativeDemoData,NativeDemoMenuState} from './native-demo-runtime.ts'
 export interface NativeSelectedReplay {bytes:Uint8Array;name:string;path:string}
 /** Shared native resource entry for an unattended demo or a fresh manual race.
  * Simulation and browser input remain owned by the surrounding race runner. */
-export async function prepareNativeAllocatedRace(data:NativeDemoData,menu:NativeDemoMenuState,demo:boolean,progress:(stage:number)=>void=()=>{},recording?:NativeSelectedReplay){
+export async function prepareNativeAllocatedRace(data:NativeDemoData,menu:NativeDemoMenuState,demo:boolean,progress:(stage:number,detail?:string)=>void=()=>{},recording?:NativeSelectedReplay){
  const d=0x2d1a0,c=0x209e0,bp=0xeefe,driver=0x39e1;
  if(data.base.length!==0x100000||menu.configuration.length!==24||menu.track.length!==1802)throw Error('Incomplete original race startup data');
  let memory:Uint8Array=data.base.slice();
@@ -77,19 +77,19 @@ export async function prepareNativeAllocatedRace(data:NativeDemoData,menu:Native
 }
 /** Reuse the outer allocation graph after results chooses Replay or Race.
  * The saved menu, recording bank and checkpoints stay owned by that graph. */
-export async function prepareNativeAllocatedRaceReentry(data:NativeDemoData,before:Uint8Array,entry:'fresh'|'replay'|'resume',progress:(stage:number)=>void=()=>{}){
+export async function prepareNativeAllocatedRaceReentry(data:NativeDemoData,before:Uint8Array,entry:'fresh'|'replay'|'resume',progress:(stage:number,detail?:string)=>void=()=>{}){
  const memory=before.slice(),d=0x2d1a0;
  if(memory[d+0x90f8])throw Error('Manual race reentry cannot consume a demo session');
  if(entry==='replay')memory[d+0x8018]=4;
  else if(entry==='fresh')new DataView(memory.buffer).setUint16(d+0x8fd8,0,true);
  return {...await enterAllocatedRaceResources(data,memory,progress,false),initialWrites:[] as number[][]};
 }
-async function enterAllocatedRaceResources(data:NativeDemoData,before:Uint8Array,progress:(stage:number)=>void,analyzeBeforeEntry:boolean):Promise<{memory:Uint8Array;raw:number[];trackAddress:number;opponentPath:number[]|null}>{
+async function enterAllocatedRaceResources(data:NativeDemoData,before:Uint8Array,progress:(stage:number,detail?:string)=>void,analyzeBeforeEntry:boolean):Promise<{memory:Uint8Array;raw:number[];trackAddress:number;opponentPath:number[]|null}>{
  let memory=before;const d=0x2d1a0,c=0x209e0,bp=0xeefe,demo=!!memory[d+0x90f8];
  const view=new DataView(memory.buffer,memory.byteOffset,memory.byteLength),trackAddress=view.getUint16(d+0x9356,true)+view.getUint16(d+0x9358,true)*16;
  let raw:number[]=Array.from(memory.slice(trackAddress,trackAddress+1802)),opponentPath:number[]|null=null;
  const filename=(at:number)=>{let name='';for(let i=0;i<65536;i++){const byte=memory[d+((at+i)&65535)];if(!byte)return name;name+=String.fromCharCode(byte);}throw Error('Unterminated original resource filename');};
- const files={memory:()=>memory,writeMemory(next:Uint8Array){memory=next;},async exists(at:number){return data.catalog.exists(filename(at));},async readFile(at:number){return data.catalog.read(filename(at));},async retry(){throw Error('Original race resource could not load');}};
+ const files={memory:()=>memory,writeMemory(next:Uint8Array){memory=next;},async exists(at:number){return data.catalog.exists(filename(at));},async readFile(at:number){const name=filename(at);progress(0,name);return data.catalog.read(name);},async retry(){throw Error('Original race resource could not load');}};
  const prepareTrack=(analysisFrame=0xeee2)=>{
   raw=Array.from(memory.slice(trackAddress,trackAddress+1802));
   const route=analyzeRoute(raw,data.records,data.vectors,data.samples,data.objects,undefined,{sample:false});
