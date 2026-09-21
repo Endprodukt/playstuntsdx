@@ -216,9 +216,6 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     // The original showroom projection is authored for the 320x200 Stunts
     // viewport. Keep that 1.6:1 render aspect here; rendering it into a wider
     // target stretches the car before the menu compositor ever sees it.
-    // Use the same full 320x200-based internal resolution as the race renderer.
-    // The menu crops/composites this render afterwards; it must not lower the
-    // 3D resolution merely because the preview rectangle itself is smaller.
     const snapshot=document.createElement('canvas');
     // The menu is already a fixed 1280x800 backing surface. Render the showroom
     // at that actual UI resolution instead of tying its sharpness to the race
