@@ -10,8 +10,11 @@ export type ModernCarMenuAction=
  |{type:'done'}
  |{type:'none'};
 
+export type ModernCarMenuFocus={type:'selector'|'import'|'transmission'|'colour'|'done'};
+
 export interface ModernCarMenuPresentation{
  setCars(cars:readonly NativeMenuCar[],selected:number,open:boolean):void;
+ setFocus(focus:ModernCarMenuFocus):void;
  draw(car:NativeMenuCar,transmission:number,paint:number):Promise<{paintCount:number}>;
  actionAt(event:{clientX:number;clientY:number}):ModernCarMenuAction;
  hoverAt(event:{clientX:number;clientY:number}):void;
@@ -28,7 +31,7 @@ export interface ModernCarMenuHost extends NativeCarMenuHost{
  takeModernAction?:()=>ModernCarMenuAction|undefined;
 }
 
-const keyUp=0x4800,keyDown=0x5000;
+const keyUp=0x4800,keyDown=0x5000,keyLeft=0x4b00,keyRight=0x4d00;
 const idAt=(configuration:readonly number[],offset:number)=>String.fromCharCode(...configuration.slice(offset,offset+4));
 
 export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarMenuPresentation){
@@ -36,16 +39,73 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
  let cars=[...host.cars].sort((a,b)=>(a.name??a.id).localeCompare(b.name??b.id)),open=false;
  let selected=Math.max(0,cars.findIndex(car=>car.id===idAt(host.configuration,offset)));
  let paint=host.configuration[paintOffset]??0,transmission=host.configuration[transmissionOffset]??0,paintCount=1,typePrefix='',typeDeadline=0;
+ let focus:ModernCarMenuFocus={type:'selector'};
 
+ const applyFocus=(next:ModernCarMenuFocus)=>{focus=next;display.setFocus(focus);};
  const sync=async(resetPaint=false)=>{
   if(!cars.length)return;
   selected=Math.max(0,Math.min(cars.length-1,selected));
   if(resetPaint)paint=0;
-  display.setCars(cars,selected,open);
+  display.setCars(cars,selected,open);display.setFocus(focus);
   const state=await display.draw(cars[selected],transmission,paint);
   paintCount=Math.max(1,state.paintCount|0);
   if(paint>=paintCount){paint=0;await display.draw(cars[selected],transmission,paint);}
   host.configuration[paintOffset]=paint;host.configuration[transmissionOffset]=transmission;
+ };
+
+ const activate=async(action:ModernCarMenuAction):Promise<'done'|undefined>=>{
+  if(action.type==='selector'){
+   focus={type:'selector'};open=!open;display.setCars(cars,selected,open);display.setFocus(focus);display.render();return;
+  }
+  if(action.type==='car'){
+   selected=action.index;open=false;focus={type:'selector'};await sync(true);return;
+  }
+  if(action.type==='transmission'){
+   focus={type:'transmission'};transmission=transmission?0:1;await sync();return;
+  }
+  if(action.type==='colour'){
+   focus={type:'colour'};paint=(paint+1)%paintCount;await sync();return;
+  }
+  if(action.type==='import'&&host.importCar){
+   focus={type:'import'};display.setFocus(focus);
+   const imported=await host.importCar();
+   if(imported){
+    cars=[...(await host.refreshCars?.()??host.cars)].sort((a,b)=>(a.name??a.id).localeCompare(b.name??b.id));
+    selected=Math.max(0,cars.findIndex(car=>car.id===imported.id));open=false;focus={type:'selector'};await sync(true);
+   }
+   return;
+  }
+  if(action.type==='done'){
+   focus={type:'done'};display.setFocus(focus);
+   host.configuration.splice(offset,4,...Array.from(cars[selected].id.slice(0,4),c=>c.charCodeAt(0)));
+   if(!host.opponent)rememberCurrentPlayerCar(cars[selected].id);
+   return 'done';
+  }
+ };
+
+ const moveFocus=(key:number):ModernCarMenuFocus=>{
+  if(key===keyLeft){
+   if(focus.type==='selector')return {type:'import'};
+   return {type:'selector'};
+  }
+  if(key===keyRight){
+   if(focus.type==='selector')return {type:'import'};
+   return {type:'selector'};
+  }
+  if(key===keyUp){
+   if(focus.type==='selector')return {type:'done'};
+   if(focus.type==='import')return {type:'selector'};
+   if(focus.type==='transmission')return {type:'import'};
+   if(focus.type==='colour')return {type:'transmission'};
+   return {type:'colour'};
+  }
+  if(key===keyDown){
+   if(focus.type==='selector'||focus.type==='import')return {type:'transmission'};
+   if(focus.type==='transmission')return {type:'colour'};
+   if(focus.type==='colour')return {type:'done'};
+   return {type:'selector'};
+  }
+  return focus;
  };
 
  if(!cars.length)return;
@@ -53,26 +113,14 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
  await sync();
  try{
   for(;;){
-   const input=await host.input(),current=host.takeModernAction?.()??{type:'none'} as ModernCarMenuAction;
-   if(current.type==='selector'){open=!open;display.setCars(cars,selected,open);display.render();continue;}
-   if(current.type==='car'){selected=current.index;open=false;await sync(true);continue;}
-   if(current.type==='transmission'){transmission=transmission?0:1;await sync();continue;}
-   if(current.type==='colour'){paint=(paint+1)%paintCount;await sync();continue;}
-   if(current.type==='import'&&host.importCar){
-    const imported=await host.importCar();
-    if(imported){
-     cars=[...(await host.refreshCars?.()??host.cars)].sort((a,b)=>(a.name??a.id).localeCompare(b.name??b.id));
-     selected=Math.max(0,cars.findIndex(car=>car.id===imported.id));open=false;await sync(true);
-    }
+   const input=await host.input(),current=host.takeModernAction?.();
+   if(current){
+    const result=await activate(current);
+    if(result==='done')return;
     continue;
    }
-   if(current.type==='done'){
-    host.configuration.splice(offset,4,...Array.from(cars[selected].id.slice(0,4),c=>c.charCodeAt(0)));
-    if(!host.opponent)rememberCurrentPlayerCar(cars[selected].id);
-    return;
-   }
 
-   const keyboard=input.keyboardKey??0,textKey=input.textKey??0;
+   const key=input.key??0,textKey=input.textKey??0;
    if(open&&textKey>=32&&textKey<127){
     const ch=String.fromCharCode(textKey).toLocaleUpperCase(),now=performance.now();
     const labels=cars.map(car=>(car.name??car.id).toLocaleUpperCase());
@@ -86,14 +134,38 @@ export async function runModernCarMenu(host:ModernCarMenuHost,display:ModernCarM
     if(index>=0){selected=index;typePrefix=prefix;typeDeadline=now+750;display.setCars(cars,selected,true);display.render();}
     continue;
    }
-   if(keyboard===27){host.configuration.splice(0,host.configuration.length,...initial);return;}
-   if(keyboard===keyUp||keyboard===keyDown){
-    if(open){selected=(selected+(keyboard===keyDown?1:-1)+cars.length)%cars.length;display.setCars(cars,selected,true);display.render();}
-    else{selected=(selected+(keyboard===keyDown?1:-1)+cars.length)%cars.length;await sync(true);}
+
+   if(key===27){
+    if(open){open=false;focus={type:'selector'};display.setCars(cars,selected,false);display.setFocus(focus);display.render();}
+    else{host.configuration.splice(0,host.configuration.length,...initial);return;}
     continue;
    }
-   if(keyboard===13||keyboard===32){
-    if(open){open=false;await sync(true);}else{open=true;display.setCars(cars,selected,true);display.render();}
+
+   if(open){
+    if(key===keyUp||key===keyDown){
+     selected=(selected+(key===keyDown?1:-1)+cars.length)%cars.length;display.setCars(cars,selected,true);display.render();continue;
+    }
+    if(key===keyLeft||key===keyRight){
+     open=false;display.setCars(cars,selected,false);
+     if(key===keyRight)applyFocus({type:'import'});else applyFocus({type:'selector'});
+     continue;
+    }
+    if(key===13||key===32){
+     open=false;focus={type:'selector'};await sync(true);continue;
+    }
+   }
+
+   if(focus.type==='selector'&&(key===keyUp||key===keyDown)){
+    selected=(selected+(key===keyDown?1:-1)+cars.length)%cars.length;await sync(true);continue;
+   }
+
+   if(key===keyLeft||key===keyRight||key===keyUp||key===keyDown){
+    applyFocus(moveFocus(key));continue;
+   }
+
+   if(key===13||key===32){
+    const result=await activate(focus);
+    if(result==='done')return;
    }
   }
  }finally{display.close();}
