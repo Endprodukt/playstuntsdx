@@ -40,7 +40,7 @@ export function createUpgradedCarMenu(palette:number[],indices:number[],options:
   const zoom=Math.max(.6,Math.min(1.9,rotation?.zoom??1)),yaw=word(0xb00e)*Math.PI/512;
   model!.scale.setScalar(400);model!.position.set(0,-840,2880);model!.rotation.order='YXZ';model!.rotation.set(0,yaw,0);
   if(floorDirty&&floor&&grid){
-   const contact=roadContactY(model!);floor.position.y=contact-.75;grid.position.y=contact;floorDirty=false;
+   const contact=roadContactY(model!);floor.position.y=contact;grid.position.y=contact+.002*400;floorDirty=false;
   }
   model!.rotation.set(rotation?.pitch??0,yaw,rotation?.roll??0);
   const inverse=transpose(rotateZXY(0,-46,0,true)),forward=vecTransform([0,0,16384],inverse),up=vecTransform([0,16384,0],inverse);
