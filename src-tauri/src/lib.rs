@@ -353,6 +353,7 @@ fn build_runtime(gamedata: &Path) -> Result<(), String> {
         .arg(root.join("Custom Cars"))
         .arg("--output")
         .arg(&runtime)
+        .env("PYTHONIOENCODING", "utf-8")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     #[cfg(target_os = "windows")]
@@ -372,15 +373,27 @@ fn build_runtime(gamedata: &Path) -> Result<(), String> {
     };
 
     let stderr_reader = child.stderr.take().map(|stderr| std::thread::spawn(move || {
-        let mut text = String::new();
-        let _ = BufReader::new(stderr).read_to_string(&mut text);
-        text
+        let mut bytes = Vec::new();
+        let _ = BufReader::new(stderr).read_to_end(&mut bytes);
+        String::from_utf8_lossy(&bytes).into_owned()
     }));
 
     let mut stdout = String::new();
     if let Some(stdout_pipe) = child.stdout.take() {
-        for line in BufReader::new(stdout_pipe).lines() {
-            let line = line.map_err(|error| format!("Could not read runtime helper progress: {error}"))?;
+        let mut reader = BufReader::new(stdout_pipe);
+        let mut bytes = Vec::new();
+        loop {
+            bytes.clear();
+            let count = reader
+                .read_until(b'\n', &mut bytes)
+                .map_err(|error| format!("Could not read runtime helper progress: {error}"))?;
+            if count == 0 {
+                break;
+            }
+            while matches!(bytes.last(), Some(b'\n') | Some(b'\r')) {
+                bytes.pop();
+            }
+            let line = String::from_utf8_lossy(&bytes);
             if let Some(progress) = line.strip_prefix("PLAYSTUNTS_PROGRESS\t") {
                 let mut parts = progress.splitn(2, '\t');
                 runtime_progress(
