@@ -106,6 +106,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  // file cannot be resurrected by the legacy IndexedDB overlay on the next run.
  const files=await createNativeFileStore(original,await openNativeFilePersistence(),desktopTauri?{volatileExtensions:['.TRK']}:{});
  const drivingSettings={...(options.settings??{mouse:false,joystick:false,graphics:2})};
+ const storedOriginalGraphics=Number(window.localStorage.getItem('playstunts-dx-original-graphics-level'));if(Number.isFinite(storedOriginalGraphics)&&storedOriginalGraphics>=0&&storedOriginalGraphics<=3)drivingSettings.graphics=Math.round(storedOriginalGraphics);
  let activeRace:Awaited<ReturnType<typeof createNativeManualRaceRuntime>>|undefined,racePoll:(()=>void|Promise<void>)|undefined;
  const presentHercules=options.hercules?createBrowserHerculesPresenter(options.canvas):undefined;
  const {canvas,music}=options,nativeCanvasWidth=canvas.width,nativeCanvasHeight=canvas.height,context=canvas.getContext('2d')!,surface=document.createElement('canvas');surface.width=320;surface.height=200;
