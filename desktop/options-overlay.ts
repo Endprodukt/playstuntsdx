@@ -125,7 +125,7 @@ function dispatchFpsShortcut(){
 /** Turns the old wheel-only F8 popup into a general Options panel without
  * changing the wheel calibration internals. The FPS preference reuses the
  * existing F shortcut so there remains only one renderer-side toggle path. */
-export function installDesktopOptionsOverlay(assets?:Assets){
+export function installDesktopOptionsOverlay(_assets?:Assets){
  let disposed=false,frame=0,section:HTMLDivElement|undefined,fpsStateApplied=false;
  void loadNativeGeneralSettings().then(()=>{renderSteeringDeadzone();renderSteeringLinearity();renderOptionsButtonState();});
 
