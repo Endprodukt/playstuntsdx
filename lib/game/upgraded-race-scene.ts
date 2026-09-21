@@ -327,9 +327,10 @@ export function createUpgradedRaceScene(assets:Assets,resources:Uint8Array,runti
    if(compatibilityEdgeScale!==appliedCompatibilityEdgeScale){
     appliedCompatibilityEdgeScale=compatibilityEdgeScale;
     world.traverse(node=>{
-     if(!(node instanceof LineSegments2)||node.userData.originalEdgeVisibility!==true)return;
-     const material=node.material;
-     if(material instanceof LineMaterial){material.worldUnits=false;material.linewidth=compatibilityEdgeScale;material.needsUpdate=true;}
+     if(node.userData.originalEdgeVisibility!==true||!('material' in node))return;
+     const material=(node as THREE.LineSegments).material as THREE.Material&{worldUnits?:boolean;linewidth?:number};
+     if(material.linewidth===undefined)return;
+     material.worldUnits=false;material.linewidth=compatibilityEdgeScale;material.needsUpdate=true;
     });
    }
    const shadowCars=cars.map((models,i)=>{
