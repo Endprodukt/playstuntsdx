@@ -80,7 +80,7 @@ const optionHelp:Record<RowId,string>={
  'cockpit':'Uses the high-resolution cockpit artwork while driving with the enhanced renderer.',
  'fov':'Widens the enhanced 3D view horizontally. Original keeps the classic 4:3 field of view.',
  'fps':'Shows or hides the frame-rate counter while DX Graphics is active.',
- 'original-detail':'The original Stunts graphics-detail setting. It controls legacy render detail and is separate from DX internal resolution.',
+ 'original-detail':'The original Stunts graphics-detail setting. Higher levels draw more legacy scene detail; it is separate from DX internal resolution.',
  'input-device':'Selects the device used for driving: keyboard, joystick, mouse or wheel.',
  'deadzone':'Wheel only. Ignores small steering movement around the calibrated centre to prevent unwanted drift or jitter.',
  'linearity':'Wheel only. Higher values make steering less sensitive around centre while preserving full steering lock.',
@@ -234,7 +234,7 @@ function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],sta
   }
   const tab=tabBounds.findIndex(inside);if(tab>=0)return {type:'tab',index:tab};
   const foot=footerBounds.findIndex(inside);if(foot>=0)return {type:'footer',index:foot};
-  if(x>=content.x+5&&x<=content.x+content.w-5&&y>=content.y+13&&y<=content.y+content.h-4){
+  if(x>=content.x+5&&x<=content.x+content.w-5&&y>=content.y+13&&y<content.y+101){
    const start=rowStart(),index=start+Math.floor((y-(content.y+13))/14.5);
    if(index>=0&&index<rows().length)return {type:'row',index};
   }
