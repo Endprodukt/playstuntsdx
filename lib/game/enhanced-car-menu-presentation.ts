@@ -290,7 +290,7 @@ export function createEnhancedCarMenuPresentation(options:{
    manualRotate=false;returning=true;returnStarted=performance.now();returnFromAngle=currentAngle;returnFromPitch=manualPitch;lastTick=returnStarted;
   },
   zoomBy(delta:number){
-   previewZoom=Math.max(.6,Math.min(1.9,previewZoom*(delta<0?1.1:.9)));
+   previewZoom=Math.max(.6,Math.min(2.4,previewZoom*(delta<0?1.1:.9)));
    if(previewRender){previewRender(Math.floor(currentAngle)&1023,manualRotate?manualPitch:0,previewZoom);render();}
   },
   render,
