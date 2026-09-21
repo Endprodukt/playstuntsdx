@@ -1,6 +1,6 @@
 import type {NativeMenuCar} from './native-car-runtime.ts';
 import {originalCarAccelerationGraph} from './car-menu-raster.ts';
-import type {ModernCarMenuAction,ModernCarMenuPresentation} from './modern-car-menu-runtime.ts';
+import type {ModernCarMenuAction,ModernCarMenuFocus,ModernCarMenuPresentation} from './modern-car-menu-runtime.ts';
 
 const selector={x:86,y:10,w:166,h:22},importButton={x:257,y:10,w:48,h:22},doneButton={x:232,y:174,w:81,h:23};
 const transmissionButton={x:232,y:137,w:81,h:16},colourButton={x:232,y:155,w:81,h:16};
@@ -14,7 +14,7 @@ export function createEnhancedCarMenuPresentation(options:{
  preview:(car:NativeMenuCar,paint:number)=>Promise<{canvas:HTMLCanvasElement;paintCount:number;render(angle:number,pitch?:number,zoom?:number):void}|null>;
 }):ModernCarMenuPresentation&{inPreview(event:{clientX:number;clientY:number}):boolean;beginRotate():void;rotateBy(dx:number,dy:number):void;endRotate():void;zoomBy(delta:number):void}{
  const {canvas}=options,ctx=canvas.getContext('2d')!;
- let cars:readonly NativeMenuCar[]=[],selected=0,dropdownOpen=false,dropdownStart=0,hover:ModernCarMenuAction={type:'none'};
+ let cars:readonly NativeMenuCar[]=[],selected=0,dropdownOpen=false,dropdownStart=0,hover:ModernCarMenuAction={type:'none'},focus:ModernCarMenuFocus={type:'selector'};
  let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,closed=false,previewCanvas:HTMLCanvasElement|undefined,previewError=false,previewRender:((angle:number,pitch?:number,zoom?:number)=>void)|undefined,animation=0,lastAnimation=0,currentAngle=0,lastTick=performance.now(),manualRotate=false,manualPitch=0,previewZoom=1,currentCarId='',returning=false,returnStarted=0,returnFromAngle=0,returnFromPitch=0;
 
  const sx=()=>canvas.width/320,sy=()=>canvas.height/200;
@@ -52,7 +52,7 @@ export function createEnhancedCarMenuPresentation(options:{
  };
  const fit=(value:string,max:number)=>value.length<=max?value:value.slice(0,Math.max(1,max-1))+'…';
  const carCaption=(car:NativeMenuCar|undefined)=>car?(car.name&&car.name!==car.id?`${car.name} (${car.id})`:car.id):'CAR';
- const over=(type:ModernCarMenuAction['type'])=>hover.type===type;
+ const over=(type:ModernCarMenuAction['type'])=>hover.type===type||focus.type===type;
  const button=(bounds:{x:number;y:number;w:number;h:number},caption:string,type:ModernCarMenuAction['type'],size=6.4)=>{
   const active=over(type);rect(bounds.x,bounds.y,bounds.w,bounds.h,active?'#5b6330':'#232323',active?'#b4c35a':'#555',4,active?1.5:1);
   label(caption,bounds.x+bounds.w/2,bounds.y+bounds.h/2+.2,size,active?'#fff':'#e8e8e8',600,'center');
@@ -151,7 +151,7 @@ export function createEnhancedCarMenuPresentation(options:{
   ctx.save();ctx.beginPath();ctx.roundRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy(),4*Math.min(sx(),sy()));ctx.clip();
   ctx.fillStyle='#0a0b0a';ctx.fillRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
   if(previewCanvas){
-   ctx.imageSmoothingEnabled=false;
+   const previousSmoothing=ctx.imageSmoothingEnabled;ctx.imageSmoothingEnabled=true;
    const targetX=previewRect.x*sx(),targetY=previewRect.y*sy(),targetW=previewRect.w*sx(),targetH=previewRect.h*sy();
    // The car itself occupies the upper showroom portion of the original
    // 320x200 frame. Crop that logical showroom window first, then scale it
@@ -160,7 +160,7 @@ export function createEnhancedCarMenuPresentation(options:{
    const scale=Math.min(targetW/sourceW,targetH/sourceH);
    const drawW=sourceW*scale,drawH=sourceH*scale;
    const drawX=targetX+(targetW-drawW)/2,drawY=targetY+(targetH-drawH)/2;
-   ctx.drawImage(previewCanvas,sourceX,sourceY,sourceW,sourceH,drawX,drawY,drawW,drawH);
+   ctx.drawImage(previewCanvas,sourceX,sourceY,sourceW,sourceH,drawX,drawY,drawW,drawH);ctx.imageSmoothingEnabled=previousSmoothing;
   }else if(previewError)label('PREVIEW UNAVAILABLE',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,5,'#a77',600,'center');
   else label('LOADING CAR…',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,5,'#777',600,'center');
   rect(previewRect.x+4,previewRect.y+previewRect.h-13,previewRect.w-8,9,'rgba(8,8,8,.68)','rgba(90,90,90,.5)',3,.5);
@@ -206,6 +206,7 @@ export function createEnhancedCarMenuPresentation(options:{
 
  return {
   setCars(next,nextSelected,open){cars=next;selected=Math.max(0,Math.min(Math.max(0,cars.length-1),nextSelected));dropdownOpen=open;updateDropdownStart();},
+  setFocus(next){const changed=focus.type!==next.type;focus=next;if(changed)render();},
   async draw(car,transmission,paint){
    if(currentCarId!==car.id){previewZoom=1;currentCarId=car.id;}current=car;currentTransmission=transmission;currentPaint=paint;previewCanvas=undefined;previewRender=undefined;previewError=false;render();
    try{
