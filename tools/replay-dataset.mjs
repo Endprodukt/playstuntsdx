@@ -3,17 +3,34 @@ import {mkdir,readdir,readFile,writeFile} from 'node:fs/promises';
 import {basename,dirname,extname,join,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 
-export const REPLAY_HEADER_BYTES=24;
+export const OLD_REPLAY_HEADER_BYTES=24;
+export const NEW_REPLAY_HEADER_BYTES=26;
 export const TRACK_BYTES=0x70a;
-export const INPUT_OFFSET=0x722;
-export const SIMULATION_HZ=20;
+export const OLD_INPUT_OFFSET=OLD_REPLAY_HEADER_BYTES+TRACK_BYTES; // 0x722
+export const NEW_INPUT_OFFSET=NEW_REPLAY_HEADER_BYTES+TRACK_BYTES; // 0x724
+export const OLD_REPLAY_FREQUENCY_HZ=20;
 
 const printableId=bytes=>Array.from(bytes,value=>value>=32&&value<=126?String.fromCharCode(value):'.').join('');
+const nulString=bytes=>String.fromCharCode(...bytes).replace(/\0.*$/,'');
 const csvCell=value=>{
  const text=String(value??'');
  return /[",\r\n]/.test(text)?`"${text.replaceAll('"','""')}"`:text;
 };
 const writeCsv=async(path,rows)=>writeFile(path,rows.map(row=>row.map(csvCell).join(',')).join('\n')+'\n','utf8');
+
+export function detectReplayLayout(bytes,name='replay.rpl'){
+ if(bytes.length<OLD_INPUT_OFFSET)throw Error(`${name}: shorter than the minimum Stunts replay header + track block`);
+ const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+ if(bytes.length>=NEW_INPUT_OFFSET){
+  const frequencyHz=view.getUint16(22,true),frameCount=view.getUint16(24,true),required=NEW_INPUT_OFFSET+frameCount;
+  if(required===bytes.length)return {format:'new',headerBytes:NEW_REPLAY_HEADER_BYTES,inputOffset:NEW_INPUT_OFFSET,frequencyHz,frameCount};
+ }
+ const frameCount=view.getUint16(22,true),required=OLD_INPUT_OFFSET+frameCount;
+ if(required===bytes.length)return {format:'old',headerBytes:OLD_REPLAY_HEADER_BYTES,inputOffset:OLD_INPUT_OFFSET,frequencyHz:OLD_REPLAY_FREQUENCY_HZ,frameCount};
+ const newFrequency=bytes.length>=NEW_REPLAY_HEADER_BYTES?view.getUint16(22,true):null;
+ const newCount=bytes.length>=NEW_REPLAY_HEADER_BYTES?view.getUint16(24,true):null;
+ throw Error(`${name}: size does not match either known Stunts replay format (old count=${frameCount}, new frequency=${newFrequency}, new count=${newCount}, file=${bytes.length} bytes)`);
+}
 
 export function decodeReplayInput(raw){
  raw&=255;
@@ -27,34 +44,43 @@ export function decodeReplayInput(raw){
   steerValue:steering===1?1:steering===2?-1:0,
   shiftUp:(raw&0x10)?1:0,
   shiftDown:(raw&0x20)?1:0,
-  unknownMask:raw&0xc0,
+  ignoredMask:raw&0xc0,
  };
 }
 
 export function decodeReplayBytes(bytes,name='replay.rpl'){
- if(bytes.length<INPUT_OFFSET)throw Error(`${name}: shorter than the 0x722-byte replay header + track block`);
- const header=bytes.subarray(0,REPLAY_HEADER_BYTES),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
- const frameCount=view.getUint16(22,true),required=INPUT_OFFSET+frameCount;
- if(bytes.length<required)throw Error(`${name}: declares ${frameCount} input frames but is truncated by ${required-bytes.length} bytes`);
- const trackBlock=bytes.subarray(REPLAY_HEADER_BYTES,INPUT_OFFSET),track=trackBlock.subarray(0,901),terrain=trackBlock.subarray(901,1802),inputs=bytes.subarray(INPUT_OFFSET,required),trailing=bytes.subarray(required);
+ const layout=detectReplayLayout(bytes,name);
+ const header=bytes.subarray(0,layout.headerBytes);
+ const trackBlock=bytes.subarray(layout.headerBytes,layout.inputOffset);
+ const track=trackBlock.subarray(0,901),terrain=trackBlock.subarray(901,1802);
+ const inputs=bytes.subarray(layout.inputOffset,layout.inputOffset+layout.frameCount);
  const carId=printableId(header.subarray(0,4)),opponentSelected=header[6],opponentCarId=opponentSelected?printableId(header.subarray(7,11)):'';
- const frames=Array.from(inputs,(raw,frame)=>({frame,timeSeconds:frame/SIMULATION_HZ,...decodeReplayInput(raw)}));
- const counts={throttle:0,brake:0,coast:0,left:0,right:0,center:0,both:0,shiftUp:0,shiftDown:0,driveConflict:0,unknownFrames:0};
+ const frames=Array.from(inputs,(raw,frame)=>({frame,timeSeconds:frame/layout.frequencyHz,...decodeReplayInput(raw)}));
+ const counts={throttle:0,brake:0,coast:0,left:0,right:0,center:0,both:0,shiftUp:0,shiftDown:0,driveConflict:0,ignoredBitFrames:0};
  const rawHistogram={};
  for(const frame of frames){
   if(frame.throttle)counts.throttle++;else if(frame.brake)counts.brake++;else counts.coast++;
   counts[frame.steer]++;
   counts.shiftUp+=frame.shiftUp;counts.shiftDown+=frame.shiftDown;counts.driveConflict+=frame.driveConflict;
-  if(frame.unknownMask)counts.unknownFrames++;
+  if(frame.ignoredMask)counts.ignoredBitFrames++;
   const key=`0x${frame.raw.toString(16).padStart(2,'0').toUpperCase()}`;rawHistogram[key]=(rawHistogram[key]??0)+1;
  }
  const tileHistogram=values=>Object.fromEntries([...values.slice(0,900).reduce((map,value)=>(map.set(value,(map.get(value)??0)+1),map),new Map())].sort((a,b)=>a[0]-b[0]).map(([id,count])=>[String(id),count]));
  return {
-  name,
-  header:{hex:Buffer.from(header).toString('hex'),carId,opponentSelected,opponentCarId},
-  frameCount,
-  recordedInputSeconds:frameCount/SIMULATION_HZ,
-  trailingBytes:trailing.length,
+  name,format:layout.format,frequencyHz:layout.frequencyHz,
+  header:{
+   hex:Buffer.from(header).toString('hex'),
+   carId,
+   playerColor:header[4],
+   playerTransmission:header[5]===1?'automatic':'manual',
+   opponentSelected,
+   opponentCarId,
+   opponentColor:header[11],
+   opponentTransmission:header[12]===1?'automatic':'manual',
+   trackName:nulString(header.subarray(13,22)),
+  },
+  frameCount:layout.frameCount,
+  recordedInputSeconds:layout.frameCount/layout.frequencyHz,
   track:{grid:Array.from(track.subarray(0,900)),horizon:track[900],histogram:tileHistogram(track)},
   terrain:{grid:Array.from(terrain.subarray(0,900)),trailing:terrain[900],histogram:tileHistogram(terrain)},
   frames,counts,rawHistogram,
@@ -68,14 +94,18 @@ const gridRows=(values,label)=>{
  return rows;
 };
 const frameRows=frames=>[
- ['frame','time_s','raw_hex','raw_dec','throttle','brake','drive_conflict','steer','steer_value','shift_up','shift_down','unknown_mask_hex'],
- ...frames.map(frame=>[frame.frame,frame.timeSeconds.toFixed(3),`0x${frame.raw.toString(16).padStart(2,'0').toUpperCase()}`,frame.raw,frame.throttle,frame.brake,frame.driveConflict,frame.steer,frame.steerValue,frame.shiftUp,frame.shiftDown,`0x${frame.unknownMask.toString(16).padStart(2,'0').toUpperCase()}`]),
+ ['frame','time_s','raw_hex','raw_dec','throttle','brake','drive_conflict','steer','steer_value','shift_up','shift_down','ignored_mask_hex'],
+ ...frames.map(frame=>[frame.frame,frame.timeSeconds.toFixed(3),`0x${frame.raw.toString(16).padStart(2,'0').toUpperCase()}`,frame.raw,frame.throttle,frame.brake,frame.driveConflict,frame.steer,frame.steerValue,frame.shiftUp,frame.shiftDown,`0x${frame.ignoredMask.toString(16).padStart(2,'0').toUpperCase()}`]),
 ];
 
 export async function analyzeReplayFile(path,outputRoot){
  const bytes=new Uint8Array(await readFile(path)),decoded=decodeReplayBytes(bytes,basename(path));
  const stem=basename(path,extname(path)),folder=join(outputRoot,stem);await mkdir(folder,{recursive:true});
- const summary={file:decoded.name,sizeBytes:bytes.length,header:decoded.header,frameCount:decoded.frameCount,recordedInputSeconds:decoded.recordedInputSeconds,trailingBytes:decoded.trailingBytes,counts:decoded.counts,rawHistogram:decoded.rawHistogram,track:{horizon:decoded.track.horizon,histogram:decoded.track.histogram},terrain:{trailing:decoded.terrain.trailing,histogram:decoded.terrain.histogram}};
+ const summary={
+  file:decoded.name,sizeBytes:bytes.length,format:decoded.format,frequencyHz:decoded.frequencyHz,header:decoded.header,
+  frameCount:decoded.frameCount,recordedInputSeconds:decoded.recordedInputSeconds,counts:decoded.counts,rawHistogram:decoded.rawHistogram,
+  track:{horizon:decoded.track.horizon,histogram:decoded.track.histogram},terrain:{trailing:decoded.terrain.trailing,histogram:decoded.terrain.histogram}
+ };
  await Promise.all([
   writeFile(join(folder,'summary.json'),JSON.stringify(summary,null,2)+'\n','utf8'),
   writeCsv(join(folder,'frames.csv'),frameRows(decoded.frames)),
@@ -90,7 +120,7 @@ export async function analyzeReplayDirectory(inputRoot,outputRoot){
  const entries=await readdir(inputRoot,{withFileTypes:true}),files=entries.filter(entry=>entry.isFile()&&/\.rpl$/i.test(entry.name)).map(entry=>join(inputRoot,entry.name)).sort((a,b)=>a.localeCompare(b));
  if(!files.length)return {inputRoot,outputRoot,replays:[]};
  const replays=[];for(const path of files)replays.push(await analyzeReplayFile(path,outputRoot));
- const manifest={generatedAt:new Date().toISOString(),simulationHz:SIMULATION_HZ,inputRoot,outputRoot,replays};
+ const manifest={generatedAt:new Date().toISOString(),inputRoot,outputRoot,replays};
  await writeFile(join(outputRoot,'manifest.json'),JSON.stringify(manifest,null,2)+'\n','utf8');return manifest;
 }
 
@@ -102,8 +132,8 @@ async function main(){
  if(!result.replays.length){console.log(`No .RPL files found in ${inputRoot}`);console.log('Copy one or more replay files there and run this command again.');return;}
  console.log(`Analyzed ${result.replays.length} replay(s).`);
  for(const replay of result.replays){
-  console.log(`${replay.file}: ${replay.frameCount} frames (${replay.recordedInputSeconds.toFixed(2)} s recorded input), car ${replay.header.carId}${replay.header.opponentSelected?`, opponent ${replay.header.opponentSelected} / ${replay.header.opponentCarId}`:''}`);
-  console.log(`  throttle ${replay.counts.throttle}, brake ${replay.counts.brake}, left ${replay.counts.left}, right ${replay.counts.right}, shifts +${replay.counts.shiftUp}/-${replay.counts.shiftDown}, trailing ${replay.trailingBytes} B`);
+  console.log(`${replay.file}: ${replay.format} format, ${replay.frequencyHz} Hz, ${replay.frameCount} frames (${replay.recordedInputSeconds.toFixed(2)} s), track ${replay.header.trackName}, car ${replay.header.carId}${replay.header.opponentSelected?`, opponent ${replay.header.opponentSelected} / ${replay.header.opponentCarId}`:''}`);
+  console.log(`  throttle ${replay.counts.throttle}, brake ${replay.counts.brake}, left ${replay.counts.left}, right ${replay.counts.right}, shifts +${replay.counts.shiftUp}/-${replay.counts.shiftDown}`);
  }
  console.log(`Output: ${outputRoot}`);
 }
