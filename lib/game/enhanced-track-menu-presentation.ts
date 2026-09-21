@@ -142,11 +142,11 @@ export function createEnhancedTrackMenuPresentation(options:{
   rect(7,44,220,153,'#111','#3b3b3b',6);
   ctx.save();ctx.beginPath();ctx.roundRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy(),4*Math.min(sx(),sy()));ctx.clip();
   if(options.previewEnabled){
-   syncPreviewBounds();previewCanvas.style.display=enabled?'block':'none';
+   syncPreviewBounds();previewCanvas.style.setProperty('display',enabled?'block':'none','important');
    ctx.clearRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
    const view=ensurePreview();view.render();
   }else{
-   previewCanvas.style.display='none';ctx.fillStyle='#0b0d0a';ctx.fillRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
+   previewCanvas.style.setProperty('display','none','important');ctx.fillStyle='#0b0d0a';ctx.fillRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
    label('3D PREVIEW DISABLED',previewRect.x+previewRect.w/2,previewRect.y+previewRect.h/2,8,'#777',600,'center');
   }
   ctx.restore();
@@ -220,7 +220,7 @@ export function createEnhancedTrackMenuPresentation(options:{
    return {type:'track',index:(selectedTrack+direction+tracks.length)%tracks.length};
   },
   render,
-  active(active){enabled=active;previewCanvas.style.display=active&&options.previewEnabled?'block':'none';if(active){syncPreviewBounds();render();}},
+  active(active){enabled=active;previewCanvas.style.setProperty('display',active&&options.previewEnabled?'block':'none','important');if(active){syncPreviewBounds();render();}},
   inPreview(event){
    if(dropdownOpen)return false;
    const r=canvas.getBoundingClientRect(),x=(event.clientX-r.left)*320/r.width,y=(event.clientY-r.top)*200/r.height;
