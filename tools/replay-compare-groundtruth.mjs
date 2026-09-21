@@ -21,8 +21,8 @@ const fields=[
  'xFixed','yFixed','zFixed','yaw','pitch','roll','pseudoGravity',
  'speed','roadSpeed','rpm','gear','steeringAngle','wheelAngle','frontWheelAngle',
  'spin','demandedGrip','surfaceGrip','braking','accelerating','sliding','crash','changingGear',
-] as const;
-const surfaceFields=['surface0','surface1','surface2','surface3'] as const;
+];
+const surfaceFields=['surface0','surface1','surface2','surface3'];
 
 async function main(){
  const options=args();
