@@ -4,6 +4,7 @@ import {enhancedBackgroundEnabled,enhancedCockpitEnabled,setEnhancedBackgroundEn
 import {enhancedFovWidth,setEnhancedFovWidth} from '../lib/game/enhanced-view-settings';
 import {ENHANCED_RENDER_SCALES,enhancedRenderScale,setEnhancedRenderScale} from '../lib/game/enhanced-resolution-settings';
 import {currentPlayerCarId} from '../lib/game/current-player-car';
+import {parseOpponentAiMode,setOpponentAiMode} from '../lib/game/enhanced-opponent-settings';
 const fpsStorageKey='playstunts-dx-fps-visible';
 const graphicsStorageKey='playstunts-dx-enhanced-graphics';
 const steeringDeadzoneStorageKey='playstunts-dx-steering-deadzone-percent';
@@ -67,6 +68,8 @@ async function loadNativeGeneralSettings(){
   if(showButton)saveOptionsButtonVisible(!['0','false','no','off'].includes(showButton));
   const openMap=configValue(file.content,'Display','OpenMapOnRaceStart')?.trim().toLowerCase();
   if(openMap)saveOpenMapOnRaceStart(['1','true','yes','on'].includes(openMap));
+  const opponentAi=configValue(file.content,'Gameplay','OpponentAI');
+  if(opponentAi)setOpponentAiMode(parseOpponentAiMode(opponentAi));
   const renderScale=Number(configValue(file.content,'Display','InternalResolutionScale'));
   if(Number.isFinite(renderScale))setEnhancedRenderScale(renderScale);
  }catch(reason){console.warn('[Options] General config load failed:',reason);}

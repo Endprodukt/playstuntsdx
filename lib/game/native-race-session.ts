@@ -114,7 +114,7 @@ export function createNativeRaceSession(data:NativeRaceData,options:{transporter
  syncReplayForceFeedback();
  const resources=(m:Uint8Array,sp=0xff00,incomingSI=0):Parameters<typeof stepRecordedTwoCarRace> extends [unknown,...infer R]?R:never=>{
   const v=new DataView(m.buffer),graph=playerRouteMemory(prepared.graph,address=>m[address],d,d/16,recordedPlayerRouteStackFrame(sp));
-  return [{caller:{stackSegment:d/16,entryStackPointer:sp,incomingSI},produceAudio:options.produceAudio,tuning,wheels,track,trackside:prepared.trackside,navigation:[graph,raw,prepared.route,records,points,objects,start]},{tuning:opponentData.tuning,wheels:opponentWheels,track:opponentTrack,path,lookup:(entry,point)=>lookup(m,entry,point),speedProfile:m[d+0x9362],startX:start.x,startZ:start.z,startAngle:start.angle,flags:m[d+0x8018],timeAdjustment:v.getUint16(d+0xa034,true)}];
+  return [{caller:{stackSegment:d/16,entryStackPointer:sp,incomingSI},produceAudio:options.produceAudio,tuning,wheels,track,trackside:prepared.trackside,navigation:[graph,raw,prepared.route,records,points,objects,start]},{tuning:opponentData.tuning,wheels:opponentWheels,track:opponentTrack,path,lookup:(entry,point)=>lookup(m,entry,point),speedProfile:m[d+0x9362],opponentId:opponentSelected,startX:start.x,startZ:start.z,startAngle:start.angle,flags:m[d+0x8018],timeAdjustment:v.getUint16(d+0xa034,true)}];
  };
  const simulateCaptured=(incomingSI=0,fixMouse=true)=>{
    const m=state.memory;

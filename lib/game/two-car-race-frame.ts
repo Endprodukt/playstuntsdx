@@ -4,6 +4,8 @@ import {applyOtherCarContact} from './apply-other-car-contact.ts';
 import {stepPlayerDriving,type PlayerDrivingState} from './player-driving-step.ts';
 import {stepOpponentDrivingRace} from './opponent-driving-race.ts';
 import {stepRaceSharedEffects} from './race-shared-effects.ts';
+import {enhancedOpponentAiEnabled} from './enhanced-opponent-settings.ts';
+import {enhancedOpponentProfile} from '../physics/enhanced-opponent-profile.ts';
 import type {readOpponentCarState} from './read-opponent-race-state.ts';
 import type {RaceCameraState} from '../physics/race-cameras.ts';
 import type {Vector} from '../physics/math.ts';
@@ -13,7 +15,7 @@ type PlayerArgs=Parameters<typeof stepPlayerDriving> extends [unknown,...infer R
 type OpponentArgs=Parameters<typeof opponentDrivingStep>;
 export interface TwoCarRaceResources {
  player:PlayerArgs;trackside:Vector[];audioExiting?:number;
- opponent:{contactCaller?:NonNullable<OpponentArgs[1][0]['contactCaller']>;tuning:OpponentArgs[1][2]&OpponentArgs[4];wheels:Vector[];track:OpponentArgs[3];path:OpponentArgs[1][6];lookup:OpponentArgs[1][7];speedProfile:number;startX:number;startZ:number;startAngle:number;flags:number;timeAdjustment:number};
+ opponent:{contactCaller?:NonNullable<OpponentArgs[1][0]['contactCaller']>;tuning:OpponentArgs[1][2]&OpponentArgs[4];wheels:Vector[];track:OpponentArgs[3];path:OpponentArgs[1][6];lookup:OpponentArgs[1][7];speedProfile:number;opponentId?:number;startX:number;startZ:number;startAngle:number;flags:number;timeAdjustment:number};
 }
 /** Active caller composition, applying cross-car writes before the next car. */
 export function stepTwoCarRaceFrame(before:TwoCarRaceState,resources:TwoCarRaceResources){
@@ -28,7 +30,8 @@ export function stepTwoCarRaceFrame(before:TwoCarRaceState,resources:TwoCarRaceR
  const previous=before.opponent,car={...cross.car,contactOther:undefined,contactCrashOther:false},frame=resources.player[4];
  const opponentTrack={...r.track,otherCar:contact(1,player.driving.car,o,p)};
  const controls={contactCaller:r.contactCaller,position:car.pose.position,rotation:car.pose.rotation,steering:car.grip.steeringAngle,frontContact:car.grip.surfaces[0]+car.grip.surfaces[1],rearContact:car.engine.rearContact,crash:car.grip.crash,wheelAngle:car.grip.wheelAngle,roadSpeed:car.engine.roadSpeed,speed:car.engine.speed,demandedGrip:car.grip.demandedGrip,surfaceGrip:car.grip.surfaceGrip,sliding:car.grip.sliding,route:previous.route,routeTarget:previous.routeTarget,targetAlternate:previous.targetAlternate};
- const result=stepOpponentDrivingRace([car,[controls,car.engine,r.tuning,player.driving.car.pose.position,player.driving.car.grip.crash,r.track.mode??1,r.path,r.lookup,r.speedProfile],r.wheels,opponentTrack,r.tuning],{previousAngle:previous.angle,startX:r.startX,startZ:r.startZ,startAngle:r.startAngle,raceWords:player.driving.race.stats,savedRaceWords:player.driving.race.savedStats,timeAdjustment:r.timeAdjustment,flags:r.flags},player.driving);
+ const enhanced=enhancedOpponentAiEnabled()?{profile:enhancedOpponentProfile(r.opponentId??1),playerSpeed:player.driving.car.engine.speed,grassWheels:car.grip.surfaces.filter(surface=>surface===4).length}:undefined;
+ const result=stepOpponentDrivingRace([car,[controls,car.engine,r.tuning,player.driving.car.pose.position,player.driving.car.grip.crash,r.track.mode??1,r.path,r.lookup,r.speedProfile,enhanced],r.wheels,opponentTrack,r.tuning],{previousAngle:previous.angle,startX:r.startX,startZ:r.startZ,startAngle:r.startAngle,raceWords:player.driving.race.stats,savedRaceWords:player.driving.race.savedStats,timeAdjustment:r.timeAdjustment,flags:r.flags},player.driving);
  const opponent={...previous,contact:result.car.contactFlag??previous.contact,avoidance:result.car.decision.avoidance,car:result.car,route:result.car.decision.route,routeTarget:result.car.decision.routeTarget,targetAlternate:result.car.decision.targetAlternate??previous.targetAlternate,angle:result.tail.angle};
  const back=applyOtherCarContact(player.driving.car,result.car.contactOther,!!result.car.contactCrashOther,0,{race:result.race,particles:result.particles});
  player={...player,driving:{car:back.car,race:back.race,particles:back.particles}};

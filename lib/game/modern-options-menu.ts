@@ -9,6 +9,7 @@ import {
  enhancedChaseCameraPosition,resetEnhancedChaseCameraPositions,setEnhancedChaseCameraPosition,
  type EnhancedChaseCameraPresetLevel,type EnhancedChaseCameraSetting,
 } from './enhanced-chase-camera-settings.ts';
+import {opponentAiMode,setOpponentAiMode} from './enhanced-opponent-settings.ts';
 
 type Tab='gameplay'|'video'|'sound'|'controls';
 type FocusZone='tabs'|'rows'|'footer';
@@ -27,7 +28,7 @@ type FfbNumericRowId=
  |'ffb-crash-min-strength'|'ffb-crash-max-strength'|'ffb-crash-speed-max'|'ffb-crash-rebound'|'ffb-crash-main-duration'|'ffb-crash-total-duration';
 
 type RowId=
- |'music'|'sound-effects'|'sound-device'|'open-map'|'menu-style'|'track-editor'|'audio-update'
+ |'opponent-ai'|'music'|'sound-effects'|'sound-device'|'open-map'|'menu-style'|'track-editor'|'audio-update'
  |'dx-graphics'|'resolution'|'background'|'cockpit'|'fov'|'fps'|'original-detail'
  |'input-device'|'deadzone'|'linearity'|'show-f8'|'ffb-enabled'|'ffb-details'|FfbNumericRowId
  |'close-distance'|'close-height'|'standard-distance'|'standard-height'|'far-distance'|'far-height'|'reset-camera';
@@ -127,6 +128,7 @@ const tabOrder:readonly Tab[]=['gameplay','video','sound','controls'];
 const tabLabels:Record<Tab,string>={gameplay:'GAMEPLAY',video:'VIDEO',sound:'SOUND',controls:'CONTROLS'};
 const footerLabels:Record<FooterAction,string>={back:'BACK',exit:'EXIT GAME',done:'DONE'};
 const optionHelp:Partial<Record<RowId,string>>={
+ 'opponent-ai':'Original keeps the exact classic opponent logic. Enhanced enables DX look-ahead, racing lines, passing, defending and recovery with driver-specific personalities.',
  'music':'Turns the original Stunts music on or off.',
  'sound-effects':'Turns game sound effects on or off. Per-car engine sounds are configured in Car Select or the F8 panel.',
  'sound-device':'Selects the emulated sound hardware. A changed device is used on the next game start.',
@@ -430,6 +432,7 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
   if(ffbDetails)return ffbFields.map(field=>({id:field.id,label:field.label,value:formatFfbValue(field,ffb.values[field.id]),numeric:true,group:field.group}));
   if(tab==='gameplay'){
    return [
+    {id:'opponent-ai',label:'Opponent AI',value:opponentAiMode()==='enhanced'?'Enhanced':'Original',group:'DX / MODERN'},
     {id:'open-map',label:'Open Map on Race Start',value:boolLabel(storedEnabled(mapKey,false))},
     {id:'menu-style',label:'Menu Style',value:storedEnabled(enhancedMenuKey,true)?'Modern':'Vanilla'},
     {id:'track-editor',label:'Track Editor',value:storedEnabled(trackEditorKey,true)?'Modern':'Vanilla'},
@@ -505,6 +508,9 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
     const current=storedSoundDevice(),index=soundDevices.findIndex(entry=>entry.id===current),next=soundDevices[cycleIndex(soundDevices.length,Math.max(0,index),direction)]!.id;
     if(next==='mt32'&&!await mt32Ready()){window.alert('Roland MT-32 ROMs were not found in the MT32 folder.');break;}
     window.localStorage.setItem(soundKey,next);break;
+   }
+   case 'opponent-ai':{
+    const next=opponentAiMode()==='enhanced'?'original':'enhanced';setOpponentAiMode(next);await persistConfig('Gameplay','OpponentAI',next);break;
    }
    case 'open-map':await setOpenMap(!storedEnabled(mapKey,false));break;
    case 'menu-style':setBool(enhancedMenuKey,!storedEnabled(enhancedMenuKey,true));break;
