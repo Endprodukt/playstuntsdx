@@ -38,3 +38,8 @@ training/replays/cars/*
 !training/replays/cars/.gitkeep
 training/replays/output/*
 !training/replays/output/.gitkeep
+
+training/replays/restunts/*
+!training/replays/restunts/.gitkeep
+training/replays/work/*
+!training/replays/work/.gitkeep

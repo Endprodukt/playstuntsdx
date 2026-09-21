@@ -25,7 +25,10 @@
     "replay:inspect": "node tools/replay-dataset.mjs",
     "replay:inspect:test": "node --test tools/test-replay-dataset.mjs",
     "replay:simulate": "node tools/replay-telemetry.mjs",
-    "replay:file:test": "node --test tools/test-replay-file.ts"
+    "replay:file:test": "node --test tools/test-replay-file.ts",
+    "replay:groundtruth": "node tools/replay-groundtruth.mjs",
+    "replay:groundtruth:convert": "node tools/replay-groundtruth.mjs --convert-only",
+    "replay:groundtruth:test": "node --test tools/test-replay-groundtruth.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

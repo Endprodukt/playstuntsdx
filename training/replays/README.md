@@ -51,3 +51,26 @@ A particularly important sanity field is `raceClockMatchesFrames`. For a healthy
 - `npm run replay:file:test` validates both central replay layouts and round-trip encoding.
 
 Input and generated output contents remain git-ignored.
+
+
+## 3. Restunts ground truth
+
+Competition replays can diverge if they are replayed with even slightly different physics, so training data uses Restunts `repldump` as the ground-truth source.
+
+Run:
+
+`npm run replay:groundtruth`
+
+The command downloads the public 2013 Restunts repldump package on first use, stages the prepared original Stunts files, overlays matching `CARxxxx.RES` files from `training/replays/cars/` recursively, runs the replay under DOSBox, and converts each packed 0x460-byte GAMESTATE frame into `groundtruth.csv`.
+
+It auto-detects `dosbox-staging`, `dosbox-x` or `dosbox` from PATH. If needed:
+
+`npm run replay:groundtruth -- --dosbox "C:\\Program Files\\DOSBox-X\\dosbox-x.exe"`
+
+Per replay it keeps `restunts-state.bin`, writes `groundtruth.csv` and `groundtruth-summary.json`, and writes a batch `groundtruth-manifest.json`.
+
+If dumps already exist, reconvert without DOSBox:
+
+`npm run replay:groundtruth:convert`
+
+Public repldump package: https://scr.stunts.hu/files/utils/repldump-dos-2013-02-10.zip
