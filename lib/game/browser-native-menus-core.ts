@@ -292,10 +292,14 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    let rotating=false,lastRotateX=0,lastRotateY=0;
    const pointerDown=(event:PointerEvent)=>{
     if(event.button!==0)return;
+    const action=modern.actionAt(event);
+    if(action.type==='autorotate'){
+     event.preventDefault();event.stopImmediatePropagation();actions.push(action);return;
+    }
     if(modern.inPreview(event)){
      event.preventDefault();event.stopImmediatePropagation();rotating=true;lastRotateX=event.clientX;lastRotateY=event.clientY;modern.beginRotate();canvas.setPointerCapture(event.pointerId);return;
     }
-    const action=modern.actionAt(event);if(action.type==='none')return;
+    if(action.type==='none')return;
     event.preventDefault();event.stopImmediatePropagation();actions.push(action);
    };
    const pointerMove=(event:PointerEvent)=>{
