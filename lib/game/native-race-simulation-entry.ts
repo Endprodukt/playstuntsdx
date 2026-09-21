@@ -2,7 +2,7 @@ import {originalStartTruckEntry} from './start-truck-entry.ts';
 import type {Vector} from '../physics/math.ts';
 export interface NativeRaceSimulationEntryHost {
  memory():Uint8Array;initialize(mode:number):void;resetMouse(mode:number):void;
- seekReplay(frame:number):void;stepReplay():void;key(mode:number):Promise<number>;
+ seekReplay(frame:number):void;stepReplay():void;key(mode:number):Promise<number>;replayProgress?(frame:number,target:number):void;
 }
 /** Original13A3E..13B53. Prepare demo simulation, transporter rollout, or
  * fast-forward an existing replay; Escape interrupts only the fast-forward. */
@@ -21,9 +21,10 @@ export async function enterNativeRaceSimulation(host:NativeRaceSimulationEntryHo
   return 'transporter' as const;
  }
  byte(0x12f,0);byte(0xa3c2,2);word(0x93dc,500);
- host.seekReplay(0);host.seekReplay(view().getUint16(d+0x8fd8,true));
- while(view().getUint16(d+0x8c26,true)!==view().getUint16(d+0x8fd8,true)){
-  if(((await host.key(1))&65535)===27)break;host.stepReplay();
+ const target=view().getUint16(d+0x8fd8,true);host.replayProgress?.(0,target);
+ host.seekReplay(0);host.seekReplay(target);let current=view().getUint16(d+0x8c26,true);host.replayProgress?.(current,target);
+ while(current!==target){
+  if(((await host.key(1))&65535)===27)break;host.stepReplay();current=view().getUint16(d+0x8c26,true);if((current&31)===0||current===target)host.replayProgress?.(current,target);
  }
- word(0x73b2,view().getUint16(d+0x8fd8,true));return 'replay' as const;
+ word(0x73b2,target);return 'replay' as const;
 }

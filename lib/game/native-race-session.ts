@@ -171,7 +171,7 @@ export function createNativeRaceSession(data:NativeRaceData,options:{transporter
     state=readRecordedTwoCarRace(next,d);
    },
   },
-  async enterSimulation(host:Pick<NativeRaceSimulationEntryHost,'resetMouse'|'key'>,caller:{entryStackPointer:number;incomingSI:number;afterStep?:(frame:ReturnType<typeof stepRecordedTwoCarRace>)=>void}){
+  async enterSimulation(host:Pick<NativeRaceSimulationEntryHost,'resetMouse'|'key'|'replayProgress'>,caller:{entryStackPointer:number;incomingSI:number;afterStep?:(frame:ReturnType<typeof stepRecordedTwoCarRace>)=>void}){
    const branch=await enterNativeRaceSimulation({...host,memory:()=>state.memory,
     initialize(mode){state=readRecordedTwoCarRace(initialize(state.memory,mode),d);},
     seekReplay(frame){state=readRecordedTwoCarRace(restoreReplayCheckpoint(state.memory,d,frame,initialize).memory,d);},

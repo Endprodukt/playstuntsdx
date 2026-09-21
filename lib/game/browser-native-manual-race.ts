@@ -13,6 +13,7 @@ import {SOUND_MOD_SETTINGS_KEY} from './sound-mod-settings.ts';
 import type {createBrowserNativeMenus} from './browser-native-menus.ts';
 import type {NativeDemoData,NativeDemoMenuState} from './native-demo-runtime.ts';
 import type {RaceSpawn} from './race-spawn.ts';
+import type {ReplayLoadingController} from './replay-loading-overlay.ts';
 type Menus=Awaited<ReturnType<typeof createBrowserNativeMenus>>;
 
 function confirmBackToEditorDialog(){
@@ -47,7 +48,7 @@ function confirmBackToEditorDialog(){
 }
 /** Original manual race/results repetition, retaining one recording bank,
  * saved menu state and browser OPL stream until the player returns to menus. */
-export async function runBrowserNativeManualRace(options:{context:AudioContext;data:NativeDemoData;menus:Menus;menu:NativeDemoMenuState&{mouse?:boolean;joystick?:boolean};spawn?:RaceSpawn;editorTest?:boolean;signal:AbortSignal;displayMode?:NativeBrowserDisplayMode;hercules?:boolean;mt32Output?:Mt32StereoOutput;replay?:NativeSelectedReplay;stopMusic():void;onStage?:(stage:'loading'|'race'|'results'|'seeking')=>void;onFrame?:(frame:number,mode:number,clock:number,blocked:number)=>void}){
+export async function runBrowserNativeManualRace(options:{context:AudioContext;data:NativeDemoData;menus:Menus;menu:NativeDemoMenuState&{mouse?:boolean;joystick?:boolean};spawn?:RaceSpawn;editorTest?:boolean;signal:AbortSignal;displayMode?:NativeBrowserDisplayMode;hercules?:boolean;mt32Output?:Mt32StereoOutput;replay?:NativeSelectedReplay;replayLoading?:ReplayLoadingController;stopMusic():void;onStage?:(stage:'loading'|'race'|'results'|'seeking')=>void;onFrame?:(frame:number,mode:number,clock:number,blocked:number)=>void}){
  if(options.data.soundDevice?.kind==='mt32'&&!options.mt32Output)throw Error('Roland race requires an initialized synthesizer output');
  const editorButtonStyles=new WeakMap<HTMLButtonElement,{background:string;borderColor:string;color:string}>();
  const editorButtonHover=(event:PointerEvent)=>{
@@ -67,13 +68,15 @@ export async function runBrowserNativeManualRace(options:{context:AudioContext;d
  const deviceData=options.data.soundDevice?.kind==='pc-speaker'?{...options.data,soundDevice:{kind:'pc-speaker' as const,port61:()=>pcAudio?.port61??0}}:options.data.soundDevice?.kind==='tandy'?{...options.data,soundDevice:{...options.data.soundDevice,port61:()=>pcAudio?.port61??0}}:options.data;
  let engineSoundOverrides=await loadConfiguredEngineSoundOverrides(deviceData);
  let data=engineSoundOverrides?{...deviceData,engineSoundOverrides}:deviceData;
- const aborted=()=>{if(signal.aborted)throw new DOMException('Native race closed','AbortError');};
- const progress=(stage:number)=>{const name=({2:'SDTITL.PVS',3:'TEDIT.PRE',4:'OPP1.PRE'} as Record<number,string>)[stage];if(!name||!data.catalog.exists(name))throw Error('Original disk-presence resource missing for stage '+stage);};
+ const loading=options.replayLoading;
+ const aborted=()=>{if(signal.aborted)throw new DOMException('Native race closed','AbortError');loading?.throwIfCancelled();};
+ const progress=(stage:number)=>{loading?.throwIfCancelled();if(loading)loading.update(stage===3?'Loading cockpit, track and scenery':stage===4?'Loading opponent route':'Loading race resources',`Original resource stage ${stage}`);const name=({2:'SDTITL.PVS',3:'TEDIT.PRE',4:'OPP1.PRE'} as Record<number,string>)[stage];if(!name||!data.catalog.exists(name))throw Error('Original disk-presence resource missing for stage '+stage);};
  let presentation:Awaited<ReturnType<Menus['allocatedRacePresentation']>>|undefined,audio:Awaited<ReturnType<typeof createBrowserRaceAudio>>|undefined;
  let onSoundSettingsChanged:()=>void=()=>{},soundSettingsTimer=0;
- aborted();options.onStage?.(options.replay?'seeking':'loading');menus.setInputActive(true);const waiting=options.replay?data.base.slice():data.base;if(options.replay)new DataView(waiting.buffer).setUint16(0x2d1a0+0x8a10,150,true);menus.showRaceWaiting(waiting);
+ aborted();options.onStage?.(options.replay?'seeking':'loading');menus.setInputActive(true);const waiting=options.replay?data.base.slice():data.base;if(options.replay)new DataView(waiting.buffer).setUint16(0x2d1a0+0x8a10,150,true);if(!loading)menus.showRaceWaiting(waiting);
  try{
-  let runtime=options.replay?await createNativeReplayRaceRuntime(data,options.menu,options.replay,{resetMouse:menus.resetRaceMouse,async key(){aborted();return menus.raceEntryKey();}},progress):await createNativeManualRaceRuntime(data,options.menu,{resetMouse:menus.resetRaceMouse},progress);if(options.spawn&&!options.replay)runtime.session.teleportPlayer(options.spawn);aborted();
+  if(options.replay)loading?.update('Loading car resources','Resolving replay cars and track resources');
+  let runtime=options.replay?await createNativeReplayRaceRuntime(data,options.menu,options.replay,{resetMouse:menus.resetRaceMouse,async key(){aborted();const key=await menus.raceEntryKey();aborted();return key;},replayProgress(frame,target){loading?.update('Fast-forwarding replay',`${frame.toLocaleString()} / ${target.toLocaleString()} frames${target?` · ${Math.floor(frame*100/target)}%`:''}`);}},progress):await createNativeManualRaceRuntime(data,options.menu,{resetMouse:menus.resetRaceMouse},progress);if(options.spawn&&!options.replay)runtime.session.teleportPlayer(options.spawn);aborted();
   let soundUpdateSerial=0;
   onSoundSettingsChanged=()=>{
    const serial=++soundUpdateSerial;
@@ -96,8 +99,8 @@ export async function runBrowserNativeManualRace(options:{context:AudioContext;d
   audio=data.soundDevice?.kind==='mt32'?(rolandAudio=createBrowserMt32RaceAudio(context,options.mt32Output!,[],()=>runtime.tick(presentation!.devices))):data.soundDevice?.kind==='tandy'?(pcAudio=createBrowserTandyRaceAudio(context,runtime.initialWrites,()=>runtime.tick(presentation!.devices))):data.soundDevice?.kind==='pc-speaker'?(pcAudio=createBrowserPcSpeakerRaceAudio(context,runtime.initialWrites,()=>runtime.tick(presentation!.devices))):await createBrowserRaceAudio(context,runtime.initialWrites,()=>runtime.tick(presentation!.devices));aborted();
   rolandAudio?.prepare(runtime.initialWrites);
   const pump=()=>{aborted();audio!.pump();},showWaiting=()=>presentation?presentation.waiting():menus.showRaceWaiting(runtime.session.state.memory);
-  const preparePresentation=async()=>{const alternate=options.displayMode?await prepareBrowserNativeManualDisplay(data,options.displayMode,()=>runtime.session.state.memory,options.hercules):undefined;aborted();if(alternate)runtime.useDisplay(alternate.display);return menus.allocatedRacePresentation(runtime,pump,alternate);};
-  presentation=await preparePresentation();
+  const preparePresentation=async()=>{loading?.update('Preparing replay graphics','Creating the race presentation');const alternate=options.displayMode?await prepareBrowserNativeManualDisplay(data,options.displayMode,()=>runtime.session.state.memory,options.hercules):undefined;aborted();if(alternate)runtime.useDisplay(alternate.display);return menus.allocatedRacePresentation(runtime,pump,alternate);};
+  presentation=await preparePresentation();loading?.update('Replay ready','Starting playback');
   for(;;){
    options.onStage?.('race');
    runtime=await runBrowserAllocatedRaceLoop(runtime,menus,presentation,audio,{signal,showWaiting,onFrame:options.onFrame,editorTest:options.editorTest,confirmBackToEditor:confirmBackToEditorDialog,

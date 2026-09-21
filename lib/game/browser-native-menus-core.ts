@@ -64,6 +64,7 @@ import {createOriginalJoystickCalibration} from './joystick-calibration.ts';
 import {decodeOriginalReplayFile,encodeOriginalReplayFile} from './replay-file.ts';
 import {encodeTrackFile} from './track-file.ts';
 import {pickModernReplay,type ModernReplayChoice} from './modern-replay-picker.ts';
+import {createReplayLoadingOverlay,type ReplayLoadingController} from './replay-loading-overlay.ts';
 import type {createNativeMusic} from './native-music.ts';
 import type {NativeDialogHost} from './native-dialog-runtime.ts';
 import {createNativeDialogRuntime} from './native-dialog-runtime.ts';
@@ -165,7 +166,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  const configuration=options.configuration??[67,79,85,78,0,1,0,255,0,0,0,0,0,68,69,70,65,85,76,84,0,0,1,0];
  rememberCurrentPlayerCar(carIdFromConfiguration(configuration));
  const track=options.track??{name:'DEFAULT',path:'',raw:[...options.assets.tracks.find(t=>t.name==='DEFAULT')!.raw]};
- let entryPolls=0,selectedReplay:{bytes:Uint8Array;name:string;path:string}|undefined,pendingRaceSpawn:RaceSpawn|undefined,editorViewMode:'2d'|'3d'='2d',editor3DCamera:import('./bliss-editor-3d.ts').BlissEditor3DCameraState|undefined;
+ let entryPolls=0,selectedReplay:{bytes:Uint8Array;name:string;path:string}|undefined,replayLoading:ReplayLoadingController|undefined,pendingRaceSpawn:RaceSpawn|undefined,editorViewMode:'2d'|'3d'='2d',editor3DCamera:import('./bliss-editor-3d.ts').BlissEditor3DCameraState|undefined;
  // Original1AD1C forwards its literal1 to the complete device poll.
  // Fast-forward simulation is not gated to one browser frame per step.
  const fastForwardKey=async()=>{if((entryPolls++&15)===0)await input.nextFrame();return input.readImmediate(1).key;};
@@ -535,9 +536,11 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   return await runNativeTrackMenu(menuHost,false,createNativeDisplayTrackPresentation(display,menuHost,dialogs.file));
  };
  const readSelectedReplay=async(selection:{path:string;name:string;customPath?:string})=>{
+  replayLoading?.update('Reading replay file',selection.customPath??selection.name+'.RPL');replayLoading?.throwIfCancelled();
   const bytes=selection.customPath
    ?Uint8Array.from(await (tauriCore?.invoke<number[]>('read_custom_replay',{path:selection.customPath})??Promise.reject(Error('Custom replay access requires the desktop runtime'))))
    :await files.read(selection.path,selection.name,'.rpl');
+  replayLoading?.throwIfCancelled();replayLoading?.update('Decoding replay',bytes.length.toLocaleString()+' bytes');
   replay=decodeOriginalReplayFile(bytes);
   const playerCar=String.fromCharCode(...replay.header.subarray(0,4)),opponentCar=replay.header[6]?String.fromCharCode(...replay.header.subarray(7,11)):'none';
   console.info('[Replay Load]',{
@@ -545,6 +548,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    format:replay.format,frequencyHz:replay.frequencyHz,frames:replay.inputs.length,
    playerCar,opponent:replay.header[6],opponentCar,bytes:bytes.length,
   });
+  replayLoading?.update('Replay decoded',`${replay.format} · ${replay.frequencyHz} Hz · ${replay.inputs.length.toLocaleString()} frames · car ${playerCar}${replay.header[6]?` · opponent ${opponentCar}`:''}`);replayLoading?.throwIfCancelled();
   if(replay.frequencyHz!==20)throw Error(`Replay uses ${replay.frequencyHz} Hz recording. PlayStunts DX currently supports 20 Hz replay playback only.`);
   // The reconstructed native replay bank follows the original 24-byte layout.
   // Community/1991 recordings add a frequency word before the frame count, so
@@ -555,8 +559,9 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   configuration.splice(0,24,...nativeBytes.subarray(0,24));
   track.raw=Array.from(encodeTrackFile(replay.track));
   track.name=String.fromCharCode(...replay.header.slice(13,22)).split('\0')[0];
+  replayLoading?.update('Replay file ready',`${replay.inputs.length.toLocaleString()} frames · ${playerCar} · embedded track ${track.name||'(unnamed)'}`);replayLoading?.throwIfCancelled();
  };
- const settings:NativeOptionsHost={...host,settings:drivingSettings,get replayPath(){return track.path;},set replayPath(path:string){track.path=path;},selectReplayGlobal:desktopTauri?selectGlobalReplay:undefined,audio:async operation=>music.control(operation),loadReplay:async selection=>{const waiting=baseline.slice();new DataView(waiting.buffer).setUint16(0x2d1a0+0x8a10,150,true);drawOriginalRaceWaiting(pixels,font,host.resources.ewai,waiting,0x2d1a0);show('race');present();await readSelectedReplay(selection);},calibrateJoystick:async()=>{
+ const settings:NativeOptionsHost={...host,settings:drivingSettings,get replayPath(){return track.path;},set replayPath(path:string){track.path=path;},selectReplayGlobal:desktopTauri?selectGlobalReplay:undefined,audio:async operation=>music.control(operation),loadReplay:async selection=>{if(!enhancedMenuEnabled()){const waiting=baseline.slice();new DataView(waiting.buffer).setUint16(0x2d1a0+0x8a10,150,true);drawOriginalRaceWaiting(pixels,font,host.resources.ewai,waiting,0x2d1a0);show('race');present();}await readSelectedReplay(selection);},calibrateJoystick:async()=>{
   const saved=pixels.slice();settings.settings.joystick=true;settings.settings.mouse=false;
   const content=drawOriginalDialog(pixels,font,host.resources.ejoy,0,{text:15,border:4,disabled:1},undefined,3),calibration=createOriginalJoystickCalibration(content.fields,r=>{for(let y=r.y;y<r.y+r.height;y++)for(let x=r.x;x<r.x+r.width;x++)pixels[(y*320+x)&65535]=r.color;},{grid:4,indicator:15});
   for(;;){const sample=await input.read();calibration.step(sample.joystickDirection);present();if(sample.key||sample.joystickButtons){settings.settings.joystick=calibration.finish();break;}}
@@ -584,7 +589,9 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     calibrateJoystick:settings.calibrateJoystick,
     async selectReplay(){
      const selection=await selectGlobalReplay();if(!selection)return false;
-     if(!selection.customPath)settings.replayPath=selection.path;await settings.loadReplay(selection);return true;
+     replayLoading?.close();replayLoading=createReplayLoadingOverlay(canvas,selection.customPath??selection.name+'.RPL');
+     try{if(!selection.customPath)settings.replayPath=selection.path;await settings.loadReplay(selection);return true;}
+     catch(reason){const loading=replayLoading;if(loading&&!loading.cancelled)await loading.fail(reason);loading?.close();if(replayLoading===loading)replayLoading=undefined;return false;}
     },
    });
   }
@@ -600,7 +607,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   return runNativeOptions(nativeHost,createNativeDisplayOptionsPresentation(owner,nativeHost,dialogs));
  };
  if(options.displayMode)lastNativeDisplay=await prepareBrowserNativeMenuDisplay({catalog:await loadBrowserOriginalResourceCatalog()},options.displayMode,options.hercules);
- return {configuration,track,elapsedSinceInputPoll:input.elapsedSinceInputPoll,selectOptions,selectCar:car,selectOpponent:opponent,selectTrack,setInputActive:input.setActive,settings:drivingSettings,get replay(){return replay;},get selectedReplay(){return selectedReplay;},consumeRaceSpawn(){const spawn=pendingRaceSpawn;pendingRaceSpawn=undefined;return spawn;},reopenTrackEditor:editTrack,raceEntryKey:fastForwardKey,fadeMusic:()=>music.fadeOut(input.waitTicks),close:()=>{window.removeEventListener(ENHANCED_TEXTURES_EVENT,syncEnhancedTextures);window.removeEventListener(ENHANCED_FOV_EVENT,syncEnhancedFov);input.close();files.close();},
+ return {configuration,track,elapsedSinceInputPoll:input.elapsedSinceInputPoll,selectOptions,selectCar:car,selectOpponent:opponent,selectTrack,setInputActive:input.setActive,settings:drivingSettings,get replay(){return replay;},get selectedReplay(){return selectedReplay;},get replayLoading(){return replayLoading;},finishReplayLoading(){replayLoading?.close();replayLoading=undefined;},consumeRaceSpawn(){const spawn=pendingRaceSpawn;pendingRaceSpawn=undefined;return spawn;},reopenTrackEditor:editTrack,raceEntryKey:fastForwardKey,fadeMusic:()=>music.fadeOut(input.waitTicks),close:()=>{replayLoading?.close();replayLoading=undefined;window.removeEventListener(ENHANCED_TEXTURES_EVENT,syncEnhancedTextures);window.removeEventListener(ENHANCED_FOV_EVENT,syncEnhancedFov);input.close();files.close();},
   /** Use the live allocated game banks and retained framebuffer. */
   async allocatedRacePresentation(runtime:Awaited<ReturnType<typeof createNativeManualRaceRuntime>>,onPoll:()=>void|Promise<void>,alternate?:Awaited<ReturnType<typeof prepareBrowserNativeManualDisplay>>){
    let upgraded:ReturnType<typeof createUpgradedRaceScene>|undefined,loading=false,closed=false,failed=false,drawRecoveryPending=false;

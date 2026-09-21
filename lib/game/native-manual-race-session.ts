@@ -26,7 +26,7 @@ export async function createNativeManualRaceSession(data:NativeDemoData,menu:Nat
 }
 /** Options has already selected/read the recording. Seed its original bank
  * before resource loading, then follow13A3E's playback/fast-forward branch. */
-export async function createNativeReplayRaceSession(data:NativeDemoData,menu:NativeDemoMenuState&{mouse?:boolean;joystick?:boolean},recording:NativeSelectedReplay,host:{resetMouse(mode:number):void;key(mode:number):Promise<number>},progress:(stage:number)=>void=()=>{}){
+export async function createNativeReplayRaceSession(data:NativeDemoData,menu:NativeDemoMenuState&{mouse?:boolean;joystick?:boolean},recording:NativeSelectedReplay,host:{resetMouse(mode:number):void;key(mode:number):Promise<number>;replayProgress?(frame:number,target:number):void},progress:(stage:number)=>void=()=>{}){
  resetAnalogWheelRaceInput();
  const prepared=await prepareNativeAllocatedRace(data,menu,false,progress,recording),d=0x2d1a0;
  applyDesktopRaceInput(prepared.memory,d,menu);
@@ -36,7 +36,7 @@ export async function reopenNativeManualRaceSession(data:NativeDemoData,before:U
  if(entry==='fresh')resetAnalogWheelRaceInput();
  return enterAllocatedManualSession(data,await prepareNativeAllocatedRaceReentry(data,before,entry,progress),host);
 }
-async function enterAllocatedManualSession(data:NativeDemoData,prepared:Awaited<ReturnType<typeof prepareNativeAllocatedRace>>,host:{resetMouse(mode:number):void;key(mode:number):Promise<number>}){
+async function enterAllocatedManualSession(data:NativeDemoData,prepared:Awaited<ReturnType<typeof prepareNativeAllocatedRace>>,host:{resetMouse(mode:number):void;key(mode:number):Promise<number>;replayProgress?(frame:number,target:number):void}){
  const result=createAllocatedManualSession(data,prepared),audio=createNativeAllocatedSound(()=>result.session.state.memory,0x2d1a0,0x39e1,data.soundDevice);
  const entry=await result.session.enterSimulation(host,{entryStackPointer:0xeee2,incomingSI:0,afterStep:frame=>result.initialWrites.push(...dispatchRaceFrameSounds(frame,audio))});return {...result,entry};
 }
