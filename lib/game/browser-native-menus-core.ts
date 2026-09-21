@@ -206,7 +206,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   const carHost:NativeCarMenuHost={...host,configuration:config,opponent,opponentArt:opponent?opponentArt.resources['opp'+opponent]:undefined,baseline,cars:options.assets.cars as unknown as NativeCarMenuHost['cars'],art:carArt.resources,descriptions:carArt.descriptions,bank};
   if(enhancedMenuEnabled()){
    const actions:ModernCarMenuAction[]=[];
-   let modernShowroom:ReturnType<typeof createUpgradedCarMenu>|undefined;
+   let modernShowroom:ReturnType<typeof createUpgradedCarMenu>|undefined,modernShowroomFallback=false;
    const modernPreview=async(car:NativeMenuCar,paint:number)=>{
     const bankBytes=await bank(car.id),target=new Uint8Array(65536);
     let modelMemory:Uint8Array|undefined;
@@ -214,7 +214,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     const paintCount=Math.max(1,model.paintCount|0),safePaint=Math.max(0,Math.min(paint,paintCount-1));
     model.render(target,0,safePaint);
     if(!modelMemory)return null;
-    modernShowroom??=createUpgradedCarMenu(palette,showroomMaterials.indices,{environment:true});
+    modernShowroom??=createUpgradedCarMenu(palette,showroomMaterials.indices,{environment:!modernShowroomFallback});
     // The original showroom projection is authored for the 320x200 Stunts
     // viewport. Keep that 1.6:1 render aspect here; rendering it into a wider
     // target stretches the car before the menu compositor ever sees it.
@@ -229,7 +229,15 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
      if(snapshot.width!==canvas.width)snapshot.width=canvas.width;
      if(snapshot.height!==canvas.height)snapshot.height=canvas.height;
      new DataView(memory.buffer,memory.byteOffset,memory.byteLength).setInt16(0x2d1a0+0xb00e,angle&1023,true);
-     const rendered=modernShowroom!.draw(memory,snapshot.width,snapshot.height,{pitch,zoom});
+     let rendered:HTMLCanvasElement;
+     try{rendered=modernShowroom!.draw(memory,snapshot.width,snapshot.height,{pitch,zoom});}
+     catch(reason){
+      if(modernShowroomFallback)throw reason;
+      console.warn('[Modern Car Select] Showroom environment failed; falling back to plain 3D preview:',reason);
+      modernShowroom?.close();modernShowroomFallback=true;
+      modernShowroom=createUpgradedCarMenu(palette,showroomMaterials.indices,{environment:false});
+      rendered=modernShowroom.draw(memory,snapshot.width,snapshot.height,{pitch,zoom});
+     }
      snapshotContext.clearRect(0,0,snapshot.width,snapshot.height);snapshotContext.imageSmoothingEnabled=true;snapshotContext.imageSmoothingQuality='high';snapshotContext.drawImage(rendered,0,0,snapshot.width,snapshot.height);
     };
     renderAngle(0);
