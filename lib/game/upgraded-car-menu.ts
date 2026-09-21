@@ -2,8 +2,10 @@ import {readOriginalMaterialPatterns} from './original-material-pattern';
 import * as THREE from 'three';
 import {createCarModel} from './car-model';
 import {applyUpgradedCarMaterials,addUpgradedCarStudyLights,setUpgradedCarGroundContactPanels} from './upgraded-car-materials';
-import {RETRO_SUN} from './upgraded-retro-lighting';
-import {SHOWROOM_SUN} from './showroom-lighting';
+import {createUpgradedRetroLighting,RETRO_SUN} from './upgraded-retro-lighting';
+import {SHOWROOM_SUN,SHOWROOM_SHADOW_WORLD_SCALE} from './showroom-lighting';
+import {createShowroomCarModel} from './showroom-car-model.ts';
+import type {Shape} from './types.ts';
 import {readUpgradedShape} from './upgraded-submission';
 import {rotateZXY,transpose} from '../physics/rotation';
 import {vecTransform} from '../physics/math';
@@ -64,4 +66,68 @@ export function createUpgradedCarMenu(palette:number[],indices:number[],options:
   // shared GPU programs. This prevents every menu change recompiling them.
   disposeModel(retired);if(buildStarted!==undefined)lastBuildMilliseconds=performance.now()-buildStarted;return renderer.domElement;
  },get lastBuildMilliseconds(){return lastBuildMilliseconds;},close(){disposeModel(model);if(floor){floor.geometry.dispose();for(const material of Array.isArray(floor.material)?floor.material:[floor.material])material.dispose();}if(grid){grid.geometry.dispose();for(const material of Array.isArray(grid.material)?grid.material:[grid.material])material.dispose();}renderer.dispose();renderer.forceContextLoss();}};
+}
+
+
+/** Modern Car Select showroom. This deliberately mirrors app/Garage.tsx:
+ * the car is grounded and stationary while the camera orbits around it, so
+ * the real floor/grid moves in perspective exactly like the website showroom.
+ * The WebGL canvas is rendered at the preview's own display size and pixel
+ * ratio, avoiding the old full-screen render -> crop -> rescale blur chain. */
+export function createModernCarShowroom(palette:number[],indices:number[]){
+ const renderer=new THREE.WebGLRenderer({antialias:true,logarithmicDepthBuffer:true,powerPreference:'high-performance'});
+ renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=false;renderer.toneMapping=THREE.ACESFilmicToneMapping;
+
+ const scene=new THREE.Scene();scene.background=new THREE.Color(0x101b25);scene.fog=new THREE.Fog(0x101b25,16,36);
+ const camera=new THREE.PerspectiveCamera(36,1,.05,100);
+ const target=new THREE.Vector3(0,.6,0),initial=new THREE.Vector3(6,3.1,7),offset=initial.clone().sub(target);
+ const baseDistance=offset.length(),baseAzimuth=Math.atan2(offset.x,offset.z),baseElevation=Math.atan2(offset.y,Math.hypot(offset.x,offset.z));
+ addUpgradedCarStudyLights(scene,SHOWROOM_SUN);
+ const retroLighting=createUpgradedRetroLighting({sunDirection:SHOWROOM_SUN,worldScale:SHOWROOM_SHADOW_WORLD_SCALE});
+ const floor=new THREE.Mesh(new THREE.PlaneGeometry(100,100),new THREE.MeshBasicMaterial({color:0x172731,toneMapped:false}));
+ floor.rotation.x=-Math.PI/2;floor.userData.retroDistanceColour=false;scene.add(floor);retroLighting.apply(floor,true,false);
+ const grid=new THREE.GridHelper(40,40,0x47606a,0x243942);grid.position.y=.002;grid.userData.originalEdgeVisibility=true;scene.add(grid);
+
+ let model:THREE.Group|undefined,lastShape:Shape|undefined,lastRaceShape:Shape|undefined,lastPaint=-1,lastBuildMilliseconds:number|undefined,shadowDirty=true,renderWidth=0,renderHeight=0;
+ const disposeModel=(old:THREE.Group|undefined)=>{old?.traverse(node=>{if(node instanceof THREE.Mesh||node instanceof THREE.LineSegments){node.geometry.dispose();for(const material of Array.isArray(node.material)?node.material:[node.material])material.dispose();}});if(old)scene.remove(old);};
+
+ return {
+  draw(shape:Shape,raceShape:Shape|undefined,paint:number,width:number,height:number,rotation?:{angle?:number;pitch?:number;zoom?:number}){
+   let retired:THREE.Group|undefined,buildStarted:number|undefined;
+   if(!model||shape!==lastShape||raceShape!==lastRaceShape||paint!==lastPaint){
+    buildStarted=performance.now();retired=model;retired?.removeFromParent();
+    model=createShowroomCarModel(shape,raceShape,{paint,indices,palette,paletteMaterial:0});
+    scene.add(model);lastShape=shape;lastRaceShape=raceShape;lastPaint=paint;shadowDirty=true;
+   }
+
+   const zoom=Math.max(.6,Math.min(1.9,rotation?.zoom??1));
+   const distance=THREE.MathUtils.clamp(baseDistance/zoom,4,16);
+   const azimuth=baseAzimuth+(rotation?.angle??0)*Math.PI*2/1024;
+   // Website OrbitControls never pass under the floor. Keep the same idea
+   // while retaining the existing drag-return behavior from the Car Select.
+   const elevation=THREE.MathUtils.clamp(baseElevation+(rotation?.pitch??0),Math.PI*.02,Math.PI*.45);
+   const horizontal=Math.cos(elevation)*distance;
+   camera.position.set(
+    target.x+Math.sin(azimuth)*horizontal,
+    target.y+Math.sin(elevation)*distance,
+    target.z+Math.cos(azimuth)*horizontal,
+   );
+   camera.up.set(0,1,0);camera.lookAt(target);
+   if(renderWidth!==width||renderHeight!==height){
+    renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();renderWidth=width;renderHeight=height;
+   }
+
+   if(shadowDirty&&model){retroLighting.drawShadows(renderer,[model],scene);shadowDirty=false;}
+   renderer.render(scene,camera);
+   disposeModel(retired);if(buildStarted!==undefined)lastBuildMilliseconds=performance.now()-buildStarted;
+   return renderer.domElement;
+  },
+  get lastBuildMilliseconds(){return lastBuildMilliseconds;},
+  close(){
+   disposeModel(model);retroLighting.dispose();
+   floor.geometry.dispose();for(const material of Array.isArray(floor.material)?floor.material:[floor.material])material.dispose();
+   grid.geometry.dispose();for(const material of Array.isArray(grid.material)?grid.material:[grid.material])material.dispose();
+   renderer.dispose();renderer.forceContextLoss();
+  }
+ };
 }
