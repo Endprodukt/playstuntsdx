@@ -1,12 +1,12 @@
-import {opponentDrivingStep} from './opponent-driving-step.ts';
+import {versionedOpponentDrivingStep} from './versioned-opponent-driving-step.ts';
 import {opponentRaceStep} from './opponent-race-step.ts';
 export interface OpponentRaceContext {
  previousAngle:number; startX:number; startZ:number; startAngle:number;
  raceWords:number[]; savedRaceWords:number[]; timeAdjustment:number; flags:number;
 }
 /** Original opponent controls, movement and race tail. Shared collision events remain caller-owned. */
-export function opponentTick(args:Parameters<typeof opponentDrivingStep>,race:OpponentRaceContext){
- const movement=opponentDrivingStep(...args);
+export function opponentTick(args:Parameters<typeof versionedOpponentDrivingStep>,race:OpponentRaceContext){
+ const movement=versionedOpponentDrivingStep(...args);
  const raceWords=[...race.raceWords];
  // Engine routine 0xa57f..0xa58d updates the shared unsigned peak road speed.
  raceWords[9]=Math.max(raceWords[9]&65535,movement.engineRoadSpeed&65535);

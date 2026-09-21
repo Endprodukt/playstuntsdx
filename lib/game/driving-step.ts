@@ -1,6 +1,6 @@
 /** Verified single-player driving and crash-effects order. This is not yet the
  * full race loop: opponent updates, race timers and presentation are pending. */
-import {stepTrack} from '../physics/track-step.ts';
+import {stepVersionedTrack} from '../physics/versioned-track-step.ts';
 import type {LevelState} from '../physics/level-step.ts';
 import type {EngineTuning} from '../physics/engine.ts';
 import type {GripTuning} from '../physics/grip.ts';
@@ -10,7 +10,7 @@ import {updateCrashState,type CrashRaceState,type CrashEffect} from './crash-sta
 import {generateParticles,advanceParticles,type Particles} from './particles.ts';
 export interface DrivingState {car:LevelState;race:CrashRaceState;particles:Particles}
 export function stepDrivingCar(before:DrivingState,tuning:EngineTuning&GripTuning,wheels:Vector[],input:number,track:TrackGeometry,frame:number){
- const car=stepTrack(before.car,tuning,wheels,input,track);
+ const car=stepVersionedTrack(before.car,tuning,wheels,input,track);
  let race={...before.race,stats:[...before.race.stats]},particles=before.particles;
  race.stats[2]=frame&65535;
  race.stats[9]=Math.max(race.stats[9],car.engineRoadSpeed);
