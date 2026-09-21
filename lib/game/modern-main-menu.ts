@@ -32,7 +32,7 @@ export function preloadModernMainMenuBackground(){
   const image=new Image();image.decoding='async';
   image.onload=()=>{cachedModernMainBackground=image;resolve(image);};
   image.onerror=()=>{cachedModernMainBackgroundPromise=undefined;reject(new Error('Modern main menu background failed to load'));};
-  image.src='/ui/stunts-dx-main-background.webp';
+  image.src='/ui/stunts-dx-main-background.svg';
  });
  return cachedModernMainBackgroundPromise;
 }
