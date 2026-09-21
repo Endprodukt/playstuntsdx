@@ -4,18 +4,19 @@ import {decodeBlissTrack} from './bliss-track';
 import {enhancedRenderResolution} from './enhanced-resolution-settings';
 import type {Assets} from './types';
 
-export type ModernMainMenuAction='drive'|'car'|'track'|'opponent'|'options'|'none';
+export type ModernMainMenuAction='drive'|'car'|'track'|'opponent'|'options'|'exit'|'none';
 
 type TrackState={name:string;path:string;raw:number[]};
 
-const actions:ModernMainMenuAction[]=['drive','car','track','opponent','options'];
-const carPreview={x:98,y:59,w:94,h:64};
-const trackPreview={x:207,y:59,w:101,h:78};
-const driveButton={x:13,y:52,w:69,h:24};
-const opponentButton={x:13,y:81,w:69,h:24};
-const optionsButton={x:13,y:110,w:69,h:24};
-const carButton={x:104,y:164,w:82,h:20};
-const trackButton={x:213,y:164,w:88,h:20};
+const actions:ModernMainMenuAction[]=['drive','opponent','options','car','track','exit'];
+const carPreview={x:105,y:66,w:88,h:57};
+const trackPreview={x:211,y:66,w:96,h:69};
+const driveButton={x:12,y:56,w:72,h:22};
+const opponentButton={x:12,y:83,w:72,h:19};
+const optionsButton={x:12,y:107,w:72,h:19};
+const exitButton={x:12,y:131,w:72,h:19};
+const carButton={x:108,y:164,w:81,h:18};
+const trackButton={x:215,y:164,w:88,h:18};
 
 const carId=(configuration:readonly number[])=>String.fromCharCode(...configuration.slice(0,4));
 const sceneryName=(landscape:number)=>['DESERT','TROPICAL','CITY','COUNTRY','ALPINE'][landscape]??('SCENERY '+landscape);
@@ -37,7 +38,7 @@ export function createModernMainMenu(options:{
  const trackSurface=document.createElement('canvas');
  let trackView:ReturnType<typeof createBlissEditor3DView>|undefined;
  let trackSignature='';
- let closed=false,focus:ModernMainMenuAction='drive',hover:ModernMainMenuAction='none';
+ let closed=false,suspended=false,focus:ModernMainMenuAction='none',hover:ModernMainMenuAction='none',keyboardFocus=false;
 
  const mount=(surface:HTMLCanvasElement,kind:string)=>{
   const parent=canvas.parentElement;if(!parent)return;
@@ -45,7 +46,7 @@ export function createModernMainMenu(options:{
   for(const [property,value] of [
    ['position','absolute'],['pointer-events','none'],['display','block'],['transform','none'],
    ['max-width','none'],['max-height','none'],['margin','0'],['padding','0'],['border','0'],
-   ['background','#101010'],['z-index','1'],['border-radius','3px'],
+   ['background','#071018'],['z-index','1'],['border-radius','1px'],
   ] as const)surface.style.setProperty(property,value,'important');
   parent.insertBefore(surface,canvas);
  };
@@ -53,20 +54,28 @@ export function createModernMainMenu(options:{
  mount(trackSurface,'modern-main-track-preview');
 
  const sx=()=>canvas.width/320,sy=()=>canvas.height/200;
- const rect=(x:number,y:number,w:number,h:number,fill:string,stroke='#4a4a4a',radius=4,lineWidth=1)=>{
-  const X=x*sx(),Y=y*sy(),W=w*sx(),H=h*sy(),R=Math.max(2,Math.min(radius*sx(),radius*sy()));
+ const rect=(x:number,y:number,w:number,h:number,fill:string,stroke='#27455c',radius=2,lineWidth=1)=>{
+  const X=x*sx(),Y=y*sy(),W=w*sx(),H=h*sy(),R=Math.max(1,Math.min(radius*sx(),radius*sy()));
   ctx.beginPath();ctx.roundRect(X,Y,W,H,R);ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle=stroke;ctx.lineWidth=Math.max(lineWidth,Math.min(sx(),sy()));ctx.stroke();
  };
- const label=(value:string,x:number,y:number,size=7,colour='#e8e8e8',weight=500,align:CanvasTextAlign='left')=>{
-  ctx.fillStyle=colour;ctx.font=`${weight} ${Math.max(9,size*sy())}px system-ui,Segoe UI,sans-serif`;ctx.textAlign=align;ctx.textBaseline='middle';ctx.fillText(value,x*sx(),y*sy());
+ const line=(x1:number,y1:number,x2:number,y2:number,colour:string,width=1)=>{
+  ctx.beginPath();ctx.moveTo(x1*sx(),y1*sy());ctx.lineTo(x2*sx(),y2*sy());ctx.strokeStyle=colour;ctx.lineWidth=Math.max(1,width*Math.min(sx(),sy()));ctx.stroke();
+ };
+ const label=(value:string,x:number,y:number,size=7,colour='#e8edf0',weight=600,align:CanvasTextAlign='left',italic=false)=>{
+  ctx.fillStyle=colour;ctx.font=`${italic?'italic ':''}${weight} ${Math.max(9,size*sy())}px Arial Narrow,Segoe UI,sans-serif`;ctx.textAlign=align;ctx.textBaseline='middle';ctx.fillText(value,x*sx(),y*sy());
  };
  const fit=(value:string,max:number)=>value.length<=max?value:value.slice(0,Math.max(1,max-1))+'…';
  const inside=(x:number,y:number,b:{x:number;y:number;w:number;h:number})=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h;
- const active=(action:ModernMainMenuAction)=>focus===action||hover===action;
- const button=(bounds:{x:number;y:number;w:number;h:number},caption:string,action:ModernMainMenuAction,size=6.5)=>{
+ const activeAction=()=>hover!=='none'?hover:(keyboardFocus?focus:'none');
+ const active=(action:ModernMainMenuAction)=>activeAction()===action;
+ const button=(bounds:{x:number;y:number;w:number;h:number},caption:string,action:ModernMainMenuAction,size=6.4)=>{
   const selected=active(action);
-  rect(bounds.x,bounds.y,bounds.w,bounds.h,selected?'#676a49':'#555657',selected?'#d8d66d':'#777',4,selected?1.5:1);
-  label(caption,bounds.x+bounds.w/2,bounds.y+bounds.h/2+.2,size,selected?'#fff':'#ededed',650,'center');
+  rect(bounds.x,bounds.y,bounds.w,bounds.h,selected?'#f5dc32':'#102638',selected?'#fff2a3':'#3d6986',2,selected?1.4:1);
+  if(!selected){
+   ctx.fillStyle='#17435f';ctx.fillRect(bounds.x*sx(),bounds.y*sy(),2*sx(),bounds.h*sy());
+  }
+  label(caption,bounds.x+7,bounds.y+bounds.h/2+.3,size,selected?'#08121a':'#e7edf1',800,'left',true);
+  label('›',bounds.x+bounds.w-7,bounds.y+bounds.h/2,size+2,selected?'#08121a':'#68b7df',800,'center');
  };
 
  const syncBounds=()=>{
@@ -103,46 +112,77 @@ export function createModernMainMenu(options:{
   return decoded;
  };
 
+ const checker=(x:number,y:number,size=4,cols=5,rows=2)=>{
+  for(let row=0;row<rows;row++)for(let col=0;col<cols;col++)if((row+col)&1){
+   ctx.fillStyle='#57bee8';ctx.fillRect((x+col*size)*sx(),(y+row*size)*sy(),size*sx(),size*sy());
+  }
+ };
+ const stuntMotif=()=>{
+  ctx.save();
+  ctx.globalAlpha=.18;ctx.strokeStyle='#54b8df';ctx.lineWidth=Math.max(1,1.1*Math.min(sx(),sy()));
+  ctx.beginPath();ctx.moveTo(190*sx(),28*sy());ctx.lineTo(210*sx(),28*sy());ctx.quadraticCurveTo(221*sx(),5*sy(),232*sx(),28*sy());ctx.lineTo(248*sx(),28*sy());
+  ctx.arc(263*sx(),28*sy(),12*Math.min(sx(),sy()),Math.PI,Math.PI*3,false);ctx.stroke();
+  ctx.restore();
+ };
+
  const render=()=>{
-  if(closed)return;
+  if(closed||suspended)return;
   syncBounds();
   const car=renderCar(),decoded=renderTrack();
   ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle='#686a6c';ctx.fillRect(0,0,canvas.width,canvas.height);
 
-  rect(7,6,306,28,'#5c5e60','#7d7f80',5);
-  label('STUNTS',14,20,14,'#ededed',900);
-  label('DX',71,20,14,'#d8d66d',900);
-  label('DRIVE  ·  BUILD  ·  REPEAT',305,20,5.2,'#d4d4d4',600,'right');
+  const background=ctx.createLinearGradient(0,0,0,canvas.height);
+  background.addColorStop(0,'#081724');background.addColorStop(1,'#050b11');ctx.fillStyle=background;ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#0d2537';ctx.fillRect(0,0,canvas.width,37*sy());
+  line(0,37,320,37,'#3b91bd',1);
+  stuntMotif();
 
-  rect(7,39,81,154,'#4f5152','#7a7b7c',5);
-  label('MAIN MENU',13,46,6,'#d8d66d',750);
-  button(driveButton,'RACE','drive',8);
-  button(opponentButton,'OPPONENT','opponent',6.3);
-  button(optionsButton,'OPTIONS','options',6.8);
-  label('Car and track selection',13,146,4.2,'#c6c6c6',500);
-  label('live in the preview cards.',13,153,4.2,'#c6c6c6',500);
-  label('ESC  Exit',13,181,4.5,'#bcbcbc',550);
+  // Original-inspired STUNTS DX wordmark: bold italic block lettering, cyan
+  // shadow and checker detail instead of the previous plain system heading.
+  label('STUNTS',14,18,16,'#66c9ef',900,'left',true);
+  label('STUNTS',12.7,16.7,16,'#f1f2ee',900,'left',true);
+  label('DX',78,17,14,'#61d3ef',900,'left',true);
+  checker(111,10,4,6,2);
+  label('DRIVE  •  BUILD  •  JUMP  •  REPEAT',151,13,4.2,'#8ab5cd',700);
+  label('A MODERN REMASTER OF A CLASSIC',151,23,4,'#597c92',650);
 
-  rect(93,39,104,154,'#4f5152','#7a7b7c',5);
-  label('CURRENT CAR',100,49,6,'#dadada',750);
-  label(fit(car.name??car.id,14),190,49,6,'#d8d66d',750,'right');
+  rect(7,44,82,148,'#0a1721','#2d536b',3);
+  label('MAIN MENU',13,50,5.3,'#71bfe3',800);
+  button(driveButton,'RACE','drive',7.5);
+  button(opponentButton,'OPPONENT','opponent',6.1);
+  button(optionsButton,'OPTIONS','options',6.4);
+  button(exitButton,'EXIT','exit',6.4);
+  line(13,157,82,157,'#244459');
+  label('MOUSE OR D-PAD',13,164,4.1,'#6e8fa4',650);
+  label('ENTER  SELECT',13,173,4.1,'#b7c8d2',650);
+  label('ESC  EXIT',13,181,4.1,'#b7c8d2',650);
+  checker(63,183,3,6,2);
+
+  rect(94,44,104,148,'#0a1721','#2d536b',3);
+  label('CURRENT CAR',101,51,5.2,'#b9d7e7',800);
+  label(fit(car.name??car.id,14),191,51,5.2,'#f0dd61',800,'right',true);
   ctx.clearRect(carPreview.x*sx(),carPreview.y*sy(),carPreview.w*sx(),carPreview.h*sy());
-  label(car.id,100,133,5,'#aaa',650);
-  label(`${car.gears??'?'} GEARS`,100,142,4.4,'#cfcfcf',550);
-  label(`${car.mass??'?'} KG`,190,142,4.4,'#cfcfcf',550,'right');
-  label(`${car.maxRPM??'?'} RPM`,100,151,4.4,'#cfcfcf',550);
-  button(carButton,'CHANGE CAR','car',5.8);
+  line(101,130,191,130,'#223e50');
+  label(car.id,101,137,4.5,'#6fb5d6',750);
+  label(`${car.gears??'?'} GEARS`,101,146,4,'#a9bbc5',600);
+  label(`${car.mass??'?'} KG`,191,146,4,'#a9bbc5',600,'right');
+  label(`${car.maxRPM??'?'} RPM`,101,154,4,'#a9bbc5',600);
+  button(carButton,'CHANGE CAR','car',5.3);
 
-  rect(202,39,111,154,'#4f5152','#7a7b7c',5);
-  label('SELECTED TRACK',208,49,6,'#dadada',750);
-  label(fit(options.track.name||'UNTITLED',15),307,49,6,'#d8d66d',750,'right');
+  rect(203,44,110,148,'#0a1721','#2d536b',3);
+  label('SELECTED TRACK',210,51,5.2,'#b9d7e7',800);
+  label(fit(options.track.name||'UNTITLED',15),306,51,5.2,'#f0dd61',800,'right',true);
   ctx.clearRect(trackPreview.x*sx(),trackPreview.y*sy(),trackPreview.w*sx(),trackPreview.h*sy());
-  label('SCENERY',208,143,4.1,'#a9a9a9',650);
-  label(sceneryName(decoded.landscape),307,143,4.8,'#e3e3e3',650,'right');
-  label('FORMAT',208,151,4.1,'#a9a9a9',650);
-  label(String(decoded.format),307,151,4.8,'#e3e3e3',650,'right');
-  button(trackButton,'CHANGE TRACK','track',5.4);
+  line(210,140,306,140,'#223e50');
+  label('SCENERY',210,146,3.8,'#6e8fa4',700);
+  label(sceneryName(decoded.landscape),306,146,4.2,'#d9e3e8',700,'right');
+  label('FORMAT',210,154,3.8,'#6e8fa4',700);
+  label(String(decoded.format),306,154,4.2,'#d9e3e8',700,'right');
+  button(trackButton,'CHANGE TRACK','track',5.1);
+
+  line(7,196,313,196,'#22475e');
+  label('STUNTS DX',8,198,3.5,'#4d87a5',700);
+  label('SAME ROADS. BIGGER POSSIBILITIES.',312,198,3.5,'#4d87a5',700,'right');
   ctx.restore();
   carSurface.style.display='block';trackSurface.style.display='block';
  };
@@ -152,21 +192,36 @@ export function createModernMainMenu(options:{
   if(inside(x,y,driveButton))return 'drive';
   if(inside(x,y,opponentButton))return 'opponent';
   if(inside(x,y,optionsButton))return 'options';
-  if(inside(x,y,carButton)||inside(x,y,{x:93,y:39,w:104,h:154}))return 'car';
-  if(inside(x,y,trackButton)||inside(x,y,{x:202,y:39,w:111,h:154}))return 'track';
+  if(inside(x,y,exitButton))return 'exit';
+  // Only the actual buttons are interactive. Entering a preview card must not
+  // light up CHANGE CAR / CHANGE TRACK.
+  if(inside(x,y,carButton))return 'car';
+  if(inside(x,y,trackButton))return 'track';
   return 'none';
  };
 
- const observer=new ResizeObserver(()=>{syncBounds();trackView?.render();});
+ const observer=new ResizeObserver(()=>{if(!suspended){syncBounds();trackView?.render();render();}});
  observer.observe(canvas);render();
 
  return {
   render,
-  setFocus(action:ModernMainMenuAction){focus=action;render();},
+  setFocus(action:ModernMainMenuAction){focus=action;keyboardFocus=action!=='none';render();},
   actionAt,
-  hoverAt(event:{clientX:number;clientY:number}){const next=actionAt(event);if(next!==hover){hover=next;render();}},
-  clearHover(){if(hover!=='none'){hover='none';render();}},
-  nextFocus(direction:1|-1){const index=Math.max(0,actions.indexOf(focus));focus=actions[(index+direction+actions.length)%actions.length];render();return focus;},
+  hoverAt(event:{clientX:number;clientY:number}){
+   keyboardFocus=false;
+   const next=actionAt(event);if(next!==hover){hover=next;render();}else if(next==='none')render();
+  },
+  clearHover(){keyboardFocus=false;if(hover!=='none'){hover='none';render();}},
+  nextFocus(direction:1|-1){
+   hover='none';keyboardFocus=true;
+   if(focus==='none'){focus='drive';render();return focus;}
+   const index=Math.max(0,actions.indexOf(focus));focus=actions[(index+direction+actions.length)%actions.length];render();return focus;
+  },
+  setSuspended(value:boolean){
+   suspended=value;
+   carSurface.style.display=value?'none':'block';trackSurface.style.display=value?'none':'block';
+   if(!value)render();
+  },
   close(){if(closed)return;closed=true;observer.disconnect();trackView?.close();trackView=undefined;carShowroom.close();carSurface.remove();trackSurface.remove();canvas.style.background=menuCanvasBackground;canvas.style.zIndex=menuCanvasZIndex;}
  };
 }
