@@ -46,7 +46,7 @@ export function createModernMainMenu(options:{
  backgroundArt.onload=()=>{backgroundArtReady=true;if(!closed&&!suspended)render();};
  backgroundArt.onerror=()=>{backgroundArtReady=false;};
  backgroundArt.src='/ui/stunts-dx-main-background.svg';
- let closed=false,suspended=false,focus:ModernMainMenuAction='none',hover:ModernMainMenuAction='none',keyboardFocus=false;
+ let closed=false,suspended=false,focus:ModernMainMenuAction='none',hover:ModernMainMenuAction='none',keyboardFocus=false,carAngle=80,lastCarFrame=performance.now(),animationFrame=0;
 
  const mount=(surface:HTMLCanvasElement,kind:string)=>{
   const parent=canvas.parentElement;if(!parent)return;
@@ -140,7 +140,7 @@ export function createModernMainMenu(options:{
   const shape=options.assets.shapes['ST'+car.id]?.car0,raceShape=options.assets.shapes['ST'+car.id]?.car1;
   if(shape){
    const scale=enhancedRenderResolution().width/320;
-   carShowroom.draw(shape,raceShape,Math.max(0,options.configuration[4]??0),Math.max(1,Math.round(carPreview.w*scale)),Math.max(1,Math.round(carPreview.h*scale)),{angle:80,pitch:0,zoom:1});
+   carShowroom.draw(shape,raceShape,Math.max(0,options.configuration[4]??0),Math.max(1,Math.round(carPreview.w*scale)),Math.max(1,Math.round(carPreview.h*scale)),{angle:carAngle,pitch:0,zoom:1.28});
   }
   return car;
  };
@@ -175,7 +175,11 @@ export function createModernMainMenu(options:{
 
   if(backgroundArtReady){
    ctx.save();ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
-   ctx.drawImage(backgroundArt,0,0,backgroundArt.naturalWidth,backgroundArt.naturalHeight,0,0,canvas.width,canvas.height);
+   const sourceRatio=backgroundArt.naturalWidth/backgroundArt.naturalHeight,targetRatio=canvas.width/canvas.height;
+   let sw=backgroundArt.naturalWidth,sh=backgroundArt.naturalHeight,sx0=0,sy0=0;
+   if(sourceRatio>targetRatio){sw=sh*targetRatio;sx0=(backgroundArt.naturalWidth-sw)/2;}
+   else if(sourceRatio<targetRatio){sh=sw/targetRatio;sy0=(backgroundArt.naturalHeight-sh)/2;}
+   ctx.drawImage(backgroundArt,sx0,sy0,sw,sh,0,0,canvas.width,canvas.height);
    // Darken the lower UI field just enough for the panels to read while
    // leaving the loop, car and checker artwork visible around them.
    const shade=ctx.createLinearGradient(0,38*sy(),0,canvas.height);
@@ -248,6 +252,20 @@ export function createModernMainMenu(options:{
   return 'none';
  };
 
+ const captureBackground=()=>{
+  const shot=document.createElement('canvas');shot.width=canvas.width;shot.height=canvas.height;
+  const out=shot.getContext('2d')!;out.drawImage(canvas,0,0);
+  out.drawImage(carSurface,carPreview.x*sx(),carPreview.y*sy(),carPreview.w*sx(),carPreview.h*sy());
+  out.drawImage(trackSurface,trackPreview.x*sx(),trackPreview.y*sy(),trackPreview.w*sx(),trackPreview.h*sy());
+  return shot;
+ };
+ const animateCar=(now:number)=>{
+  if(closed)return;
+  const delta=Math.min(100,Math.max(0,now-lastCarFrame));lastCarFrame=now;
+  if(!suspended){carAngle=(carAngle+delta*.04)%1024;renderCar();}
+  animationFrame=requestAnimationFrame(animateCar);
+ };
+ animationFrame=requestAnimationFrame(animateCar);
  const observer=new ResizeObserver(()=>{if(!suspended){syncBounds();trackView?.render();render();}});
  observer.observe(canvas);render();
 
@@ -265,11 +283,12 @@ export function createModernMainMenu(options:{
    if(focus==='none'){focus='drive';render();return focus;}
    const index=Math.max(0,actions.indexOf(focus));focus=actions[(index+direction+actions.length)%actions.length];render();return focus;
   },
+  captureBackground,
   setSuspended(value:boolean){
    suspended=value;
    carSurface.style.display=value?'none':'block';trackSurface.style.display=value?'none':'block';
    if(!value)render();
   },
-  close(){if(closed)return;closed=true;backgroundArt.onload=null;backgroundArt.onerror=null;observer.disconnect();trackView?.close();trackView=undefined;carShowroom.close();carSurface.remove();trackSurface.remove();canvas.style.background=menuCanvasBackground;canvas.style.zIndex=menuCanvasZIndex;}
+  close(){if(closed)return;closed=true;cancelAnimationFrame(animationFrame);backgroundArt.onload=null;backgroundArt.onerror=null;observer.disconnect();trackView?.close();trackView=undefined;carShowroom.close();carSurface.remove();trackSurface.remove();canvas.style.background=menuCanvasBackground;canvas.style.zIndex=menuCanvasZIndex;}
  };
 }
