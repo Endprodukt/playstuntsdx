@@ -205,12 +205,21 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
   const carHost:NativeCarMenuHost={...host,configuration:config,opponent,opponentArt:opponent?opponentArt.resources['opp'+opponent]:undefined,baseline,cars:options.assets.cars as unknown as NativeCarMenuHost['cars'],art:carArt.resources,descriptions:carArt.descriptions,bank};
   if(enhancedMenuEnabled()){
    const actions:ModernCarMenuAction[]=[];
+   const menuCanvasBackground=canvas.style.background;
+   canvas.style.background='transparent';
    let modernShowroom:ReturnType<typeof createModernCarShowroom>|undefined,modernShowroomMounted=false;
    const mountModernShowroom=()=>{
     if(!modernShowroom||modernShowroomMounted)return;
     const surface=modernShowroom.canvas,parent=canvas.parentElement;if(!parent)return;
-    surface.setAttribute('aria-hidden','true');surface.style.position='absolute';surface.style.pointerEvents='none';surface.style.display='block';
-    surface.style.background='#101b25';surface.style.margin='0';surface.style.padding='0';surface.style.border='0';
+    surface.classList.add('modern-car-showroom-canvas');surface.setAttribute('aria-hidden','true');
+    // Desktop CSS deliberately forces every ordinary game canvas to the full
+    // 4:3 window with !important. This auxiliary WebGL surface must escape that
+    // rule or it ends up full-screen and hidden behind the menu's black canvas.
+    for(const [property,value] of [
+     ['position','absolute'],['pointer-events','none'],['display','block'],['transform','none'],
+     ['max-width','none'],['max-height','none'],['margin','0'],['padding','0'],['border','0'],
+     ['background','#101b25'],['z-index','0'],
+    ] as const)surface.style.setProperty(property,value,'important');
     parent.insertBefore(surface,canvas);modernShowroomMounted=true;
    };
    const syncModernShowroomBounds=()=>{
@@ -218,9 +227,10 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
     const surface=modernShowroom.canvas,parent=canvas.parentElement;if(!parent)return;
     const canvasRect=canvas.getBoundingClientRect(),parentRect=parent.getBoundingClientRect();
     const scaleX=canvasRect.width/320,scaleY=canvasRect.height/200;
-    surface.style.left=`${canvasRect.left-parentRect.left+8*scaleX}px`;
-    surface.style.top=`${canvasRect.top-parentRect.top+45*scaleY}px`;
-    surface.style.width=`${218*scaleX}px`;surface.style.height=`${92*scaleY}px`;
+    surface.style.setProperty('left',`${canvasRect.left-parentRect.left+8*scaleX}px`,'important');
+    surface.style.setProperty('top',`${canvasRect.top-parentRect.top+45*scaleY}px`,'important');
+    surface.style.setProperty('width',`${218*scaleX}px`,'important');
+    surface.style.setProperty('height',`${92*scaleY}px`,'important');
    };
    const modernPreview=async(car:NativeMenuCar,paint:number)=>{
     const shapes=options.assets.shapes['ST'+car.id],shape=shapes?.car0,raceShape=shapes?.car1;
@@ -305,7 +315,7 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
    canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerup',pointerUp,true);canvas.addEventListener('pointercancel',pointerUp,true);canvas.addEventListener('pointerleave',pointerLeave,true);canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
    try{return await runModernCarMenu(modernHost,modern);}finally{
     canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerup',pointerUp,true);canvas.removeEventListener('pointercancel',pointerUp,true);canvas.removeEventListener('pointerleave',pointerLeave,true);canvas.removeEventListener('wheel',wheel,true);
-    modernShowroom?.close();modernShowroom=undefined;modernShowroomMounted=false;
+    modernShowroom?.close();modernShowroom=undefined;modernShowroomMounted=false;canvas.style.background=menuCanvasBackground;
    }
   }
   if(!options.displayMode){
