@@ -10,7 +10,7 @@ import {vecTransform} from '../physics/math';
 /** Depth-tested original showroom geometry. Unlike the source painter queue,
  * every face remains available as the car rotates; no simulation is owned here. */
 export function createUpgradedCarMenu(palette:number[],indices:number[]){
- const renderer=new THREE.WebGLRenderer({antialias:true,logarithmicDepthBuffer:true,powerPreference:'high-performance'});renderer.toneMapping=THREE.ACESFilmicToneMapping;
+ const renderer=new THREE.WebGLRenderer({antialias:true,logarithmicDepthBuffer:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.toneMapping=THREE.ACESFilmicToneMapping;
  const scene=new THREE.Scene(),world=new THREE.Group();world.scale.z=-1;scene.add(world);
  scene.background=new THREE.Color(0x101b25);scene.fog=new THREE.Fog(0x101b25,16*400,36*400);
  addUpgradedCarStudyLights(scene,SHOWROOM_SUN);
@@ -21,7 +21,7 @@ export function createUpgradedCarMenu(palette:number[],indices:number[]){
  for(const material of Array.isArray(grid.material)?grid.material:[grid.material])material.toneMapped=false;
  world.add(grid);
  const camera=new THREE.PerspectiveCamera();camera.near=1;camera.far=30000;
- let model:THREE.Group|undefined,bank:Uint8Array|undefined,lastPaint=-1,lastBuildMilliseconds:number|undefined,floorDirty=true;
+ let model:THREE.Group|undefined,bank:Uint8Array|undefined,lastPaint=-1,lastBuildMilliseconds:number|undefined,floorDirty=true,renderWidth=0,renderHeight=0;
  const roadContactY=(car:THREE.Group)=>{
   car.updateMatrixWorld(true);
   const tires:THREE.Mesh[]=[];car.traverse(node=>{if(node instanceof THREE.Mesh&&node.userData.originalWheelPart==='tire')tires.push(node);});
@@ -45,7 +45,7 @@ export function createUpgradedCarMenu(palette:number[],indices:number[]){
   camera.position.set(0,0,0);camera.up.set(up[0],up[1],-up[2]);camera.lookAt(forward[0],forward[1],-forward[2]);
   const [cx,cy,fx,fy]=[0,1,2,3].map(i=>word(0x4b88+i*2)),zoomFx=fx*zoom,zoomFy=fy*zoom;
   camera.projectionMatrix.makePerspective(-cx/zoomFx,(320-cx)/zoomFx,cy/zoomFy,-(200-cy)/zoomFy,1,30000);camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
-  if(renderer.domElement.width!==width||renderer.domElement.height!==height)renderer.setSize(width,height,false);
+  if(renderWidth!==width||renderHeight!==height){renderer.setSize(width,height,false);renderWidth=width;renderHeight=height;}
   retroLighting.drawShadows(renderer,[model!],scene);
   renderer.render(scene,camera);
   // Dispose the previous car only after the replacement has acquired the
