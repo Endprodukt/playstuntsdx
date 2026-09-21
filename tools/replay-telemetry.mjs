@@ -78,7 +78,7 @@ async function main(){
  await mkdir(options.output,{recursive:true});
  const files=(await readdir(options.input,{withFileTypes:true})).filter(x=>x.isFile()&&/\.rpl$/i.test(x.name)).map(x=>x.name).sort();
  if(!files.length){console.log('No .RPL files found in '+options.input);return;}
- const vite=await createServer({root:repoRoot,configFile:false,appType:'custom',server:{middlewareMode:true},logLevel:'error'});
+ const vite=await createServer({root:repoRoot,configFile:false,appType:'custom',server:{middlewareMode:true,watch:{ignored:['**/.vs/**','**/.git/**','**/node_modules/**','**/training/replays/**','**/dist/**','**/dist-desktop/**','**/src-tauri/target/**']}},logLevel:'error'});
  try{
   const [{decodeOriginalReplayFile},{createNativeReplaySession}]=await Promise.all([
    vite.ssrLoadModule('/lib/game/replay-file.ts'),
