@@ -13,10 +13,11 @@ export function createEnhancedCarMenuPresentation(options:{
  canvas:HTMLCanvasElement;
  palette:number[];
  preview:(car:NativeMenuCar,paint:number)=>Promise<{canvas:HTMLCanvasElement;paintCount:number;render(angle:number,pitch?:number,zoom?:number):void}|null>;
+ paintColours?:(car:NativeMenuCar)=>readonly number[];
 }):ModernCarMenuPresentation&{inPreview(event:{clientX:number;clientY:number}):boolean;beginRotate():void;rotateBy(dx:number,dy:number):void;endRotate():void;zoomBy(delta:number):void}{
  const {canvas}=options,ctx=canvas.getContext('2d')!;
  let cars:readonly NativeMenuCar[]=[],selected=0,dropdownOpen=false,dropdownStart=0,hover:ModernCarMenuAction={type:'none'},focus:ModernCarMenuFocus={type:'selector'};
- let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,closed=false,previewCanvas:HTMLCanvasElement|undefined,previewError=false,previewRender:((angle:number,pitch?:number,zoom?:number)=>void)|undefined,animation=0,lastAnimation=0,currentAngle=0,lastTick=performance.now(),manualRotate=false,manualPitch=0,previewZoom=1,currentCarId='',returning=false,returnStarted=0,returnFromAngle=0,returnFromPitch=0;
+ let current:NativeMenuCar|undefined,currentTransmission=0,currentPaint=0,paintCount=1,paintColours:readonly number[]=[],closed=false,previewCanvas:HTMLCanvasElement|undefined,previewError=false,previewRender:((angle:number,pitch?:number,zoom?:number)=>void)|undefined,animation=0,lastAnimation=0,currentAngle=0,lastTick=performance.now(),manualRotate=false,manualPitch=0,previewZoom=1,currentCarId='',returning=false,returnStarted=0,returnFromAngle=0,returnFromPitch=0;
 
  const sx=()=>canvas.width/320,sy=()=>canvas.height/200;
  const rect=(x:number,y:number,w:number,h:number,fill:string,stroke='#3b3b3b',radius=5,lineWidth=1)=>{
@@ -57,6 +58,23 @@ export function createEnhancedCarMenuPresentation(options:{
  const button=(bounds:{x:number;y:number;w:number;h:number},caption:string,type:ModernCarMenuAction['type'],size=6.4)=>{
   const active=over(type);rect(bounds.x,bounds.y,bounds.w,bounds.h,active?'#5b6330':'#232323',active?'#b4c35a':'#555',4,active?1.5:1);
   label(caption,bounds.x+bounds.w/2,bounds.y+bounds.h/2+.2,size,active?'#fff':'#e8e8e8',600,'center');
+ };
+ const fallbackPaints=[0xe7bd32,0xd54937,0x267fa8,0xdadfdd,0x314639] as const;
+ const paintRects=()=>{
+  const count=Math.max(1,paintCount),gap=2.2,padding=5;
+  const size=Math.min(11,(colourButton.w-padding*2-gap*(count-1))/count);
+  const total=size*count+gap*(count-1),start=colourButton.x+(colourButton.w-total)/2;
+  return Array.from({length:count},(_,index)=>({x:start+index*(size+gap),y:colourButton.y+(colourButton.h-size)/2,w:size,h:size,index}));
+ };
+ const drawPaints=()=>{
+  const active=over('colour');
+  rect(colourButton.x,colourButton.y,colourButton.w,colourButton.h,active?'#262d1a':'#171717',active?'#aeba5a':'#444',4,active?1.2:1);
+  const hovered=hover.type==='colour'?hover.index:undefined;
+  for(const swatch of paintRects()){
+   const value=paintColours[swatch.index]??fallbackPaints[swatch.index%fallbackPaints.length],selectedPaint=swatch.index===currentPaint,isOver=hovered===swatch.index;
+   const fill='#'+value.toString(16).padStart(6,'0');
+   rect(swatch.x,swatch.y,swatch.w,swatch.h,fill,selectedPaint?'#d8ff21':isOver?'#e6e6e6':'#575757',2,selectedPaint?1.8:isOver?1.3:.7);
+  }
  };
  const updateDropdownStart=()=>{
   const maxStart=Math.max(0,cars.length-dropdownRows);
@@ -154,7 +172,9 @@ export function createEnhancedCarMenuPresentation(options:{
   ctx.save();ctx.beginPath();ctx.roundRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy(),4*Math.min(sx(),sy()));ctx.clip();
   ctx.fillStyle='#0a0b0a';ctx.fillRect(previewRect.x*sx(),previewRect.y*sy(),previewRect.w*sx(),previewRect.h*sy());
   if(previewCanvas){
-   const previousSmoothing=ctx.imageSmoothingEnabled;ctx.imageSmoothingEnabled=true;
+   // The WebGL preview already carries MSAA. A second bilinear resample here
+   // visibly softens the low-poly edges, especially at 4x and higher render sizes.
+   const previousSmoothing=ctx.imageSmoothingEnabled;ctx.imageSmoothingEnabled=false;
    const targetX=previewRect.x*sx(),targetY=previewRect.y*sy(),targetW=previewRect.w*sx(),targetH=previewRect.h*sy();
    // The car itself occupies the upper showroom portion of the original
    // 320x200 frame. Crop that logical showroom window first, then scale it
@@ -182,7 +202,7 @@ export function createEnhancedCarMenuPresentation(options:{
   button(importButton,'IMPORT','import');
   drawPreview();drawInfo();drawGraph();drawDescription();
   button(transmissionButton,currentTransmission?'AUTOMATIC':'MANUAL','transmission',5.2);
-  button(colourButton,`COLOUR · ${currentPaint+1}`,'colour',5.2);
+  drawPaints();
   button(doneButton,'DONE','done',7);
   if(dropdownOpen)drawDropdown();
   ctx.restore();
@@ -211,7 +231,7 @@ export function createEnhancedCarMenuPresentation(options:{
   setCars(next,nextSelected,open){cars=next;selected=Math.max(0,Math.min(Math.max(0,cars.length-1),nextSelected));dropdownOpen=open;updateDropdownStart();},
   setFocus(next){const changed=focus.type!==next.type;focus=next;if(changed)render();},
   async draw(car,transmission,paint){
-   if(currentCarId!==car.id){previewZoom=1;currentCarId=car.id;}current=car;currentTransmission=transmission;currentPaint=paint;previewCanvas=undefined;previewRender=undefined;previewError=false;render();
+   if(currentCarId!==car.id){previewZoom=1;currentCarId=car.id;}current=car;currentTransmission=transmission;currentPaint=paint;paintColours=options.paintColours?.(car)??[];previewCanvas=undefined;previewRender=undefined;previewError=false;render();
    try{
     const preview=await options.preview(car,paint);
     if(preview){previewCanvas=preview.canvas;previewRender=preview.render;paintCount=Math.max(1,preview.paintCount|0);preview.render(Math.floor(currentAngle)&1023,manualRotate?manualPitch:0,previewZoom);}
@@ -235,7 +255,10 @@ export function createEnhancedCarMenuPresentation(options:{
    if(inside(importButton))return {type:'import'};
    if(inside(soundButton))return {type:'sound',direction:1};
    if(inside(transmissionButton))return {type:'transmission'};
-   if(inside(colourButton))return {type:'colour'};
+   if(inside(colourButton)){
+    const swatch=paintRects().find(bounds=>inside(bounds));
+    return swatch?{type:'colour',index:swatch.index}:{type:'colour'};
+   }
    if(inside(doneButton))return {type:'done'};
    return {type:'none'};
   },
@@ -259,7 +282,9 @@ export function createEnhancedCarMenuPresentation(options:{
   rotateBy(dx:number,dy:number){
    if(!manualRotate||!previewRender)return;
    currentAngle=(currentAngle+dx*3.2+1024)%1024;
-   manualPitch=(manualPitch+dy*.0125)%(Math.PI*2);
+   // Keep the camera presentation above the road plane. The original free
+   // pitch could flip the car far enough to expose its underside through the floor.
+   manualPitch=Math.max(-Math.PI/15,Math.min(Math.PI/15,manualPitch+dy*.0125));
    previewRender(Math.floor(currentAngle)&1023,manualPitch,previewZoom);render();
   },
   endRotate(){
