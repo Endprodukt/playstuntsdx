@@ -108,7 +108,7 @@ async function runEmbeddedDosbox(workspace,expectedBytes){
   ci.events().onStdout(message=>{
    if(!message)return;
    transcript=(transcript+message+'\n').slice(-32768);
-   if(transcript.includes(marker))succeed();
+   if(transcript.includes(marker)||/(?:^|\n)Done\.\s*(?:\n|$)/.test(transcript))succeed();
   });
   ci.events().onExit(()=>{exited=true;fail('Embedded DOSBox exited before repldump completed'+(transcript?': '+transcript.slice(-2000):''));});
   timeout=setTimeout(()=>fail('Embedded DOSBox timed out waiting for repldump'+(transcript?': '+transcript.slice(-2000):'')),120000);
