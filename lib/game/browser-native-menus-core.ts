@@ -76,9 +76,11 @@ const HIRES_MAIN_MENU='/game/hires/main-menu.png';
 
 function showroomPrimitiveArea(shape:Shape,primitive:Primitive){
  const [first,...rest]=primitive.indices;if(first===undefined||rest.length<2)return 0;
- const origin=shape.vertices[first],cross=[0,0,0];
+ const origin=shape.vertices[first];if(!origin||origin.length<3)return 0;
+ const cross=[0,0,0];
  for(let i=0;i<rest.length-1;i++){
   const a=shape.vertices[rest[i]],b=shape.vertices[rest[i+1]];
+  if(!a||!b||a.length<3||b.length<3)continue;
   const ax=a[0]-origin[0],ay=a[1]-origin[1],az=a[2]-origin[2];
   const bx=b[0]-origin[0],by=b[1]-origin[1],bz=b[2]-origin[2];
   cross[0]+=ay*bz-az*by;cross[1]+=az*bx-ax*bz;cross[2]+=ax*by-ay*bx;
@@ -88,14 +90,14 @@ function showroomPrimitiveArea(shape:Shape,primitive:Primitive){
 
 function showroomPaintColours(shape:Shape){
  let body:Primitive|undefined,bestArea=-1;
- for(const primitive of shape.primitives){
-  if(primitive.type<3||primitive.type>10||primitive.materials.length<2||new Set(primitive.materials).size<2)continue;
+ for(const primitive of shape.primitives??[]){
+  if(primitive.type<3||primitive.type>10||!primitive.materials?.length||primitive.materials.length<2||new Set(primitive.materials).size<2)continue;
   const area=showroomPrimitiveArea(shape,primitive);if(area>bestArea){bestArea=area;body=primitive;}
  }
- const count=Math.max(1,shape.paintCount|0);
+ const count=Math.max(1,Number.isFinite(shape.paintCount)?shape.paintCount|0:1);
  return Array.from({length:count},(_,paint)=>{
-  const material=body?.materials[Math.min(paint,(body?.materials.length??1)-1)]??0,index=showroomMaterials.indices[material]??0;
-  return (showroomMaterials.palette[index*3]<<16)|(showroomMaterials.palette[index*3+1]<<8)|showroomMaterials.palette[index*3+2];
+  const materials=body?.materials??[],slot=Math.max(0,Math.min(paint,Math.max(0,materials.length-1))),material=materials[slot]??0,index=showroomMaterials.indices[material]??0,at=index*3;
+  return ((showroomMaterials.palette[at]??0)<<16)|((showroomMaterials.palette[at+1]??0)<<8)|(showroomMaterials.palette[at+2]??0);
  });
 }
 type TextResources={resources:NativeDialogHost['resources']};
