@@ -25,12 +25,19 @@ async function confirmModernExit(canvas:HTMLCanvasElement,input:ReturnType<typeo
   rect(84,65,152,72,'#141414','#777',7,1.4);label('EXIT GAME?',160,83,8,'#eee',750);label('Return to desktop?',160,99,4.8,'#888',500);
   buttons.forEach((b,index)=>{const active=index===selected;rect(b.x,b.y,b.w,b.h,active?'#454d28':'#242424',active?'#bdca66':'#555',4,active?1.5:1);label(index?'EXIT':'CANCEL',b.x+b.w/2,b.y+b.h/2,5.4,active?'#fff':'#ccc',650);});
  };
- const pointer=(event:PointerEvent)=>{
+ const choiceAt=(event:{clientX:number;clientY:number})=>{
   const bounds=canvas.getBoundingClientRect(),x=(event.clientX-bounds.left)*320/bounds.width,y=(event.clientY-bounds.top)*200/bounds.height;
-  const index=buttons.findIndex(b=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h);
-  if(index<0)return;event.preventDefault();event.stopImmediatePropagation();selected=index;pointerChoice=index;pointerActivate=true;draw();
+  return buttons.findIndex(b=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h);
  };
- canvas.addEventListener('pointerdown',pointer,true);draw();
+ const pointerMove=(event:PointerEvent)=>{
+  const index=choiceAt(event);if(index<0||index===selected)return;
+  selected=index;draw();
+ };
+ const pointerDown=(event:PointerEvent)=>{
+  const index=choiceAt(event);if(index<0)return;
+  event.preventDefault();event.stopImmediatePropagation();selected=index;pointerChoice=index;pointerActivate=true;draw();
+ };
+ canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerdown',pointerDown,true);draw();
  try{
   for(;;){
    const sample=await input.read();
@@ -40,7 +47,7 @@ async function confirmModernExit(canvas:HTMLCanvasElement,input:ReturnType<typeo
    if(key===0x4b00||key===0x4d00||key===0x4800||key===0x5000){selected^=1;draw();continue;}
    if(key===13||key===32)return selected===1?1:0;
   }
- }finally{canvas.removeEventListener('pointerdown',pointer,true);context.setTransform(1,0,0,1,0,0);context.drawImage(saved,0,0);}
+ }finally{canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerdown',pointerDown,true);context.setTransform(1,0,0,1,0,0);context.drawImage(saved,0,0);}
 }
 /** Main2D16..2D4E: original exit confirmation after Escape from the opening.
  * The current opening framebuffer remains the background in every display. */
