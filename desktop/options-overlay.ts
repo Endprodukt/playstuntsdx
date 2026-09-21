@@ -1,7 +1,9 @@
 import type {Assets} from '../lib/game/types';
+import {ENGINE_SOUND_PRESETS,loadSoundModSettings,saveSoundModSettings,type EngineSoundPreset} from '../lib/game/sound-mod-settings';
 import {enhancedBackgroundEnabled,enhancedCockpitEnabled,setEnhancedBackgroundEnabled,setEnhancedCockpitEnabled} from '../lib/game/enhanced-textures';
 import {enhancedFovWidth,setEnhancedFovWidth} from '../lib/game/enhanced-view-settings';
 import {ENHANCED_RENDER_SCALES,enhancedRenderScale,setEnhancedRenderScale} from '../lib/game/enhanced-resolution-settings';
+import {currentPlayerCarId} from '../lib/game/current-player-car';
 const fpsStorageKey='playstunts-dx-fps-visible';
 const graphicsStorageKey='playstunts-dx-enhanced-graphics';
 const steeringDeadzoneStorageKey='playstunts-dx-steering-deadzone-percent';
@@ -125,7 +127,7 @@ function dispatchFpsShortcut(){
 /** Turns the old wheel-only F8 popup into a general Options panel without
  * changing the wheel calibration internals. The FPS preference reuses the
  * existing F shortcut so there remains only one renderer-side toggle path. */
-export function installDesktopOptionsOverlay(_assets?:Assets){
+export function installDesktopOptionsOverlay(assets?:Assets){
  let disposed=false,frame=0,section:HTMLDivElement|undefined,fpsStateApplied=false;
  void loadNativeGeneralSettings().then(()=>{renderSteeringDeadzone();renderSteeringLinearity();renderOptionsButtonState();});
 
@@ -202,7 +204,13 @@ export function installDesktopOptionsOverlay(_assets?:Assets){
   const open=storedOpenMapOnRaceStart();
   button.textContent=open?'On':'Off';
   button.setAttribute('aria-pressed',String(open));
+ }; const renderSoundModState=()=>{
+  if(!section)return;
+  const settings=loadSoundModSettings();
+  const preset=section.querySelector<HTMLSelectElement>('select[data-sound-mod-default]');
+  if(preset)preset.value=settings.defaultPreset;
  };
+
  const mount=()=>{
   if(disposed)return;
   const controlsHeading=Array.from(document.querySelectorAll<HTMLDivElement>('div')).find(element=>element.textContent==='Controls / Key Bindings');
@@ -282,6 +290,45 @@ export function installDesktopOptionsOverlay(_assets?:Assets){
   });
   fpsRow.append(fpsLabel,fps);
   videoSection.append(videoHeading,graphicsRow,resolutionRow,backgroundRow,cockpitRow,fovRow,fpsRow);
+  const soundSection=document.createElement('div');soundSection.style.cssText='margin-top:12px;padding-top:10px;border-top:1px solid #333;';
+  const soundHeading=document.createElement('div');soundHeading.textContent='Sound Mods';soundHeading.style.cssText='font-size:13px;font-weight:700;margin-bottom:8px;';
+  const soundDefaultRow=document.createElement('div');soundDefaultRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) minmax(150px,1fr);gap:8px;align-items:center;margin-top:8px;';
+  const soundDefaultLabel=document.createElement('div');soundDefaultLabel.textContent='Default Car Sound';soundDefaultLabel.style.cssText='font-size:12px;color:#ddd;';
+  const soundDefault=document.createElement('select');soundDefault.dataset.soundModDefault='1';soundDefault.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;font:12px/1.2 system-ui,Segoe UI,sans-serif;';
+  for(const preset of ENGINE_SOUND_PRESETS){const option=document.createElement('option');option.value=preset.id;option.textContent=preset.label;soundDefault.append(option);}
+  soundDefault.addEventListener('change',()=>{const settings=loadSoundModSettings();settings.defaultPreset=soundDefault.value as EngineSoundPreset;saveSoundModSettings(settings);renderSoundModState();});
+  soundDefaultRow.append(soundDefaultLabel,soundDefault);
+
+  const perCarRow=document.createElement('div');perCarRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) minmax(150px,1fr);gap:8px;align-items:center;margin-top:8px;';
+  const perCarLabel=document.createElement('div');perCarLabel.textContent='Per-Car Sounds';perCarLabel.style.cssText='font-size:12px;color:#ddd;';
+  const perCarButton=document.createElement('button');perCarButton.type='button';perCarButton.textContent='Configure…';perCarButton.disabled=!assets;perCarButton.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;cursor:pointer;font:12px/1.2 system-ui,Segoe UI,sans-serif;';
+  perCarButton.addEventListener('click',()=>{
+   if(!assets)return;
+   const shade=document.createElement('div');shade.tabIndex=-1;shade.style.cssText='position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.76);display:grid;place-items:center;padding:24px;';
+   const box=document.createElement('div');box.style.cssText='width:min(720px,92vw);max-height:82vh;background:#161616;border:1px solid #555;border-radius:8px;padding:16px;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:10px;box-shadow:0 20px 70px #000;';
+   const heading=document.createElement('strong');heading.textContent='Per-Car Engine Sounds';heading.style.cssText='font-size:15px;color:#eee;';
+   const list=document.createElement('div');list.style.cssText='overflow:auto;display:grid;gap:6px;padding-right:4px;';
+   const settings=loadSoundModSettings(),currentId=currentPlayerCarId();
+   const currentCar=assets.cars.find(car=>car.id.toUpperCase()===currentId);
+   const orderedCars=currentCar?[currentCar,...assets.cars.filter(car=>car!==currentCar)]:assets.cars;
+   for(const car of orderedCars){
+    const isCurrent=car===currentCar;
+    const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,1fr);gap:8px;align-items:center;'+(isCurrent?'padding:7px;border:1px solid #666;border-radius:5px;background:#202020;margin-bottom:5px;':'');
+    const label=document.createElement('div');label.textContent=(isCurrent?'Current car · ':'')+car.name+' ('+car.id+')';label.style.cssText='font-size:12px;color:'+(isCurrent?'#fff':'#ddd')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+(isCurrent?'font-weight:650;':'');
+    const select=document.createElement('select');select.style.cssText='border:1px solid #555;background:#252525;color:#eee;border-radius:4px;padding:6px 8px;font:12px system-ui,Segoe UI,sans-serif;';
+    const inherit=document.createElement('option');inherit.value='';inherit.textContent='Use default';select.append(inherit);
+    for(const preset of ENGINE_SOUND_PRESETS){const option=document.createElement('option');option.value=preset.id;option.textContent=preset.label;select.append(option);}
+    select.value=settings.perCar[car.id.toUpperCase()]??'';
+    select.addEventListener('change',()=>{const next=loadSoundModSettings();if(select.value)next.perCar[car.id.toUpperCase()]=select.value as EngineSoundPreset;else delete next.perCar[car.id.toUpperCase()];saveSoundModSettings(next);});
+    row.append(label,select);list.append(row);
+   }
+   const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:flex-end;';
+   const close=document.createElement('button');close.type='button';close.textContent='Done';close.style.cssText='border:1px solid #777;background:#303030;color:#eee;border-radius:4px;padding:7px 14px;cursor:pointer;';
+   const finish=()=>shade.remove();close.addEventListener('click',finish);shade.addEventListener('pointerdown',event=>{if(event.target===shade)finish();});shade.addEventListener('keydown',event=>{if(event.code==='Escape'){event.preventDefault();finish();}});
+   actions.append(close);box.append(heading,list,actions);shade.append(box);document.body.append(shade);requestAnimationFrame(()=>shade.focus());
+  });
+  perCarRow.append(perCarLabel,perCarButton);
+  soundSection.append(soundHeading,soundDefaultRow,perCarRow);
 
   const deadzoneRow=document.createElement('div');deadzoneRow.style.cssText='display:grid;grid-template-columns:minmax(145px,1fr) minmax(150px,1.5fr) 48px;gap:8px;align-items:center;margin-top:9px;';
   const deadzoneLabel=document.createElement('div');deadzoneLabel.textContent='Steering Deadzone';deadzoneLabel.title='Wheel only. Small steering movements around the calibrated center are ignored.';deadzoneLabel.style.cssText='font-size:12px;color:#ddd;';
@@ -299,7 +346,7 @@ export function installDesktopOptionsOverlay(_assets?:Assets){
   linearity.addEventListener('change',()=>void persistSteeringLinearity(Number(linearity.value)));
   linearityRow.append(linearityLabel,linearity,linearityValue);
 
-  section.append(heading,mapRow,buttonRow,deadzoneRow,linearityRow,videoSection);panel.insertBefore(section,controlsSection);renderGraphicsState();renderResolutionState();renderTextureState();renderFovState();renderFpsState();renderOpenMapState();renderOptionsButtonState();renderSteeringDeadzone();renderSteeringLinearity();applyStoredFps();
+  section.append(heading,mapRow,buttonRow,deadzoneRow,linearityRow,videoSection,soundSection);panel.insertBefore(section,controlsSection);renderGraphicsState();renderResolutionState();renderTextureState();renderFovState();renderFpsState();renderOpenMapState();renderOptionsButtonState();renderSteeringDeadzone();renderSteeringLinearity();renderSoundModState();applyStoredFps();
  };
  frame=requestAnimationFrame(mount);
 
