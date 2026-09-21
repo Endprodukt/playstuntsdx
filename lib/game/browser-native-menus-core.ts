@@ -36,6 +36,9 @@ import {saveNativeReplay} from './native-replay-save.ts';
 import type {createNativeRaceSession} from './native-race-session.ts';
 import {runNativeMenuCoordinator} from './native-menu-coordinator.ts';
 import {runNativeMainMenuSelection} from './native-main-menu.ts';
+import {createModernMainMenu,type ModernMainMenuAction} from './modern-main-menu.ts';
+import {confirmBrowserOpeningExit} from './browser-opening-exit.ts';
+import {originalOpeningExitDecision} from './opening-exit-flow.ts';
 import {restoreOriginalMainMenuPixels} from './main-menu-raster.ts';
 import {originalMainMenuBounds} from './main-menu-hit.ts';
 import {ENHANCED_TEXTURES_EVENT,enhancedBackgroundEnabled} from './enhanced-textures.ts';
@@ -594,7 +597,43 @@ export async function createBrowserNativeMenus(options:BrowserNativeMenuOptions)
  applyStoredAudioPreference('playstunts-dx-music-enabled',music.settings.musicEnabled,'toggle-music');
  applyStoredAudioPreference('playstunts-dx-sound-effects-enabled',music.settings.soundEnabled,'toggle-sound');
  const selectMain=async()=>{
-  show('main');if(!options.displayMode)return runNativeMainMenuSelection({counter:input.counter,input:input.read,release:input.release,redraw:()=>{outline=undefined;present();},selectScreen:()=>{},outline:(selection,color)=>{outline=[selection,color];present();}});
+  show('main');
+  if(!options.displayMode&&enhancedMenuEnabled()){
+   focusBrowserGameCanvas(canvas);
+   const modern=createModernMainMenu({canvas,assets:options.assets,configuration,track,palette,materialIndices:materials.indices});
+   const actions:ModernMainMenuAction[]=[];
+   let focus:ModernMainMenuAction='drive';
+   const select=(action:ModernMainMenuAction)=>action==='drive'?0:action==='car'?1:action==='opponent'?2:action==='track'?3:action==='options'?4:undefined;
+   const pointerDown=(event:PointerEvent)=>{
+    if(event.button!==0)return;
+    const action=modern.actionAt(event);if(action==='none')return;
+    event.preventDefault();event.stopImmediatePropagation();actions.push(action);
+   };
+   const pointerMove=(event:PointerEvent)=>modern.hoverAt(event);
+   const pointerLeave=()=>modern.clearHover();
+   canvas.addEventListener('pointerdown',pointerDown,true);canvas.addEventListener('pointermove',pointerMove,true);canvas.addEventListener('pointerleave',pointerLeave,true);
+   modern.setFocus(focus);
+   try{
+    for(;;){
+     const sample=await input.read(),clicked=actions.shift();
+     if(clicked){const selected=select(clicked);if(selected!==undefined)return {selection:selected,idleExpired:0};}
+     const key=sample.key??0;
+     if(key===27){
+      const answer=await confirmBrowserOpeningExit(canvas,new AbortController().signal);
+      if(originalOpeningExitDecision(27,answer)==='exit'){
+       if(tauriCore)await tauriCore.invoke<void>('exit_game');else window.close();
+      }
+      await input.release();focusBrowserGameCanvas(canvas);modern.render();continue;
+     }
+     if(key===0x4800||key===0x4b00){focus=modern.nextFocus(-1);continue;}
+     if(key===0x5000||key===0x4d00){focus=modern.nextFocus(1);continue;}
+     if(key===13||key===32){const selected=select(focus);if(selected!==undefined)return {selection:selected,idleExpired:0};}
+    }
+   }finally{
+    canvas.removeEventListener('pointerdown',pointerDown,true);canvas.removeEventListener('pointermove',pointerMove,true);canvas.removeEventListener('pointerleave',pointerLeave,true);modern.close();
+   }
+  }
+  if(!options.displayMode)return runNativeMainMenuSelection({counter:input.counter,input:input.read,release:input.release,redraw:()=>{outline=undefined;present();},selectScreen:()=>{},outline:(selection,color)=>{outline=[selection,color];present();}});
   const display=await prepareBrowserNativeMainMenu({catalog:await loadBrowserOriginalResourceCatalog()},options.displayMode,options.hercules),nativePresent=()=>{pixels.set(display.pixels());paint(display.palette,display);};
   return runNativeMainMenuSelection({counter:input.counter,input:input.read,release:input.release,redraw(){display.redraw();nativePresent();},selectScreen(){},outline(selection,color){display.outline(selection,color);nativePresent();}});
  };
