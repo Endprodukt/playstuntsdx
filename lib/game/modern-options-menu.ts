@@ -1,6 +1,7 @@
 import type {NativeMenuInput} from './native-dialog-runtime.ts';
 import type {OriginalOptionSettings} from './options-actions.ts';
 import {desktopInputDevice,setDesktopInputDevice,type DesktopInputDevice} from './desktop-wheel-input.ts';
+import {reloadDesktopForceFeedbackConfig} from './desktop-force-feedback.ts';
 import {ENHANCED_RENDER_SCALES,enhancedRenderScale,setEnhancedRenderScale} from './enhanced-resolution-settings.ts';
 import {enhancedBackgroundEnabled,enhancedCockpitEnabled,setEnhancedBackgroundEnabled,setEnhancedCockpitEnabled} from './enhanced-textures.ts';
 import {enhancedFovWidth,setEnhancedFovWidth} from './enhanced-view-settings.ts';
@@ -13,15 +14,25 @@ type Tab='gameplay'|'video'|'sound'|'controls';
 type FocusZone='tabs'|'rows'|'footer';
 type FooterAction='replay'|'exit'|'done';
 type TauriGlobal={core?:{invoke<T>(command:string,args?:Record<string,unknown>):Promise<T>}};
+type NativeConfigFile={content:string;path:string;created:boolean};
 type DesktopSoundDevice='off'|'pc-speaker'|'tandy'|'adlib'|'sound-blaster'|'mt32';
+type FfbNumericRowId=
+ |'ffb-strength'|'ffb-physics-strength'|'ffb-physics-limit'|'ffb-max-force'
+ |'ffb-centering-base'|'ffb-centering-speed'|'ffb-slide-slip'|'ffb-slide-spin'
+ |'ffb-grass-strength'|'ffb-grass-frequency-min'|'ffb-grass-frequency-max'
+ |'ffb-ramp-min-pitch'|'ffb-ramp-max-pitch'|'ffb-ramp-min-strength'|'ffb-ramp-max-strength'|'ffb-ramp-duration'
+ |'ffb-landing-min-fall'|'ffb-landing-max-fall'|'ffb-landing-min-strength'|'ffb-landing-max-strength'|'ffb-landing-duration'
+ |'ffb-shift-strength'|'ffb-shift-duration'
+ |'ffb-engine-min-strength'|'ffb-engine-max-strength'|'ffb-engine-frequency-min'|'ffb-engine-frequency-max'
+ |'ffb-crash-min-strength'|'ffb-crash-max-strength'|'ffb-crash-speed-max'|'ffb-crash-rebound'|'ffb-crash-main-duration'|'ffb-crash-total-duration';
 
 type RowId=
  |'music'|'sound-effects'|'sound-device'|'open-map'|'menu-style'|'track-editor'|'audio-update'
  |'dx-graphics'|'resolution'|'background'|'cockpit'|'fov'|'fps'|'original-detail'
- |'input-device'|'deadzone'|'linearity'|'show-f8'
+ |'input-device'|'deadzone'|'linearity'|'show-f8'|'ffb-enabled'|FfbNumericRowId
  |'close-distance'|'close-height'|'standard-distance'|'standard-height'|'far-distance'|'far-height'|'reset-camera';
 
-interface OptionRow {id:RowId;label:string;value:string;disabled?:boolean;actionOnly?:boolean;group?:'DX / MODERN'|'ORIGINAL STUNTS'}
+interface OptionRow {id:RowId;label:string;value:string;disabled?:boolean;actionOnly?:boolean;group?:string}
 interface PointerAction {type:'tab'|'row'|'footer'|'confirm';index:number}
 
 export interface ModernOptionsMenuHost {
@@ -47,6 +58,8 @@ const linearityKey='playstunts-dx-steering-linearity';
 const musicKey='playstunts-dx-music-enabled';
 const effectsKey='playstunts-dx-sound-effects-enabled';
 const originalGraphicsKey='playstunts-dx-original-graphics-level';
+const ffbEnabledKey='playstunts-dx-force-feedback-enabled';
+const ffbStrengthKey='playstunts-dx-force-feedback-strength';
 
 const soundDevices:ReadonlyArray<{id:DesktopSoundDevice;label:string}>=[
  {id:'off',label:'Off'},
@@ -62,11 +75,59 @@ const inputDevices:ReadonlyArray<{id:DesktopInputDevice;label:string}>=[
  {id:'mouse',label:'Mouse'},
  {id:'wheel',label:'Wheel'},
 ];
+type FfbField={id:FfbNumericRowId;label:string;section:string;key:string;min:number;max:number;step:number;decimals:number;unit:string;group:string;help:string};
+type FfbState={enabled:boolean;values:Record<FfbNumericRowId,number>};
+const ffbFields:ReadonlyArray<FfbField>=[
+ {id:'ffb-strength',label:'Overall Strength',section:'ForceFeedback',key:'Strength',min:0,max:100,step:1,decimals:0,unit:'%',group:'FORCE FEEDBACK',help:'Master output multiplier. 50% is the normal base output; 100% doubles it.'},
+ {id:'ffb-physics-strength',label:'Physics Strength',section:'General',key:'PhysicsStrength',min:0,max:300,step:5,decimals:0,unit:'%',group:'FFB · GENERAL',help:'Scales steering, slide and surface forces before the final force limit is applied.'},
+ {id:'ffb-physics-limit',label:'Physics Limit',section:'General',key:'PhysicsLimit',min:10,max:100,step:1,decimals:0,unit:'%',group:'FFB · GENERAL',help:'Caps the combined continuous physics force before short bump and impact effects are added.'},
+ {id:'ffb-max-force',label:'Maximum Force',section:'General',key:'MaxForce',min:10,max:100,step:1,decimals:0,unit:'%',group:'FFB · GENERAL',help:'Final safety ceiling for every force-feedback effect combined.'},
+ {id:'ffb-centering-base',label:'Centering Base',section:'Centering',key:'BaseForce',min:0,max:100,step:.5,decimals:1,unit:'%',group:'FFB · CENTERING',help:'Baseline steering-centering force, including at very low speed.'},
+ {id:'ffb-centering-speed',label:'Centering Speed',section:'Centering',key:'SpeedForce',min:0,max:100,step:.5,decimals:1,unit:'%',group:'FFB · CENTERING',help:'Additional centering force that grows with vehicle speed.'},
+ {id:'ffb-slide-slip',label:'Slide Slip Force',section:'Slide',key:'SlipForce',min:0,max:100,step:1,decimals:0,unit:'%',group:'FFB · SLIDE',help:'Counter-steer force generated by tyre slip while the car is sliding.'},
+ {id:'ffb-slide-spin',label:'Slide Spin Force',section:'Slide',key:'SpinForce',min:0,max:100,step:1,decimals:0,unit:'%',group:'FFB · SLIDE',help:'Counter-steer contribution from the car spin/yaw state.'},
+ {id:'ffb-grass-strength',label:'Grass Strength',section:'Grass',key:'Strength',min:0,max:100,step:1,decimals:0,unit:'%',group:'FFB · GRASS',help:'Strength of the surface rumble while wheels are running over grass.'},
+ {id:'ffb-grass-frequency-min',label:'Grass Freq Min',section:'Grass',key:'FrequencyMin',min:1,max:30,step:1,decimals:0,unit:'Hz',group:'FFB · GRASS',help:'Lowest grass-rumble frequency used near low speed.'},
+ {id:'ffb-grass-frequency-max',label:'Grass Freq Max',section:'Grass',key:'FrequencyMax',min:1,max:40,step:1,decimals:0,unit:'Hz',group:'FFB · GRASS',help:'Highest grass-rumble frequency reached as speed increases.'},
+ {id:'ffb-ramp-min-pitch',label:'Ramp Pitch Min',section:'Ramp',key:'MinPitchDelta',min:0,max:128,step:1,decimals:0,unit:'',group:'FFB · RAMPS',help:'Smallest grounded chassis pitch change that can trigger a ramp bump.'},
+ {id:'ffb-ramp-max-pitch',label:'Ramp Pitch Max',section:'Ramp',key:'MaxPitchDelta',min:1,max:256,step:1,decimals:0,unit:'',group:'FFB · RAMPS',help:'Pitch change that reaches the configured maximum ramp-bump strength.'},
+ {id:'ffb-ramp-min-strength',label:'Ramp Strength Min',section:'Ramp',key:'MinStrength',min:0,max:100,step:1,decimals:0,unit:'%',group:'FFB · RAMPS',help:'Minimum force of a detected ramp or slope-edge bump.'},
+ {id:'ffb-ramp-max-strength',label:'Ramp Strength Max',section:'Ramp',key:'MaxStrength',min:0,max:100,step:1,decimals:0,unit:'%',group:'FFB · RAMPS',help:'Maximum force of a detected ramp or slope-edge bump.'},
+ {id:'ffb-ramp-duration',label:'Ramp Duration',section:'Ramp',key:'DurationMs',min:30,max:250,step:10,decimals:0,unit:'ms',group:'FFB · RAMPS',help:'Length of the short force pulse produced at ramp and slope transitions.'},
+ {id:'ffb-landing-min-fall',label:'Landing Fall Min',section:'Landing',key:'MinFallSpeed',min:0,max:1000,step:10,decimals:0,unit:'',group:'FFB · LANDING',help:'Minimum downward speed required before a landing impact produces feedback.'},
+ {id:'ffb-landing-max-fall',label:'Landing Fall Max',section:'Landing',key:'MaxFallSpeed',min:1,max:2000,step:10,decimals:0,unit:'',group:'FFB · LANDING',help:'Downward speed at which landing feedback reaches its configured maximum strength.'},
+ {id:'ffb-landing-min-strength',label:'Landing Strength Min',section:'Landing',key:'MinStrength',min:0,max:100,step:1,decimals:0,unit:'%',group:'FFB · LANDING',help:'Minimum force of a qualifying landing impact.'},
+ {id:'ffb-landing-max-strength',label:'Landing Strength Max',section:'Landing',key:'MaxStrength',min:0,max:100,step:1,decimals:0,unit:'%',group:'FFB · LANDING',help:'Maximum force of a hard landing impact.'},
+ {id:'ffb-landing-duration',label:'Landing Duration',section:'Landing',key:'DurationMs',min:30,max:300,step:10,decimals:0,unit:'ms',group:'FFB · LANDING',help:'Length of the landing-impact force pulse.'},
+ {id:'ffb-shift-strength',label:'Gear Shift Strength',section:'GearShift',key:'Strength',min:0,max:100,step:1,decimals:0,unit:'%',group:'FFB · GEAR SHIFT',help:'Strength of the short tactile kick when a gear change is detected.'},
+ {id:'ffb-shift-duration',label:'Gear Shift Duration',section:'GearShift',key:'DurationMs',min:30,max:250,step:10,decimals:0,unit:'ms',group:'FFB · GEAR SHIFT',help:'Length of the gear-shift feedback pulse.'},
+ {id:'ffb-engine-min-strength',label:'Engine Strength Min',section:'Engine',key:'MinStrength',min:0,max:30,step:.1,decimals:1,unit:'%',group:'FFB · ENGINE',help:'Engine vibration strength near idle.'},
+ {id:'ffb-engine-max-strength',label:'Engine Strength Max',section:'Engine',key:'MaxStrength',min:0,max:30,step:.1,decimals:1,unit:'%',group:'FFB · ENGINE',help:'Engine vibration strength near maximum RPM.'},
+ {id:'ffb-engine-frequency-min',label:'Engine Freq Min',section:'Engine',key:'FrequencyMin',min:1,max:10,step:1,decimals:0,unit:'Hz',group:'FFB · ENGINE',help:'Engine vibration frequency near idle.'},
+ {id:'ffb-engine-frequency-max',label:'Engine Freq Max',section:'Engine',key:'FrequencyMax',min:2,max:12,step:1,decimals:0,unit:'Hz',group:'FFB · ENGINE',help:'Engine vibration frequency near maximum RPM.'},
+ {id:'ffb-crash-min-strength',label:'Crash Strength Min',section:'Crash',key:'MinStrength',min:0,max:100,step:1,decimals:0,unit:'%',group:'FFB · CRASH',help:'Minimum strength of an accepted crash impact.'},
+ {id:'ffb-crash-max-strength',label:'Crash Strength Max',section:'Crash',key:'MaxStrength',min:0,max:100,step:1,decimals:0,unit:'%',group:'FFB · CRASH',help:'Maximum strength of a high-speed crash impact.'},
+ {id:'ffb-crash-speed-max',label:'Crash Max @ Speed',section:'Crash',key:'SpeedForMaxMph',min:10,max:200,step:5,decimals:0,unit:'mph',group:'FFB · CRASH',help:'Vehicle speed at which a crash reaches the configured maximum impact strength.'},
+ {id:'ffb-crash-rebound',label:'Crash Rebound',section:'Crash',key:'ReboundStrength',min:0,max:100,step:1,decimals:0,unit:'%',group:'FFB · CRASH',help:'Strength of the opposite-direction rebound after the main crash hit.'},
+ {id:'ffb-crash-main-duration',label:'Crash Hit Duration',section:'Crash',key:'MainDurationMs',min:30,max:300,step:10,decimals:0,unit:'ms',group:'FFB · CRASH',help:'Duration of the main crash-force pulse.'},
+ {id:'ffb-crash-total-duration',label:'Crash Total Duration',section:'Crash',key:'TotalDurationMs',min:60,max:500,step:10,decimals:0,unit:'ms',group:'FFB · CRASH',help:'Total crash effect time including the rebound phase.'},
+];
+const ffbDefaults:Record<FfbNumericRowId,number>={
+ 'ffb-strength':50,'ffb-physics-strength':180,'ffb-physics-limit':90,'ffb-max-force':98,
+ 'ffb-centering-base':5.5,'ffb-centering-speed':24.5,'ffb-slide-slip':34,'ffb-slide-spin':20,
+ 'ffb-grass-strength':13,'ffb-grass-frequency-min':15,'ffb-grass-frequency-max':33,
+ 'ffb-ramp-min-pitch':2,'ffb-ramp-max-pitch':24,'ffb-ramp-min-strength':16,'ffb-ramp-max-strength':48,'ffb-ramp-duration':90,
+ 'ffb-landing-min-fall':190,'ffb-landing-max-fall':593,'ffb-landing-min-strength':28,'ffb-landing-max-strength':90,'ffb-landing-duration':120,
+ 'ffb-shift-strength':15,'ffb-shift-duration':110,
+ 'ffb-engine-min-strength':.8,'ffb-engine-max-strength':2,'ffb-engine-frequency-min':3,'ffb-engine-frequency-max':6,
+ 'ffb-crash-min-strength':72,'ffb-crash-max-strength':100,'ffb-crash-speed-max':70,'ffb-crash-rebound':32,'ffb-crash-main-duration':150,'ffb-crash-total-duration':240,
+};
+const ffbFieldById=new Map<FfbNumericRowId,FfbField>(ffbFields.map(field=>[field.id,field]));
 const tabOrder:readonly Tab[]=['gameplay','video','sound','controls'];
 const tabLabels:Record<Tab,string>={gameplay:'GAMEPLAY',video:'VIDEO',sound:'SOUND',controls:'CONTROLS'};
 const footerLabels:Record<FooterAction,string>={replay:'LOAD REPLAY',exit:'EXIT GAME',done:'DONE'};
 const footerOrder:readonly FooterAction[]=['replay','exit','done'];
-const optionHelp:Record<RowId,string>={
+const optionHelp:Partial<Record<RowId,string>>={
  'music':'Turns the original Stunts music on or off.',
  'sound-effects':'Turns game sound effects on or off. Per-car engine sounds are configured in Car Select or the F8 panel.',
  'sound-device':'Selects the emulated sound hardware. A changed device is used on the next game start.',
@@ -85,6 +146,7 @@ const optionHelp:Record<RowId,string>={
  'deadzone':'Wheel only. Ignores small steering movement around the calibrated centre to prevent unwanted drift or jitter.',
  'linearity':'Wheel only. Higher values make steering less sensitive around centre while preserving full steering lock.',
  'show-f8':'Shows or hides the Options [F8] button. The F8 shortcut itself remains available.',
+ 'ffb-enabled':'Master force-feedback switch. Available when Driving Input Device is set to Wheel.',
  'close-distance':'Distance of the Close enhanced chase camera behind the car.',
  'close-height':'Height of the Close enhanced chase camera above the car.',
  'standard-distance':'Distance of the Standard enhanced chase camera behind the car.',
@@ -120,6 +182,73 @@ const persistConfig=async(section:string,key:string,value:string)=>{
 };
 const setBool=(key:string,value:boolean)=>window.localStorage.setItem(key,String(value));
 const cycleIndex=(length:number,current:number,direction:number)=>(current+(direction<0?-1:1)+length)%length;
+function configValue(content:string,section:string,key:string){
+ let current='';
+ for(const raw of content.replace(/^\uFEFF/,'').split(/\r?\n/)){
+  const line=raw.trim();if(!line||line.startsWith(';')||line.startsWith('#'))continue;
+  const heading=line.match(/^\[([^\]]+)\]$/);if(heading){current=heading[1].trim();continue;}
+  if(current.toLowerCase()!==section.toLowerCase())continue;
+  const at=line.indexOf('=');if(at<0)continue;
+  if(line.slice(0,at).trim().toLowerCase()===key.toLowerCase())return line.slice(at+1).trim();
+ }
+ return undefined;
+}
+function numericConfig(content:string,field:FfbField){
+ const raw=Number(configValue(content,field.section,field.key)),fallback=ffbDefaults[field.id];
+ return Number.isFinite(raw)?clamp(raw,field.min,field.max):fallback;
+}
+async function loadFfbSettings():Promise<FfbState>{
+ let content='';
+ const core=tauriCore();
+ if(core){try{content=(await core.invoke<NativeConfigFile>('native_config')).content;}catch(reason){console.warn('[Modern Options] FFB config load failed:',reason);}}
+ const rawEnabled=configValue(content,'ForceFeedback','Enabled');
+ const enabled=rawEnabled===undefined?storedEnabled(ffbEnabledKey,false):!['0','false','no','off'].includes(rawEnabled.toLowerCase());
+ const values={} as Record<FfbNumericRowId,number>;
+ for(const field of ffbFields)values[field.id]=numericConfig(content,field);
+ if(!content){
+  const saved=Number(window.localStorage.getItem(ffbStrengthKey));
+  if(Number.isFinite(saved))values['ffb-strength']=clamp(saved,0,100);
+ }
+ setBool(ffbEnabledKey,enabled);window.localStorage.setItem(ffbStrengthKey,String(values['ffb-strength']));
+ return {enabled,values};
+}
+function formatFfbValue(field:FfbField,value:number){
+ const number=field.decimals?value.toFixed(field.decimals):String(Math.round(value));
+ return field.unit==='%'?number+'%':field.unit?number+' '+field.unit:number;
+}
+function constrainedFfbValue(state:FfbState,field:FfbField,value:number){
+ let min=field.min,max=field.max;const v=state.values;
+ switch(field.id){
+  case 'ffb-grass-frequency-min':max=v['ffb-grass-frequency-max'];break;
+  case 'ffb-grass-frequency-max':min=v['ffb-grass-frequency-min'];break;
+  case 'ffb-ramp-min-pitch':max=v['ffb-ramp-max-pitch']-1;break;
+  case 'ffb-ramp-max-pitch':min=v['ffb-ramp-min-pitch']+1;break;
+  case 'ffb-ramp-min-strength':max=v['ffb-ramp-max-strength'];break;
+  case 'ffb-ramp-max-strength':min=v['ffb-ramp-min-strength'];break;
+  case 'ffb-landing-min-fall':max=v['ffb-landing-max-fall']-1;break;
+  case 'ffb-landing-max-fall':min=v['ffb-landing-min-fall']+1;break;
+  case 'ffb-landing-min-strength':max=v['ffb-landing-max-strength'];break;
+  case 'ffb-landing-max-strength':min=v['ffb-landing-min-strength'];break;
+  case 'ffb-engine-min-strength':max=v['ffb-engine-max-strength'];break;
+  case 'ffb-engine-max-strength':min=v['ffb-engine-min-strength'];break;
+  case 'ffb-engine-frequency-min':max=v['ffb-engine-frequency-max'];break;
+  case 'ffb-engine-frequency-max':min=v['ffb-engine-frequency-min'];break;
+  case 'ffb-crash-min-strength':max=v['ffb-crash-max-strength'];break;
+  case 'ffb-crash-max-strength':min=v['ffb-crash-min-strength'];break;
+  case 'ffb-crash-main-duration':max=v['ffb-crash-total-duration']-20;break;
+  case 'ffb-crash-total-duration':min=v['ffb-crash-main-duration']+20;break;
+ }
+ const stepped=Math.round(value/field.step)*field.step,factor=10**field.decimals;
+ return Math.round(clamp(stepped,min,max)*factor)/factor;
+}
+async function persistFfbEnabled(state:FfbState,value:boolean){
+ state.enabled=value;setBool(ffbEnabledKey,value);await persistConfig('ForceFeedback','Enabled',String(value));await reloadDesktopForceFeedbackConfig();
+}
+async function persistFfbValue(state:FfbState,field:FfbField,value:number){
+ const next=constrainedFfbValue(state,field,value);state.values[field.id]=next;
+ if(field.id==='ffb-strength')window.localStorage.setItem(ffbStrengthKey,String(next));
+ await persistConfig(field.section,field.key,String(next));await reloadDesktopForceFeedbackConfig();
+}
 
 async function setGraphics(value:boolean){
  setBool(graphicsKey,value);
@@ -235,7 +364,7 @@ function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],sta
   const lastVisible=layout.items.at(-1)?.index??-1;
   if(lastVisible<all.length-1)label('▼',content.x+content.w-9,content.y+99,4.5,'#666',600,'center');
   const hoveredRow=hover?.type==='row'?hover.index:undefined,helpIndex=hoveredRow??(state.zone()==='rows'?state.row():undefined);
-  const help=helpIndex!==undefined&&all[helpIndex]?optionHelp[all[helpIndex].id]:tabHelp[state.tab()];
+  const help=helpIndex!==undefined&&all[helpIndex]?(optionHelp[all[helpIndex].id]??ffbFieldById.get(all[helpIndex].id as FfbNumericRowId)?.help??tabHelp[state.tab()]):tabHelp[state.tab()];
   rect(content.x+5,content.y+102,content.w-10,18,'#0d0d0d','#292929',3,.6);
   wrapped(help,content.w-18,3.9,2).forEach((line,index)=>label(line,content.x+9,content.y+107+index*6,3.9,index===0?'#aaa':'#818181',500));
   footerOrder.forEach((action,index)=>{const b=footerBounds[index],over=focused('footer',index);rect(b.x,b.y,b.w,b.h,over?'#3a4022':'#202020',over?'#b4c35a':'#555',4,over?1.5:1);label(footerLabels[action],b.x+b.w/2,b.y+b.h/2,5.1,over?'#fff':'#ddd',650,'center');});
@@ -271,6 +400,7 @@ function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],sta
 }
 
 export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'menu'|'replay'|'exit'>{
+ const ffb=await loadFfbSettings();
  let tab:Tab='gameplay',zone:FocusZone='rows',row=0,footer=2,confirm=false,confirmChoice=0;
  const currentRows=():OptionRow[]=>{
   const camera=(level:EnhancedChaseCameraPresetLevel,kind:EnhancedChaseCameraSetting,label:string):OptionRow=>({id:(level===1?(kind==='distance'?'close-distance':'close-height'):level===2?(kind==='distance'?'standard-distance':'standard-height'):(kind==='distance'?'far-distance':'far-height')) as RowId,label,value:String(enhancedChaseCameraPosition(level)[kind]),group:'DX / MODERN'});
@@ -306,12 +436,14 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
     {id:'original-detail',label:'Original Detail Level',value:`Level ${clamp(host.settings.graphics,0,3)+1}`,group:'ORIGINAL STUNTS'},
    ];
   }
-  const input=desktopInputDevice();
+  const input=desktopInputDevice(),wheel=input==='wheel';
   return [
-   {id:'input-device',label:'Driving Input Device',value:inputDevices.find(item=>item.id===input)?.label??'Keyboard'},
-   {id:'deadzone',label:'Steering Deadzone',value:`${storedDeadzone()}%`,disabled:input!=='wheel'},
-   {id:'linearity',label:'Steering Linearity',value:storedLinearity().toFixed(2),disabled:input!=='wheel'},
-   {id:'show-f8',label:'Show F8 Button',value:boolLabel(storedEnabled(f8Key,true))},
+   {id:'input-device',label:'Driving Input Device',value:inputDevices.find(item=>item.id===input)?.label??'Keyboard',group:'INPUT'},
+   {id:'deadzone',label:'Steering Deadzone',value:`${storedDeadzone()}%`,disabled:!wheel,group:'INPUT'},
+   {id:'linearity',label:'Steering Linearity',value:storedLinearity().toFixed(2),disabled:!wheel,group:'INPUT'},
+   {id:'show-f8',label:'Show F8 Button',value:boolLabel(storedEnabled(f8Key,true)),group:'INTERFACE'},
+   {id:'ffb-enabled',label:'Force Feedback',value:boolLabel(ffb.enabled),disabled:!wheel,group:'FORCE FEEDBACK'},
+   ...ffbFields.map(field=>({id:field.id,label:field.label,value:formatFfbValue(field,ffb.values[field.id]),disabled:!wheel,group:field.group} as OptionRow)),
   ];
  };
  const clampRow=()=>{const rows=currentRows();row=Math.max(0,Math.min(Math.max(0,rows.length-1),row));};
@@ -341,6 +473,9 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
  };
  const changeRow=async(direction:number,activate=false)=>{
   const item=currentRows()[row];if(!item||item.disabled)return;
+  if(item.id==='ffb-enabled'){await persistFfbEnabled(ffb,!ffb.enabled);presentation.render();return;}
+  const ffbField=ffbFieldById.get(item.id as FfbNumericRowId);
+  if(ffbField){await persistFfbValue(ffb,ffbField,ffb.values[ffbField.id]+(direction<0?-ffbField.step:ffbField.step));presentation.render();return;}
   switch(item.id){
    case 'music':{
     const enabled=!!(await host.audio('toggle-music'));setBool(musicKey,enabled);break;
