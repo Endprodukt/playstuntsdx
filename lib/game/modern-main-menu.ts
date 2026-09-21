@@ -8,7 +8,7 @@ export type ModernMainMenuAction='drive'|'car'|'track'|'opponent'|'options'|'exi
 
 type TrackState={name:string;path:string;raw:number[]};
 
-const actions:ModernMainMenuAction[]=['drive','opponent','options','car','track','exit'];
+const actions:ModernMainMenuAction[]=['drive','opponent','options','exit','car','track'];
 const carPreview={x:105,y:66,w:88,h:57};
 const trackPreview={x:211,y:66,w:96,h:69};
 const driveButton={x:12,y:56,w:72,h:22};
@@ -62,7 +62,7 @@ export function createModernMainMenu(options:{
   ctx.beginPath();ctx.moveTo(x1*sx(),y1*sy());ctx.lineTo(x2*sx(),y2*sy());ctx.strokeStyle=colour;ctx.lineWidth=Math.max(1,width*Math.min(sx(),sy()));ctx.stroke();
  };
  const label=(value:string,x:number,y:number,size=7,colour='#e8edf0',weight=600,align:CanvasTextAlign='left',italic=false)=>{
-  ctx.fillStyle=colour;ctx.font=`${italic?'italic ':''}${weight} ${Math.max(9,size*sy())}px Arial Narrow,Segoe UI,sans-serif`;ctx.textAlign=align;ctx.textBaseline='middle';ctx.fillText(value,x*sx(),y*sy());
+  ctx.fillStyle=colour;ctx.font=`${italic?'italic ':''}${weight} ${Math.max(9,size*sy())}px \"Arial Narrow\",\"Segoe UI\",sans-serif`;ctx.textAlign=align;ctx.textBaseline='middle';ctx.fillText(value,x*sx(),y*sy());
  };
  const fit=(value:string,max:number)=>value.length<=max?value:value.slice(0,Math.max(1,max-1))+'…';
  const inside=(x:number,y:number,b:{x:number;y:number;w:number;h:number})=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h;
