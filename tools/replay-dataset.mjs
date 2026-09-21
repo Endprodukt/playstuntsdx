@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import {mkdir,readdir,readFile,writeFile} from 'node:fs/promises';
-import {basename,extname,join,resolve} from 'node:path';
-import {pathToFileURL} from 'node:url';
+import {basename,dirname,extname,join,resolve} from 'node:path';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 
 export const REPLAY_HEADER_BYTES=24;
 export const TRACK_BYTES=0x70a;
@@ -95,7 +95,9 @@ export async function analyzeReplayDirectory(inputRoot,outputRoot){
 }
 
 async function main(){
- const inputRoot=resolve(process.argv[2]??'training/replays/input'),outputRoot=resolve(process.argv[3]??'training/replays/output');
+ const repoRoot=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+ const inputRoot=process.argv[2]?resolve(process.argv[2]):join(repoRoot,'training','replays','input');
+ const outputRoot=process.argv[3]?resolve(process.argv[3]):join(repoRoot,'training','replays','output');
  const result=await analyzeReplayDirectory(inputRoot,outputRoot);
  if(!result.replays.length){console.log(`No .RPL files found in ${inputRoot}`);console.log('Copy one or more replay files there and run this command again.');return;}
  console.log(`Analyzed ${result.replays.length} replay(s).`);
