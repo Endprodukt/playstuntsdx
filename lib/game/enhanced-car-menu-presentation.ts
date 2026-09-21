@@ -182,7 +182,7 @@ export function createEnhancedCarMenuPresentation(options:{
   button(importButton,'IMPORT','import');
   drawPreview();drawInfo();drawGraph();drawDescription();
   button(transmissionButton,currentTransmission?'AUTOMATIC':'MANUAL','transmission',5.2);
-  button(colourButton,'COLOUR','colour',5.6);
+  button(colourButton,`COLOUR · ${currentPaint+1}`,'colour',5.2);
   button(doneButton,'DONE','done',7);
   if(dropdownOpen)drawDropdown();
   ctx.restore();
