@@ -117,7 +117,9 @@ function snapshot(state,raw,track,frequency,frame){
   raceClock:state.player.driving.race.stats[2],
   xFixed:pos[0],yFixed:pos[1],zFixed:pos[2],x:pos[0]/64,y:pos[1]/64,z:pos[2]/64,
   yaw:rot[0],pitch:rot[1],roll:rot[2],
+  pseudoGravity:engine.gravity,
   speed:engine.speed,speedMph:engine.speed/256,roadSpeed:engine.roadSpeed,roadSpeedMph:engine.roadSpeed/256,rpm:engine.rpm,gear:engine.gear,
+  braking:engine.braking,accelerating:engine.accelerating,changingGear:engine.shifting,
   steeringAngle:grip.steeringAngle,wheelAngle:grip.wheelAngle,frontWheelAngle:grip.frontWheelAngle,spin:grip.spin,sliding:grip.sliding,
   demandedGrip:grip.demandedGrip,surfaceGrip:grip.surfaceGrip,crash:grip.crash,
   surfaces,grass,air,allContact:grip.allContact,
@@ -181,13 +183,16 @@ async function main(){
     continue;
    }
    const session=createNativeReplaySession({startup,packedOpponent:new Uint8Array(),simulation,tuning,records,vectors,samples,objects,points,indices,planes,walls:wallsFile.walls},id,bytes);
-   const rows=[header],samplesOut=[],start=snapshot(session.state,replay.inputs[0]??0,replay.track,replay.frequencyHz,0);
+   const rows=[header],samplesOut=[],afterSamples=[],start=snapshot(session.state,replay.inputs[0]??0,replay.track,replay.frequencyHz,0);
    let maxSpeed=0,grassFrames=0,airFrames=0,slidingFrames=0,crashFrames=0;
    for(let frame=0;frame<replay.inputs.length;frame++){
-    const sample=snapshot(session.state,replay.inputs[frame],replay.track,replay.frequencyHz,frame);
+    const raw=replay.inputs[frame]??0,sample=snapshot(session.state,raw,replay.track,replay.frequencyHz,frame);
     samplesOut.push(sample);rows.push(row(sample));maxSpeed=Math.max(maxSpeed,sample.speedMph);
     if(sample.grass)grassFrames++;if(sample.air===4)airFrames++;if(sample.sliding)slidingFrames++;if(sample.crash)crashFrames++;
     session.tick(0);
+    // Restunts repldump writes GAMESTATE after update_gamestate(), so this
+    // post-tick sample is the frame-aligned oracle comparison surface.
+    afterSamples.push(snapshot(session.state,raw,replay.track,replay.frequencyHz,frame));
    }
    const final=snapshot(session.state,0,replay.track,replay.frequencyHz,replay.inputs.length);
    const summary={
@@ -199,6 +204,7 @@ async function main(){
    };
    await Promise.all([
     writeCsv(join(folder,'telemetry.csv'),rows),
+    writeFile(join(folder,'telemetry-after.json'),JSON.stringify(afterSamples)+'\n','utf8'),
     writeFile(join(folder,'simulation-summary.json'),JSON.stringify(summary,null,2)+'\n','utf8'),
    ]);
    manifest.replays.push(summary);
