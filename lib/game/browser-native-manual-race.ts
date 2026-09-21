@@ -49,11 +49,17 @@ function confirmBackToEditorDialog(){
  * saved menu state and browser OPL stream until the player returns to menus. */
 export async function runBrowserNativeManualRace(options:{context:AudioContext;data:NativeDemoData;menus:Menus;menu:NativeDemoMenuState&{mouse?:boolean;joystick?:boolean};spawn?:RaceSpawn;editorTest?:boolean;signal:AbortSignal;displayMode?:NativeBrowserDisplayMode;hercules?:boolean;mt32Output?:Mt32StereoOutput;replay?:NativeSelectedReplay;stopMusic():void;onStage?:(stage:'loading'|'race'|'results'|'seeking')=>void;onFrame?:(frame:number,mode:number,clock:number,blocked:number)=>void}){
  if(options.data.soundDevice?.kind==='mt32'&&!options.mt32Output)throw Error('Roland race requires an initialized synthesizer output');
+ const editorButtonStyles=new WeakMap<HTMLButtonElement,{background:string;borderColor:string;color:string}>();
  const editorButtonHover=(event:PointerEvent)=>{
   const button=(event.target as Element|null)?.closest?.('button');if(!(button instanceof HTMLButtonElement))return;
   if(button.textContent?.trim().toUpperCase()!=='BACK TO EDITOR')return;
-  if(event.type==='pointerover'){button.style.background='#30371d';button.style.borderColor='#d6e16a';button.style.color='#fff';}
-  else{button.style.background='';button.style.borderColor='';button.style.color='';}
+  if(event.type==='pointerover'){
+   if(!editorButtonStyles.has(button))editorButtonStyles.set(button,{background:button.style.background,borderColor:button.style.borderColor,color:button.style.color});
+   button.style.background='#30371d';button.style.borderColor='#d6e16a';button.style.color='#fff';
+  }else{
+   const original=editorButtonStyles.get(button);if(!original)return;
+   button.style.background=original.background;button.style.borderColor=original.borderColor;button.style.color=original.color;
+  }
  };
  if(options.editorTest){document.addEventListener('pointerover',editorButtonHover,true);document.addEventListener('pointerout',editorButtonHover,true);}
  let rolandAudio:ReturnType<typeof createBrowserMt32RaceAudio>|undefined;
