@@ -68,7 +68,7 @@ export function createUpgradedCarMenu(palette:number[],indices:number[],options:
   const d=0x2d1a0,v=new DataView(memory.buffer,memory.byteOffset,memory.byteLength),word=(at:number)=>v.getInt16(d+at,true),paint=memory[d+0xb013];
   let retired:THREE.Group|undefined,buildStarted:number|undefined;
   if(bank!==memory||lastPaint!==paint){buildStarted=performance.now();retired=model;retired?.removeFromParent();const shape=readUpgradedShape(memory,0x7f16);model=createCarModel(shape,0xffffff,{palette,indices,paint,paletteMaterial:memory[d+0x9b28],...readOriginalMaterialPatterns(memory)});applyUpgradedCarMaterials(model,shape);if(environment)setUpgradedCarGroundContactPanels(model,true);model.scale.setScalar(400);world.add(model);bank=memory;lastPaint=paint;floorDirty=environment;}
-  const zoom=Math.max(.6,Math.min(1.9,rotation?.zoom??1)),yaw=word(0xb00e)*Math.PI/512;
+  const zoom=Math.max(.6,Math.min(2.4,rotation?.zoom??1)),yaw=word(0xb00e)*Math.PI/512;
   model!.scale.setScalar(400);model!.position.set(0,-840,2880);model!.rotation.order='YXZ';model!.rotation.set(0,yaw,0);
   if(floorDirty&&floor&&grid){
    const contact=roadContactY(model!);floor.position.y=contact;grid.position.y=contact+.002*400;
@@ -130,7 +130,7 @@ export function createModernCarShowroom(palette:number[],indices:number[]){
     scene.add(model);lastShape=shape;lastRaceShape=raceShape;lastPaint=paint;shadowDirty=true;
    }
 
-   const zoom=Math.max(.6,Math.min(1.9,rotation?.zoom??1));
+   const zoom=Math.max(.6,Math.min(2.4,rotation?.zoom??1));
    const distance=THREE.MathUtils.clamp(baseDistance/zoom,4,16);
    const azimuth=baseAzimuth+(rotation?.angle??0)*Math.PI*2/1024;
    // Website OrbitControls never pass under the floor. Keep the same idea
