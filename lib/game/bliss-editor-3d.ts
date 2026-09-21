@@ -198,6 +198,9 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   add(groundRoot,grass,0x466f35,-.5);
   add(groundSupportRoot,supportGrass,0x466f35,-.45);
  };
+ const toleratePreviewElement=(draw:()=>void)=>{
+  try{draw();}catch{}
+ };
  const applyLayers=()=>{
   base.visible=layerState.ground&&options.showBasePlane!==false;groundRoot.visible=layerState.ground;
   // By default hill support remains behind Terrain when Ground is hidden.
@@ -212,39 +215,42 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   for(let y=0;y<30;y++)for(let x=0;x<30;x++){
    const at=y*30+x,terrain=source.terrain[at],sourceId=source.track[at],selected=hillRenderSelection(terrain,sourceId);
    const row=29-y;
-   if(selected.terrain&&!(terrain===6&&sourceId!==0)){
+   // Custom Stunts tracks can contain terrain/element combinations the stock
+   // editor never creates. The map is a viewer, not a validator: keep drawing
+   // every independent cell/part we understand and never reject the track
+   // because one visual combination has no stock rendering equivalent.
+   if(selected.terrain&&!(terrain===6&&sourceId!==0))toleratePreviewElement(()=>{
     const descriptor=(terrainObjects as Array<{id:number;shape:string;rotation:number}>).find(entry=>entry.id===selected.terrain);
-    if(descriptor){
-     const [group,name]=descriptor.shape.split('.'),sourceShape=assets.shapes[group]?.[name],shape=sourceShape?upgradedTrackSeamShape(sourceShape,descriptor.shape):undefined;
-     if(shape){
-      const model=modelFactory(shape,0,true);
-      model.position.set(x*1024+512,terrain===6?450:0,row*1024+512);
-      model.rotation.y=descriptor.rotation*Math.PI/512;terrainRoot.add(model);
-     }
-    }
-   }
+    if(!descriptor)return;
+    const [group,name]=descriptor.shape.split('.'),sourceShape=assets.shapes[group]?.[name],shape=sourceShape?upgradedTrackSeamShape(sourceShape,descriptor.shape):undefined;
+    if(!shape)return;
+    const model=modelFactory(shape,0,true);
+    model.position.set(x*1024+512,terrain===6?450:0,row*1024+512);
+    model.rotation.y=descriptor.rotation*Math.PI/512;terrainRoot.add(model);
+   });
    if(!sourceId||sourceId>=253||!selected.tile)continue;
    const descriptor=(trackRenderModels as Record<string,{id:number;shape?:string;detailShape?:string;overlay?:number;rotation:number;multiTile:number;paint:number}>)[String(selected.tile)];
    if(!descriptor)continue;
    const origin=trackRenderPlacement(descriptor,x,row,terrain===6?450:0,0).position;
-   if(terrain===6){
+   if(terrain===6)toleratePreviewElement(()=>{
     const sourceHigh=assets.shapes.GAME2?.high,high=sourceHigh?upgradedTrackSeamShape(sourceHigh,'GAME2.high'):undefined;
-    if(high)for(const underlay of elevatedRoadUnderlays(origin,descriptor.multiTile)){
+    if(!high)return;
+    for(const underlay of elevatedRoadUnderlays(origin,descriptor.multiTile)){
      const grass=modelFactory(high,0,true);grass.position.set(...underlay.position);terrainRoot.add(grass);
     }
-   }
+   });
    const element=blissElementData[sourceId],road=!!element&&(element.ctype.some(value=>value!==0)||(sourceId>=105&&sourceId<=108)),building=!road&&/(tennis|station|barn|office|windmill|ship|diner)/i.test(element?.id??'');
    const root=road?trackRoot:building?buildingsRoot:itemsRoot;
    const parts=[descriptor,...(descriptor.overlay?[(trackRenderModels as Record<string,typeof descriptor>)[String(descriptor.overlay)]]:[])].filter(Boolean);
-   for(const part of parts){
-    if(!part?.shape)continue;
+   for(const part of parts)toleratePreviewElement(()=>{
+    if(!part?.shape)return;
     const [group,name]=part.shape.split('.'),sourceShape=assets.shapes[group]?.[name];
-    if(!sourceShape)continue;
+    if(!sourceShape)return;
     const shape=upgradedTrackSeamShape(sourceShape,part.shape),placement=trackRenderPlacement(part,x,row,terrain===6?450:0,0);
     const paint=part.paint===255?0:placement.paint;
     const model=modelFactory(shape,paint);
     model.position.set(...placement.position);model.rotation.y=placement.rotation;root.add(model);
-   }
+   });
   }
   applyLayers();
  };

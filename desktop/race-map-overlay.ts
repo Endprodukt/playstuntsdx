@@ -235,14 +235,17 @@ export function installDesktopRaceMap(assets:Assets){
  function rebuildTrack(){
   if(!frame)return;
   const signature=trackSignature(frame.track);if(signature===cachedSignature&&cachedTrack&&preview)return;
-  cachedSignature=signature;cachedTrack=decodeBlissTrack(Uint8Array.from(frame.track));
-  cachedPaths=[];
+  const nextTrack=decodeBlissTrack(Uint8Array.from(frame.track));
+  let nextPaths:ReturnType<typeof traceBlissPath>[]=[];
   try{
-   const analysis=analyzeBlissRoute(cachedTrack);
-   cachedPaths=analysis.paths.slice(0,128).map((_,index)=>traceBlissPath(cachedTrack!,analysis,index));
-  }catch{cachedPaths=[];}
-  preview?.close();
-  preview=createBlissEditor3DView(map3d,assets,cachedTrack,{
+   const analysis=analyzeBlissRoute(nextTrack);
+   nextPaths=analysis.paths.slice(0,128).map((_,index)=>traceBlissPath(nextTrack,analysis,index));
+  }catch{}
+  // Build the replacement before disposing the current WebGL view. Previously
+  // one unusual custom-track visual could throw during construction after the
+  // old view had been closed; the stale object still projected the car arrow,
+  // leaving the characteristic black map with a floating marker.
+  const nextPreview=createBlissEditor3DView(map3d,assets,nextTrack,{
    initialCamera:{position:[15360,50000,-15360],target:[15360,0,-15360],fov:36},
    transparentBackground:true,
    showGround:settings.layers.ground,
@@ -254,6 +257,7 @@ export function installDesktopRaceMap(assets:Assets){
     buildings:settings.layers.buildings,items:settings.layers.items,
    },
   });
+  preview?.close();preview=nextPreview;cachedTrack=nextTrack;cachedPaths=nextPaths;cachedSignature=signature;
  }
 
 
