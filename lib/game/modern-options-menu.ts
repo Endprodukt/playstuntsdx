@@ -22,7 +22,7 @@ type RowId=
  |'close-distance'|'close-height'|'standard-distance'|'standard-height'|'far-distance'|'far-height'|'reset-camera';
 
 interface OptionRow {id:RowId;label:string;value:string;disabled?:boolean;actionOnly?:boolean}
-interface PointerAction {type:'tab'|'row'|'footer';index:number}
+interface PointerAction {type:'tab'|'row'|'footer'|'confirm';index:number}
 
 export interface ModernOptionsMenuHost {
  canvas:HTMLCanvasElement;
@@ -143,7 +143,7 @@ function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],sta
  };
  const focused=(type:PointerAction['type'],index:number)=>{
   const zone=state.zone(),keyboard=(type==='tab'&&zone==='tabs')||(type==='row'&&zone==='rows')||(type==='footer'&&zone==='footer');
-  const selected=type==='tab'?tabOrder.indexOf(state.tab()):type==='row'?state.row():state.footer();
+  const selected=type==='tab'?tabOrder.indexOf(state.tab()):type==='row'?state.row():type==='footer'?state.footer():-1;
   return (keyboard&&selected===index)||(hover?.type===type&&hover.index===index);
  };
  const rows=()=>getRows();
@@ -179,6 +179,10 @@ function createPresentation(canvas:HTMLCanvasElement,getRows:()=>OptionRow[],sta
  const actionAt=(event:{clientX:number;clientY:number}):PointerAction|undefined=>{
   const r=canvas.getBoundingClientRect(),x=(event.clientX-r.left)*320/r.width,y=(event.clientY-r.top)*200/r.height;
   const inside=(b:{x:number;y:number;w:number;h:number})=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h;
+  if(state.confirm()){
+   const choices=[{x:101,y:108,w:53,h:19},{x:166,y:108,w:53,h:19}],choice=choices.findIndex(inside);
+   return choice>=0?{type:'confirm',index:choice}:undefined;
+  }
   const tab=tabBounds.findIndex(inside);if(tab>=0)return {type:'tab',index:tab};
   const foot=footerBounds.findIndex(inside);if(foot>=0)return {type:'footer',index:foot};
   if(x>=content.x+5&&x<=content.x+content.w-5&&y>=content.y+13&&y<=content.y+content.h-4){
@@ -242,7 +246,8 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
  const pointerDown=(event:PointerEvent)=>{const action=presentation.actionAt(event);if(!action)return;event.preventDefault();event.stopImmediatePropagation();pointerActions.push(action);};
  const pointerMove=(event:PointerEvent)=>presentation.hoverAt(event);
  const pointerLeave=()=>presentation.clearHover();
- host.canvas.addEventListener('pointerdown',pointerDown,true);host.canvas.addEventListener('pointermove',pointerMove,true);host.canvas.addEventListener('pointerleave',pointerLeave,true);
+ const wheel=(event:WheelEvent)=>{if(confirm||event.deltaY===0)return;event.preventDefault();event.stopImmediatePropagation();zone='rows';const rows=currentRows();row=Math.max(0,Math.min(rows.length-1,row+(event.deltaY>0?1:-1)));presentation.render();};
+ host.canvas.addEventListener('pointerdown',pointerDown,true);host.canvas.addEventListener('pointermove',pointerMove,true);host.canvas.addEventListener('pointerleave',pointerLeave,true);host.canvas.addEventListener('wheel',wheel,{capture:true,passive:false});
 
  const setTab=(index:number)=>{tab=tabOrder[(index+tabOrder.length)%tabOrder.length]!;row=0;zone='rows';clampRow();presentation.render();};
  const setInputDevice=(device:DesktopInputDevice)=>{
@@ -313,7 +318,8 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
   for(;;){
    const input=await host.input(),pointer=pointerActions.shift();
    if(confirm){
-    if(pointer?.type==='footer'||pointer?.type==='row'||pointer?.type==='tab')continue;
+    if(pointer?.type==='confirm'){confirmChoice=pointer.index;presentation.render();if(pointer.index===1)return 'exit';confirm=false;presentation.render();continue;}
+    if(pointer)continue;
     if(input.key===27){confirm=false;presentation.render();continue;}
     if(input.key===0x4b00||input.key===0x4d00||input.key===0x4800||input.key===0x5000){confirmChoice^=1;presentation.render();continue;}
     if(input.key===13||input.key===32){if(confirmChoice===1)return 'exit';confirm=false;presentation.render();continue;}
@@ -346,6 +352,6 @@ export async function runModernOptionsMenu(host:ModernOptionsMenuHost):Promise<'
    }
   }
  }finally{
-  host.canvas.removeEventListener('pointerdown',pointerDown,true);host.canvas.removeEventListener('pointermove',pointerMove,true);host.canvas.removeEventListener('pointerleave',pointerLeave,true);
+  host.canvas.removeEventListener('pointerdown',pointerDown,true);host.canvas.removeEventListener('pointermove',pointerMove,true);host.canvas.removeEventListener('pointerleave',pointerLeave,true);host.canvas.removeEventListener('wheel',wheel,true);
  }
 }
