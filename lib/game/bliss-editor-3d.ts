@@ -32,10 +32,11 @@ export interface BlissEditor3DView {
  close():void;
 }
 
-export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,options:{initialCamera?:{position:[number,number,number];target:[number,number,number];fov?:number};transparentBackground?:boolean;showGround?:boolean;showAnnotations?:boolean;layers?:Partial<BlissEditor3DLayers>;terrainSupportWhenGroundHidden?:boolean}={}):BlissEditor3DView{
+export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,track:BlissTrack,options:{initialCamera?:{position:[number,number,number];target:[number,number,number];fov?:number};transparentBackground?:boolean;showGround?:boolean;showBasePlane?:boolean;showAnnotations?:boolean;layers?:Partial<BlissEditor3DLayers>;terrainSupportWhenGroundHidden?:boolean;pixelRatio?:number|(()=>number)}={}):BlissEditor3DView{
  const transparentBackground=!!options.transparentBackground;
  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:transparentBackground,logarithmicDepthBuffer:true,powerPreference:'high-performance'});
- renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
+ const requestedPixelRatio=()=>{const configured=typeof options.pixelRatio==='function'?options.pixelRatio():options.pixelRatio;return Math.max(1,Number.isFinite(configured)?Number(configured):Math.min(2,window.devicePixelRatio||1));};
+ renderer.setPixelRatio(requestedPixelRatio());
  renderer.setClearColor(transparentBackground?0x000000:0x88a0b8,transparentBackground?0:1);
 
  const scene=new THREE.Scene(),world=new THREE.Group();
@@ -66,7 +67,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   new THREE.PlaneGeometry(30720,30720),
   new THREE.MeshBasicMaterial({color:0x466f35,side:THREE.DoubleSide,toneMapped:false})
  );
- base.rotation.x=-Math.PI/2;base.position.set(15360,-700,15360);base.visible=layerState.ground;world.add(base);
+ base.rotation.x=-Math.PI/2;base.position.set(15360,-700,15360);base.visible=layerState.ground&&options.showBasePlane!==false;world.add(base);
 
  const pickPlane=new THREE.Mesh(
   new THREE.PlaneGeometry(30720,30720),
@@ -197,7 +198,7 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
   add(groundSupportRoot,supportGrass,0x466f35,-.45);
  };
  const applyLayers=()=>{
-  base.visible=layerState.ground;groundRoot.visible=layerState.ground;
+  base.visible=layerState.ground&&options.showBasePlane!==false;groundRoot.visible=layerState.ground;
   // By default hill support remains behind Terrain when Ground is hidden.
   // The race map can disable that behaviour so a Terrain-only view contains
   // only the hill geometry instead of exposing support-cell corners.
@@ -259,8 +260,9 @@ export function createBlissEditor3DView(canvas:HTMLCanvasElement,assets:Assets,t
  };
 
  const resize=()=>{
+  const ratio=requestedPixelRatio();if(renderer.getPixelRatio()!==ratio)renderer.setPixelRatio(ratio);
   const width=Math.max(1,canvas.clientWidth||canvas.width),height=Math.max(1,canvas.clientHeight||canvas.height);
-  const pixelWidth=Math.max(1,Math.round(width*renderer.getPixelRatio())),pixelHeight=Math.max(1,Math.round(height*renderer.getPixelRatio()));
+  const pixelWidth=Math.max(1,Math.round(width*ratio)),pixelHeight=Math.max(1,Math.round(height*ratio));
   if(canvas.width!==pixelWidth||canvas.height!==pixelHeight)renderer.setSize(width,height,false);
   camera.aspect=width/height;camera.updateProjectionMatrix();
  };
