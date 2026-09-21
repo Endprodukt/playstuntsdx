@@ -33,9 +33,9 @@ async function confirmModernExit(canvas:HTMLCanvasElement,input:ReturnType<typeo
  canvas.addEventListener('pointerdown',pointer,true);draw();
  try{
   for(;;){
-   await input.read();
+   const sample=await input.read();
    if(pointerActivate){pointerActivate=false;return pointerChoice===1?1:0;}
-   const key=input.readImmediate(0).key;
+   const key=sample.key;
    if(key===27)return 0;
    if(key===0x4b00||key===0x4d00||key===0x4800||key===0x5000){selected^=1;draw();continue;}
    if(key===13||key===32)return selected===1?1:0;
