@@ -9,8 +9,9 @@ import type {createNativeDisplayCommonState} from './native-display-common-state
 import {enhancedMenuEnabled} from './native-options-runtime.ts';
 export interface BrowserOpeningDisplay {owner:Awaited<ReturnType<typeof createNativeDisplayCommonState>>;present():void}
 
-async function confirmModernExit(canvas:HTMLCanvasElement,input:ReturnType<typeof createBrowserMenuInput>){
- const context=canvas.getContext('2d')!,saved=document.createElement('canvas');saved.width=canvas.width;saved.height=canvas.height;saved.getContext('2d')!.drawImage(canvas,0,0);
+async function confirmModernExit(canvas:HTMLCanvasElement,input:ReturnType<typeof createBrowserMenuInput>,background?:HTMLCanvasElement){
+ const context=canvas.getContext('2d')!,saved=background??document.createElement('canvas');
+ if(!background){saved.width=canvas.width;saved.height=canvas.height;saved.getContext('2d')!.drawImage(canvas,0,0);}
  let selected=0,pointerChoice=-1,pointerActivate=false;
  const sx=()=>canvas.width/320,sy=()=>canvas.height/200,buttons=[{x:103,y:111,w:51,h:19},{x:166,y:111,w:51,h:19}];
  const draw=()=>{
@@ -51,13 +52,13 @@ async function confirmModernExit(canvas:HTMLCanvasElement,input:ReturnType<typeo
 }
 /** Main2D16..2D4E: original exit confirmation after Escape from the opening.
  * The current opening framebuffer remains the background in every display. */
-export async function confirmBrowserOpeningExit(canvas:HTMLCanvasElement,signal:AbortSignal,native?:BrowserOpeningDisplay){
+export async function confirmBrowserOpeningExit(canvas:HTMLCanvasElement,signal:AbortSignal,native?:BrowserOpeningDisplay,background?:HTMLCanvasElement){
  const response=await fetch('/game/main-dialog-text.json',{signal});if(!response.ok)throw Error('Original exit prompt could not load');
  const {resources}=await response.json() as {resources:Record<string,number[]>};
  const input=createBrowserMenuInput(canvas,{onPoll(){if(signal.aborted)throw new DOMException('Opening closed','AbortError');}}),close=()=>input.close();signal.addEventListener('abort',close,{once:true});
  try{
   focusBrowserGameCanvas(canvas);
-  if(enhancedMenuEnabled())return await confirmModernExit(canvas,input);
+  if(enhancedMenuEnabled())return await confirmModernExit(canvas,input,background);
   if(native){
    const {owner}=native,present=()=>native.present(),m=owner.memory(),v=new DataView(m.buffer,m.byteOffset,m.byteLength);
    const dialogs=createNativeDisplayDialogRuntime({...input,input:input.read,memory:()=>owner.memory(),d:owner.d,mode:owner.mode,drawing:owner.drawing,resources,present,capture:retain=>captureNativeDisplayDialogBackground(owner,retain)},0xe800);
