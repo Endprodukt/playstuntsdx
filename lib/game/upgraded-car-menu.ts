@@ -23,7 +23,7 @@ export function createUpgradedCarMenu(palette:number[],indices:number[],options:
  const grid=environment?new THREE.GridHelper(40*400,40,0x47606a,0x243942):undefined;
  if(grid){grid.userData.originalEdgeVisibility=true;for(const material of Array.isArray(grid.material)?grid.material:[grid.material])material.toneMapped=false;world.add(grid);}
  const camera=new THREE.PerspectiveCamera();camera.near=1;camera.far=30000;
- let model:THREE.Group|undefined,bank:Uint8Array|undefined,lastPaint=-1,lastBuildMilliseconds:number|undefined,floorDirty=true,renderWidth=0,renderHeight=0;
+ let model:THREE.Group|undefined,bank:Uint8Array|undefined,lastPaint=-1,lastBuildMilliseconds:number|undefined,floorDirty=true,renderWidth=0,renderHeight=0,shadowsEnabled=environment;
  const roadContactY=(car:THREE.Group)=>{
   car.updateMatrixWorld(true);
   const tires:THREE.Mesh[]=[];car.traverse(node=>{if(node instanceof THREE.Mesh&&node.userData.originalWheelPart==='tire')tires.push(node);});
@@ -48,7 +48,10 @@ export function createUpgradedCarMenu(palette:number[],indices:number[],options:
   const [cx,cy,fx,fy]=[0,1,2,3].map(i=>word(0x4b88+i*2)),zoomFx=fx*zoom,zoomFy=fy*zoom;
   camera.projectionMatrix.makePerspective(-cx/zoomFx,(320-cx)/zoomFx,cy/zoomFy,-(200-cy)/zoomFy,1,30000);camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
   if(renderWidth!==width||renderHeight!==height){renderer.setSize(width,height,false);renderWidth=width;renderHeight=height;}
-  retroLighting?.drawShadows(renderer,[model!],scene);
+  if(shadowsEnabled&&retroLighting){
+   try{retroLighting.drawShadows(renderer,[model!],scene);}
+   catch(reason){shadowsEnabled=false;console.warn('[Modern Car Select] Showroom shadows disabled after render failure:',reason);}
+  }
   renderer.render(scene,camera);
   // Dispose the previous car only after the replacement has acquired the
   // shared GPU programs. This prevents every menu change recompiling them.
