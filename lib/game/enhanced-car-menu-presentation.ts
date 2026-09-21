@@ -1,9 +1,10 @@
 import type {NativeMenuCar} from './native-car-runtime.ts';
 import {originalCarAccelerationGraph} from './car-menu-raster.ts';
 import type {ModernCarMenuAction,ModernCarMenuFocus,ModernCarMenuPresentation} from './modern-car-menu-runtime.ts';
+import {engineSoundForCar,engineSoundPresetInfo,loadSoundModSettings} from './sound-mod-settings.ts';
 
 const selector={x:86,y:10,w:166,h:22},importButton={x:257,y:10,w:48,h:22},doneButton={x:232,y:174,w:81,h:23};
-const transmissionButton={x:232,y:137,w:81,h:16},colourButton={x:232,y:155,w:81,h:16};
+const soundButton={x:238,y:116,w:69,h:13},transmissionButton={x:232,y:137,w:81,h:16},colourButton={x:232,y:155,w:81,h:16};
 const previewRect={x:8,y:45,w:218,h:92},infoRect={x:232,y:44,w:81,h:89};
 const graphRect={x:8,y:143,w:72,h:49},descriptionRect={x:85,y:143,w:140,h:49};
 const dropdownRowHeight=15,dropdownRows=8;
@@ -82,13 +83,15 @@ export function createEnhancedCarMenuPresentation(options:{
    ['MAX RPM',String(current.maxRPM)],
    ['MASS',String(current.mass)+' kg'],
    ['IDLE RPM',String(current.idleRPM)],
-   ['PAINT',String(currentPaint+1)],
   ] as const;
   rows.forEach(([key,value],index)=>{
-   const y=84+index*10.5;
-   label(key,left,y,4.5,'#777',600);
-   label(value,right,y,5.5,'#ddd',600,'right');
+   const y=82+index*9.7;
+   label(key,left,y,4.3,'#777',600);
+   label(value,right,y,5.1,'#ddd',600,'right');
   });
+  const sound=engineSoundPresetInfo(engineSoundForCar(current.id,loadSoundModSettings())).label
+   .replace(/^Zapper /,'').replace(/^Mario Andretti /,'').replace('Original Stunts','Original');
+  button(soundButton,'SOUND · '+sound,'sound',4.2);
  };
  const drawGraph=()=>{
   if(!current)return;
@@ -230,6 +233,7 @@ export function createEnhancedCarMenuPresentation(options:{
    }
    if(inside(selector))return {type:'selector'};
    if(inside(importButton))return {type:'import'};
+   if(inside(soundButton))return {type:'sound',direction:1};
    if(inside(transmissionButton))return {type:'transmission'};
    if(inside(colourButton))return {type:'colour'};
    if(inside(doneButton))return {type:'done'};
