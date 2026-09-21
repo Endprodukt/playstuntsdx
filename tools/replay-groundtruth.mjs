@@ -88,11 +88,6 @@ async function workspaceInitFs(root){
  };
  await walk(root);return files;
 }
-function treeFile(node,name){
- if(node.size!==null&&String(node.name).toUpperCase()===name.toUpperCase())return node;
- for(const child of node.nodes??[]){const found=treeFile(child,name);if(found)return found;}
- return null;
-}
 async function runEmbeddedDosbox(workspace,expectedBytes){
  const require=createRequire(import.meta.url),entry=require.resolve('emulators');
  require(entry);
@@ -100,25 +95,30 @@ async function runEmbeddedDosbox(workspace,expectedBytes){
  if(!emulators?.dosboxNode)throw Error('Installed emulators package does not provide the Node DOSBox backend');
  emulators.pathPrefix=dirname(entry);
  if(typeof globalThis.ImageData==='undefined')globalThis.ImageData=class ImageData{constructor(data,width,height){this.data=data;this.width=width;this.height=height;}};
- const encoder=new TextEncoder(),dosboxConf='[sdl]\nfullscreen=false\n[dosbox]\nmemsize=16\n[cpu]\ncore=auto\ncycles=max\n[mixer]\nnosound=true\n[autoexec]\nmount c .\nc:\nREPLDUMP.EXE INPUT.RPL -o STATE.BIN\n';
+ const marker='__RESTUNTS_DONE__';
+ const encoder=new TextEncoder(),dosboxConf='[sdl]\nfullscreen=false\n[dosbox]\nmemsize=16\n[cpu]\ncore=auto\ncycles=max\n[mixer]\nnosound=true\n[autoexec]\nmount c .\nc:\nREPLDUMP.EXE INPUT.RPL -o STATE.BIN\necho '+marker+'\n';
  const initFs=await workspaceInitFs(workspace);
  initFs.push({path:'.jsdos/dosbox.conf',contents:encoder.encode(dosboxConf)},{path:'.jsdos/jsdos.json',contents:encoder.encode(JSON.stringify({version:'8'},null,2))});
  const ci=await emulators.dosboxNode(initFs);
  ci.mute();
- const output=[];let exited=false;
- ci.events().onStdout(message=>{if(message)output.push(message);});
- ci.events().onExit(()=>{exited=true;});
- const deadline=Date.now()+120000;
+ let transcript='',exited=false,settled=false,timeout;
+ const completed=new Promise((resolveDone,rejectDone)=>{
+  const fail=message=>{if(settled)return;settled=true;clearTimeout(timeout);rejectDone(new Error(message));};
+  const succeed=()=>{if(settled)return;settled=true;clearTimeout(timeout);resolveDone();};
+  ci.events().onStdout(message=>{
+   if(!message)return;
+   transcript=(transcript+message+'\n').slice(-32768);
+   if(transcript.includes(marker))succeed();
+  });
+  ci.events().onExit(()=>{exited=true;fail('Embedded DOSBox exited before repldump completed'+(transcript?': '+transcript.slice(-2000):''));});
+  timeout=setTimeout(()=>fail('Embedded DOSBox timed out waiting for repldump'+(transcript?': '+transcript.slice(-2000):'')),120000);
+ });
  try{
-  for(;;){
-   const state=treeFile(await ci.fsTree(),'STATE.BIN');
-   if(state?.size===expectedBytes)return await ci.fsReadFile('STATE.BIN');
-   if(state?.size>expectedBytes)throw Error(`repldump produced an oversized STATE.BIN (${state.size} bytes, expected ${expectedBytes})`);
-   if(exited)throw Error('Embedded DOSBox exited before STATE.BIN was complete'+(output.length?': '+output.slice(-5).join(' | '):''));
-   if(Date.now()>deadline)throw Error('Embedded DOSBox timed out waiting for STATE.BIN'+(output.length?': '+output.slice(-5).join(' | '):''));
-   await new Promise(resolve=>setTimeout(resolve,25));
-  }
- }finally{if(!exited)await ci.exit().catch(()=>{});}
+  await completed;
+  const state=await ci.fsReadFile('STATE.BIN');
+  if(state.length!==expectedBytes)throw Error(`repldump produced ${state.length} STATE.BIN bytes, expected ${expectedBytes}`);
+  return state;
+ }finally{clearTimeout(timeout);if(!exited)await ci.exit().catch(()=>{});}
 }
 async function runGroundTruthDos(workspace,expectedBytes,externalDosbox){
  if(externalDosbox){
