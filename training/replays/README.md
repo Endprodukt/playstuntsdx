@@ -1,32 +1,43 @@
 # Replay dataset probe
 
-This directory is the staging area for offline Stunts replay analysis. It is intentionally separate from the game runtime: replay files placed here are never loaded by the game and the generated data is not used by opponent AI yet.
+This directory is the staging area for offline Stunts replay analysis. Replay files placed here are never loaded by the visible game and generated data is not used by opponent AI yet.
 
-## First test
+## 1. Decode the raw replay
 
 1. Copy one or more original `.RPL` files into `training/replays/input/`.
 2. Run `npm run replay:inspect`.
 3. Results are written to `training/replays/output/`.
 
-The analyzer resolves these folders relative to the repository itself, so the default paths do not depend on the shell's current working directory.
+The raw probe creates `summary.json`, `frames.csv`, `track.csv` and `terrain.csv`. Both known Stunts layouts are supported: the older 24-byte layout and the common 26-byte layout that stores playback frequency and frame count separately.
 
-For each replay the probe creates:
+## 2. Headless physics probe
 
-- `summary.json` — detected replay format, playback frequency, car/opponent/track IDs, frame count, action counts, raw input histogram and track/terrain tile histograms.
-- `frames.csv` — one row per recorded input tick with timestamp, raw byte, throttle, brake, steering direction and shift flags.
-- `track.csv` — the embedded 30×30 track grid plus its horizon byte.
-- `terrain.csv` — the embedded 30×30 terrain grid plus its trailing byte.
+Run:
 
-`manifest.json` summarizes every replay processed in the run.
+`npm run replay:simulate`
 
-Both known Stunts replay layouts are supported: the older 24-byte header and the common 1991+ 26-byte header. The latter stores playback frequency and replay tick count as separate words and begins its input stream at offset `0x724`.
+The simulator replays the recorded human controls through PlayStunts DX's reconstructed Stunts physics without opening the game window. It looks for prepared game data in:
 
-The input and output contents are git-ignored on purpose. Only the directory placeholders and this README belong in source control.
+- `local-assets/prepared/game`
+- `public/game`
 
-## Sanity test
+If your prepared game directory lives elsewhere:
 
-Run `npm run replay:inspect:test` to validate both replay layouts against synthetic recordings with known controls.
+`npm run replay:simulate -- --game "C:\\full\\path\\to\\game"`
 
-## Scope of this first probe
+For every supported replay it adds:
 
-This step proves that useful human control labels and embedded track data can be recovered reliably from `.RPL` files without launching PlayStunts DX. It does **not** yet reconstruct vehicle position, speed, slip, surface contact or opponent-relative state. Those come next by feeding the decoded input stream through the existing headless reconstructed race simulation after the raw exports from real competition replays have been checked.
+- `telemetry.csv` — one observation/action row per replay frame: position, orientation, speed, RPM, gear, steering state, grip/load values, wheel surfaces, grass/air contact, crash state, route progress and the human input for that frame.
+- `simulation-summary.json` — start/final state and quick sanity metrics.
+- `simulation-manifest.json` — summary of the complete run.
+
+The first physics probe deliberately accepts solo replays only. Competition replays with no opponent are the cleanest validation source; opponent playback will be added after this baseline is confirmed.
+
+A particularly important sanity field is `raceClockMatchesFrames`. For a healthy full replay rollout it should normally be `true`. Position/speed traces should also vary continuously rather than remaining fixed.
+
+## Tests
+
+- `npm run replay:inspect:test` validates the raw analyzer.
+- `npm run replay:file:test` validates both central replay layouts and round-trip encoding.
+
+Input and generated output contents remain git-ignored.
