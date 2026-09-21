@@ -9,6 +9,29 @@ import type {Shape} from './types.ts';
 import {readUpgradedShape} from './upgraded-submission';
 import {rotateZXY,transpose} from '../physics/rotation';
 import {vecTransform} from '../physics/math';
+
+function createSupersampledShowroomGrid(size=40,divisions=40){
+ const positions:number[]=[],colours:number[]=[],indicesOut:number[]=[];
+ const minor=new THREE.Color(0x243942),centre=new THREE.Color(0x47606a);
+ const pushStrip=(x0:number,z0:number,x1:number,z1:number,width:number,colour:THREE.Color)=>{
+  const dx=x1-x0,dz=z1-z0,length=Math.hypot(dx,dz),px=-dz/length*width/2,pz=dx/length*width/2,base=positions.length/3;
+  positions.push(x0+px,0,z0+pz,x0-px,0,z0-pz,x1-px,0,z1-pz,x1+px,0,z1+pz);
+  for(let i=0;i<4;i++)colours.push(colour.r,colour.g,colour.b);
+  indicesOut.push(base,base+1,base+2,base,base+2,base+3);
+ };
+ const half=size/2,step=size/divisions;
+ for(let i=0;i<=divisions;i++){
+  const p=-half+i*step,isCentre=i===Math.floor(divisions/2),width=isCentre?.020:.012,colour=isCentre?centre:minor;
+  pushStrip(p,-half,p,half,width,colour);pushStrip(-half,p,half,p,width,colour);
+ }
+ const geometry=new THREE.BufferGeometry();
+ geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+ geometry.setAttribute('color',new THREE.Float32BufferAttribute(colours,3));
+ geometry.setIndex(indicesOut);
+ const material=new THREE.MeshBasicMaterial({vertexColors:true,toneMapped:false,side:THREE.DoubleSide});
+ const grid=new THREE.Mesh(geometry,material);grid.position.y=.002;grid.userData.originalEdgeVisibility=true;
+ return grid;
+}
 /** Depth-tested original showroom geometry. Unlike the source painter queue,
  * every face remains available as the car rotates; no simulation is owned here. */
 export function createUpgradedCarMenu(palette:number[],indices:number[],options:{environment?:boolean}={}){
@@ -89,7 +112,11 @@ export function createModernCarShowroom(palette:number[],indices:number[]){
  const retroLighting=createUpgradedRetroLighting({sunDirection:SHOWROOM_SUN,worldScale:SHOWROOM_SHADOW_WORLD_SCALE});
  const floor=new THREE.Mesh(new THREE.PlaneGeometry(100,100),new THREE.MeshBasicMaterial({color:0x172731,toneMapped:false}));
  floor.rotation.x=-Math.PI/2;floor.userData.retroDistanceColour=false;scene.add(floor);retroLighting.apply(floor,true,false);
- const grid=new THREE.GridHelper(40,40,0x47606a,0x243942);grid.position.y=.002;grid.userData.originalEdgeVisibility=true;scene.add(grid);
+ // GridHelper is always a one-device-pixel GL line. At 6x/8x/10x it
+ // becomes thinner than one menu pixel after downsampling and turns into the
+ // broken/soft pattern visible in the desktop screenshot. Use real world-space
+ // strips instead: they supersample with the car and remain continuous/sharp.
+ const grid=createSupersampledShowroomGrid();scene.add(grid);
 
  let model:THREE.Group|undefined,lastShape:Shape|undefined,lastRaceShape:Shape|undefined,lastPaint=-1,lastBuildMilliseconds:number|undefined,shadowDirty=true,renderWidth=0,renderHeight=0;
  const disposeModel=(old:THREE.Group|undefined)=>{old?.traverse(node=>{if(node instanceof THREE.Mesh||node instanceof THREE.LineSegments){node.geometry.dispose();for(const material of Array.isArray(node.material)?node.material:[node.material])material.dispose();}});if(old)scene.remove(old);};
